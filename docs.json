@@ -1,22 +1,35 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "almond",
-  "name": "Product Guide",
-  "description": "Step-by-step guides for every product—platform setup, analytics, and integrations in one place.",
+  "theme": "maple",
+  "name": "Gust",
+  "description": "Python-style readability, native C-speed output, and concurrency the compiler handles for you.",
   "colors": {
-    "primary": "#166E3F",
-    "light": "#26BD6C",
-    "dark": "#166E3F"
+    "primary": "#4338ca",
+    "light": "#818cf8",
+    "dark": "#312e81"
   },
-  "favicon": "/favicon.ico",
+  "favicon": "/logo/light.svg",
   "icons": {
     "library": "lucide"
   },
   "styling": {
-    "eyebrows": "breadcrumbs"
+    "eyebrows": "breadcrumbs",
+    "codeblocks": {
+      "languages": {
+        "custom": [
+          "/languages/gust.json"
+        ]
+      }
+    }
   },
   "contextual": {
-    "options": ["copy", "view", "assistant", "mcp", "add-mcp"]
+    "options": [
+      "copy",
+      "view",
+      "assistant",
+      "mcp",
+      "add-mcp"
+    ]
   },
   "navigation": {
     "global": {
@@ -27,51 +40,289 @@
           "href": "/"
         },
         {
-          "anchor": "Changelog",
-          "icon": "scroll-text",
-          "href": "https://www.mintlify.com/docs/changelog"
-        },
-        {
-          "anchor": "Help",
-          "icon": "life-buoy",
-          "href": "https://www.mintlify.com/docs/contact-support"
+          "anchor": "GitHub",
+          "icon": "github",
+          "href": "https://github.com/GustLang/gust"
         }
       ]
     },
-    "directory": "card",
-    "groups": [
+    "tabs": [
       {
-        "group": "Platform",
-        "icon": "layers",
-        "expanded": true,
+        "tab": "Get started",
+        "icon": "rocket",
         "pages": [
-          "platform/quickstart",
-          "platform/key-concepts",
-          "platform/configuration/settings",
-          "platform/configuration/user-management",
-          "platform/administration/roles-permissions"
+          "start/install",
+          "start/hello-world",
+          "start/tour",
+          "start/cli"
         ]
       },
       {
-        "group": "Analytics",
-        "icon": "chart-bar",
-        "expanded": true,
-        "pages": [
-          "analytics/quickstart",
-          "analytics/connect-data",
-          "analytics/dashboards/create-dashboard",
-          "analytics/reports/scheduled-reports"
+        "tab": "Language",
+        "icon": "book-open",
+        "menu": [
+          {
+            "item": "Language Reference",
+            "icon": "book-open",
+            "groups": [
+              {
+                "group": "Overview",
+                "pages": [
+                  "lang/overview"
+                ]
+              },
+              {
+                "group": "Basics",
+                "pages": [
+                  "lang/syntax",
+                  "lang/variables",
+                  "lang/types",
+                  "lang/operators"
+                ]
+              },
+              {
+                "group": "Strings & collections",
+                "pages": [
+                  "lang/strings",
+                  "lang/collections"
+                ]
+              },
+              {
+                "group": "Flow & functions",
+                "pages": [
+                  "lang/control-flow",
+                  "lang/functions",
+                  "lang/decorators"
+                ]
+              },
+              {
+                "group": "Types & methods",
+                "pages": [
+                  "lang/structs",
+                  "lang/interfaces",
+                  "lang/enums",
+                  "lang/unions",
+                  "lang/match"
+                ]
+              },
+              {
+                "group": "Errors & concurrency",
+                "pages": [
+                  "lang/errors",
+                  "lang/concurrency"
+                ]
+              },
+              {
+                "group": "Modules",
+                "pages": [
+                  "lang/constants",
+                  "lang/imports"
+                ]
+              }
+            ]
+          },
+          {
+            "item": "Tooling",
+            "icon": "wrench",
+            "pages": [
+              "tooling/formatter",
+              "tooling/lsp",
+              "tooling/project-config",
+              "tooling/packages",
+              "tooling/repl",
+              "tooling/vscode"
+            ]
+          },
+          {
+            "item": "FAQ + More",
+            "icon": "info",
+            "pages": [
+              "cookbook/index",
+              "compiler/internals",
+              "faq"
+            ]
+          }
         ]
       },
       {
-        "group": "Integrations",
-        "icon": "plug",
-        "expanded": true,
+        "tab": "Library Reference",
+        "icon": "book",
+        "groups": [
+          {
+            "group": "Built-in types",
+            "pages": [
+              "builtins/prelude",
+              "builtins/errors",
+              "builtins/string",
+              "builtins/integer",
+              "builtins/float",
+              "builtins/bool",
+              "builtins/list",
+              "builtins/dict",
+              "builtins/none",
+              "builtins/bytes"
+            ]
+          },
+          {
+            "group": "Overview",
+            "pages": [
+              "stdlib/index"
+            ]
+          },
+          {
+            "group": "Core",
+            "pages": [
+              "stdlib/math",
+              "stdlib/convert",
+              "stdlib/time",
+              "stdlib/uuid"
+            ]
+          },
+          {
+            "group": "System",
+            "pages": [
+              "stdlib/os",
+              "stdlib/fs",
+              "stdlib/i2c",
+              "stdlib/cec",
+              "stdlib/exitcode",
+              "stdlib/signal",
+              "stdlib/sync",
+              "stdlib/profile",
+              "stdlib/unsafe"
+            ]
+          },
+          {
+            "group": "Text & data",
+            "pages": [
+              "stdlib/regex",
+              "stdlib/highlight",
+              "stdlib/url",
+              "stdlib/buffer",
+              "stdlib/hashmap",
+              "stdlib/ansi",
+              "stdlib/mime"
+            ]
+          },
+          {
+            "group": "Serialization",
+            "pages": [
+              "stdlib/json",
+              "stdlib/toml",
+              "stdlib/yaml",
+              "stdlib/csv",
+              "stdlib/compression"
+            ]
+          },
+          {
+            "group": "Cryptography",
+            "pages": [
+              {
+                "group": "cryptography",
+                "root": "stdlib/cryptography",
+                "expanded": false,
+                "pages": [
+                  "stdlib/cryptography/sha",
+                  "stdlib/cryptography/hmac",
+                  "stdlib/cryptography/kdf",
+                  "stdlib/cryptography/random",
+                  "stdlib/cryptography/aes",
+                  "stdlib/cryptography/bcrypt",
+                  "stdlib/cryptography/ed25519",
+                  "stdlib/cryptography/x25519",
+                  "stdlib/cryptography/ssl"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Networking",
+            "pages": [
+              "stdlib/socket",
+              "stdlib/websockets",
+              "stdlib/bluetooth",
+              "stdlib/requests",
+              {
+                "group": "http",
+                "root": "stdlib/http",
+                "expanded": false,
+                "pages": [
+                  "stdlib/http/client",
+                  {
+                    "group": "http.server",
+                    "root": "stdlib/http/server",
+                    "expanded": false,
+                    "pages": [
+                      "stdlib/http/server/middleware"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Database",
+            "pages": [
+              {
+                "group": "database",
+                "root": "stdlib/database",
+                "expanded": false,
+                "pages": [
+                  "stdlib/database/sqlite",
+                  "stdlib/database/postgres"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Interaction & media",
+            "pages": [
+              {
+                "group": "cli",
+                "root": "stdlib/cli",
+                "expanded": false,
+                "pages": [
+                  "stdlib/cli/app",
+                  "stdlib/cli/ui"
+                ]
+              },
+              "stdlib/images",
+              "stdlib/barcode"
+            ]
+          },
+          {
+            "group": "Embedded",
+            "pages": [
+              "stdlib/pin",
+              "stdlib/wifi"
+            ]
+          },
+          {
+            "group": "Metaprogramming",
+            "pages": [
+              "stdlib/ast",
+              "stdlib/derive",
+              "stdlib/imports",
+              "stdlib/inspect",
+              "stdlib/autodoc"
+            ]
+          },
+          {
+            "group": "Testing",
+            "pages": [
+              "stdlib/testing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Rules",
+        "icon": "list-check",
         "pages": [
-          "integrations/quickstart",
-          "integrations/authentication",
-          "integrations/connectors/crm",
-          "integrations/webhooks/configure"
+          "rules",
+          "rules/formatter",
+          "rules/errors",
+          "rules/warnings"
         ]
       }
     ]
@@ -81,17 +332,15 @@
     "dark": "/logo/dark.svg"
   },
   "navbar": {
-    "links": [],
     "primary": {
       "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
+      "label": "GitHub",
+      "href": "https://github.com/GustLang/gust"
     }
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/yourcompany",
-      "linkedin": "https://linkedin.com/company/yourcompany"
+      "github": "https://github.com/GustLang/gust"
     }
   }
 }

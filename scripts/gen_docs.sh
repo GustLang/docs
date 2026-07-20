@@ -51,8 +51,8 @@ fi
 # (its `@model` derive is still WIP and does not compile standalone), `twmerge`,
 # `wifi`, `pico`, and `requests` (embedded-only — they don't build for the
 # host; hosted HTTP is `http.client`).
-PKGS="ansi ast autodoc barcode bluetooth buffer compression convert csv database derive exitcode \
-hashmap highlight http i2c images imports inspect json math mime os pin profile regex \
+PKGS="ansi ast autodoc barcode bluetooth buffer cec compression convert csv database derive drm exitcode \
+framebuffer hashmap highlight http i2c images imports inspect ioctl json math mime mmap os pin profile regex \
 signal socket sync fs testing time toml unsafe url uuid websockets yaml \
 cli.app cli.ui \
 cryptography.aes cryptography.bcrypt cryptography.ed25519 cryptography.hmac \
