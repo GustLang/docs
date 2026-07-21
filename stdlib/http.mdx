@@ -1,0 +1,131 @@
+---
+title: http
+description: "The `Headers` view over a request's header set: a small read-only wrapper around the parsed `name -> value` map (keys lowercased) that does case-insensitive lookups and treats `_` as `-`, so `req.headers['content_type']` and `req.headers['Content-Type']` resolve to the same header"
+---
+
+```gust
+use http
+```
+
+The `Headers` view over a request's header set: a small read-only wrapper
+around the parsed `name -> value` map (keys lowercased) that does
+case-insensitive lookups and treats `_` as `-`, so `req.headers["content_type"]`
+and `req.headers["Content-Type"]` resolve to the same header. Part of the
+`http` package.
+
+**On this page:** [`Headers`](#Headers) · [`reason`](#http.reason) · [`read_header_block`](#http.read_header_block) · [`read_body`](#http.read_body) · [`read_chunk`](#http.read_chunk) · [`read_chunked_body`](#http.read_chunked_body)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `HTTP_MAX_BODY_SIZE` | `integer` | `33554432` |
+| `HTTP_REASONS` | `dict[integer, string]` | `{200: "OK", 201: "Created", 204: "No Content", 301: "Moved P…}` |
+
+## `Headers`
+
+<a id="Headers" />
+A read-only view of an HTTP request's headers. Names are matched
+case-insensitively, with `_` treated as `-`. Look up a value with
+`get(name)` or `headers[name]` (both return "" when the header is
+absent), test presence with `name in headers`, and count with
+`headers.length`.
+
+```gust
+def Headers
+
+    _store: dict[string, string]
+
+end
+```
+
+**Fields**
+
+- `_store: dict[string, string]` — Backing `name -> value` map, with lowercased keys.
+
+**Methods**
+
+<a id="Headers.get" />
+```gust
+def Headers.get(name: string) -> string
+```
+
+The value of header `name` (case-insensitive), or "" if absent.
+
+**Parameters**
+
+- `name` — Header name; `_` is treated as `-`.
+
+## Functions
+
+<a id="http.reason" />
+```gust
+def reason(status: integer) -> string
+```
+
+The reason phrase for a status code, defaulting to "OK".
+
+**Parameters**
+
+- `status: integer` — An HTTP status code, e.g. 404.
+
+---
+
+<a id="http.read_header_block" />
+```gust
+def read_header_block(sock: Stream) -> string
+```
+
+Read the start line plus header lines up to and including the blank-line
+terminator (CRLFCRLF), one byte at a time so none of the body is consumed.
+Returns "" if the peer closes before any data arrives.
+
+**Parameters**
+
+- `sock: Stream` — The byte stream to read from.
+
+---
+
+<a id="http.read_body" />
+```gust
+def read_body(sock: Stream, n: integer) -> bytes
+```
+
+Read up to `n` body bytes, tolerating an early peer close (returns
+whatever arrived).
+
+**Parameters**
+
+- `sock: Stream` — The byte stream to read from.
+- `n: integer` — Number of body bytes announced by `Content-Length`.
+
+---
+
+<a id="http.read_chunk" />
+```gust
+def read_chunk(sock: Stream) -> bytes
+```
+
+Read and decode one `Transfer-Encoding: chunked` chunk: a hex size line
+followed by that many payload bytes and a trailing CRLF. Returns empty bytes
+at the terminating zero-length chunk (consuming the trailers) or on an early
+peer close — the caller's signal that the body is complete.
+
+**Parameters**
+
+- `sock: Stream` — The byte stream positioned at a chunk-size line.
+
+---
+
+<a id="http.read_chunked_body" />
+```gust
+def read_chunked_body(sock: Stream) -> bytes
+```
+
+Read and decode a whole `Transfer-Encoding: chunked` body by reading
+chunks until the terminating zero-length one. Tolerates an early peer close,
+returning whatever was decoded.
+
+**Parameters**
+
+- `sock: Stream` — The byte stream positioned at the first chunk-size line.

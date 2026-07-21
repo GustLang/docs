@@ -93,7 +93,7 @@ def build_index(names: list[string], descs: list[string]) -> string
     render_group(buf, names, descs, "Text & data", ["regex", "highlight", "url", "buffer", "hashmap", "ansi", "mime"])
     render_group(buf, names, descs, "Serialization", ["json", "toml", "yaml", "csv", "compression"])
     render_group(buf, names, descs, "Cryptography", ["cryptography.sha", "cryptography.hmac", "cryptography.kdf", "cryptography.random", "cryptography.aes", "cryptography.bcrypt", "cryptography.ed25519", "cryptography.x25519", "cryptography.ssl"])
-    render_group(buf, names, descs, "Networking", ["requests", "socket", "websockets", "http"])
+    render_group(buf, names, descs, "Networking", ["socket", "websockets", "http"])
     render_group(buf, names, descs, "Database", ["database", "database.sqlite", "database.postgres"])
     render_group(buf, names, descs, "Interaction & media", ["cli.app", "cli.ui", "images", "barcode"])
     render_group(buf, names, descs, "Embedded", ["i2c", "cec", "pin", "framebuffer", "drm", "wifi", "bluetooth"])

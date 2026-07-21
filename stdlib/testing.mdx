@@ -1,0 +1,609 @@
+---
+title: testing
+description: "The test context `T` handed to every `@test` function, plus the two control errors the harness uses to unwind a test early"
+---
+
+```gust
+use testing
+```
+
+The test context `T` handed to every `@test` function, plus the two control
+errors the harness uses to unwind a test early.
+
+Soft failures (`t.fail`, the `expect_*` helpers) accumulate and let the test
+keep running so one run surfaces every problem at once. `t.fatal` records a
+failure and stops the current test; `t.skip` marks it skipped. Neither affects
+the other tests in the file — the harness isolates each one.
+
+A test receives a `T` and reports outcomes through it:
+
+**Examples**
+
+```gust
+@test
+def parses_port(t: testing.T) -> none
+    u := url.parse("http://host:8443/")
+    testing.expect_str(t, u.port, "8443", "port")
+    if u.scheme != "http"
+        t.fatal("scheme parse broke — aborting the rest of this test")
+    end
+end
+```
+
+**On this page:** [`T`](#T) · [`TestCase`](#TestCase) · [`SkipError`](#SkipError) · [`FailNowError`](#FailNowError) · [`AssertionError`](#AssertionError) · [`expect_eq`](#testing.expect_eq) · [`expect_neq`](#testing.expect_neq) · [`expect_int`](#testing.expect_int) · [`expect_str`](#testing.expect_str) · [`expect_bool`](#testing.expect_bool) · [`expect_true`](#testing.expect_true) · [`expect_false`](#testing.expect_false) · [`expect_contains`](#testing.expect_contains) · [`expect_float`](#testing.expect_float) · [`run_registered`](#testing.run_registered) · [`assert_eq`](#testing.assert_eq) · [`assert_neq`](#testing.assert_neq) · [`assert_int`](#testing.assert_int) · [`assert_str`](#testing.assert_str) · [`assert_bool`](#testing.assert_bool) · [`assert_true`](#testing.assert_true) · [`assert_false`](#testing.assert_false) · [`assert_float`](#testing.assert_float) · [`assert_contains`](#testing.assert_contains) · [`assert_gt`](#testing.assert_gt) · [`assert_lt`](#testing.assert_lt)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `GTEST_MARKER` | `string` | `"##gtest##"` |
+
+## `T`
+
+<a id="T" />
+The context passed to a `@test` function. Collects the test's failures
+and skip state; the harness reads them after the test returns to decide its
+outcome.
+
+```gust
+def T
+
+    name: string
+    failures: list[string]
+    skipped: bool
+    skip_reason: string
+
+end
+```
+
+**Fields**
+
+- `name: string` — the test function's name, used in the report.
+- `failures: list[string]` — messages from every soft failure and failed assertion, in order. A non-empty list means the test failed.
+- `skipped: bool` — true once `skip` has run.
+- `skip_reason: string` — the reason passed to `skip`.
+
+**Methods**
+
+<a id="T.fail" />
+```gust
+def T.fail(message: string) -> none
+```
+
+Record a failure and keep running the test. Use when later checks can
+still produce useful output despite this one failing.
+
+**Parameters**
+
+- `message` — the failure description to record.
+
+---
+
+<a id="T.fatal" />
+```gust
+def T.fatal(message: string) -> none
+```
+
+Record a failure and stop the current test immediately. Use when
+continuing would cascade into noise or unsafe state.
+
+**Parameters**
+
+- `message` — the failure description to record.
+
+**Raises**
+
+- `FailNowError` — always, to unwind the test after recording the failure.
+
+---
+
+<a id="T.skip" />
+```gust
+def T.skip(reason: string) -> none
+```
+
+Mark the current test skipped and stop running it.
+
+**Parameters**
+
+- `reason` — why the test is skipped, surfaced in the report.
+
+**Raises**
+
+- `SkipError` — always, to unwind the test as skipped.
+
+---
+
+<a id="T.log" />
+```gust
+def T.log(message: string) -> none
+```
+
+Emit a diagnostic line attributed to the current test. The runner shows
+it beneath the test when the test fails, or with `--verbose`.
+
+**Parameters**
+
+- `message` — the diagnostic text to emit.
+
+---
+
+<a id="T.failed" />
+```gust
+def T.failed() -> bool
+```
+
+True once any failure has been recorded on this context.
+
+## `TestCase`
+
+<a id="TestCase" />
+One registered test: its function `name` and the function itself, which
+the harness calls with a fresh `T`.
+
+```gust
+def TestCase
+
+    name: string
+    fn: Function(T)[none]
+
+end
+```
+
+**Fields**
+
+- `name: string` — the test function's name, shown in the report.
+- `fn: Function(T)[none]` — the test body, invoked with the test context.
+
+## Functions
+
+<a id="testing.expect_eq" />
+```gust
+def expect_eq(t: T, got: V, want: V, label: string) -> bool
+```
+
+Record a failure unless `got == want`. Works for any type with `==`.
+
+**Parameters**
+
+- `t: T` — the test context that accumulates failures.
+- `got: V` — the actual value produced by the code under test.
+- `want: V` — the expected value to compare against.
+- `label: string` — description included in the failure message.
+
+**Returns** `bool`
+
+Whether the check passed.
+
+---
+
+<a id="testing.expect_neq" />
+```gust
+def expect_neq(t: T, got: V, want: V, label: string) -> bool
+```
+
+Record a failure when `got == want`.
+
+**Parameters**
+
+- `t: T` — the test context that accumulates failures.
+- `got: V` — the actual value produced by the code under test.
+- `want: V` — the value `got` must differ from.
+- `label: string` — description included in the failure message.
+
+**Returns** `bool`
+
+Whether the check passed.
+
+---
+
+<a id="testing.expect_int" />
+```gust
+def expect_int(t: T, got: integer, want: integer, label: string) -> bool
+```
+
+Record a failure unless two integers are equal.
+
+**Parameters**
+
+- `t: T` — the test context that accumulates failures.
+- `got: integer` — the actual integer produced by the code under test.
+- `want: integer` — the expected integer to compare against.
+- `label: string` — description included in the failure message.
+
+**Returns** `bool`
+
+Whether the check passed.
+
+---
+
+<a id="testing.expect_str" />
+```gust
+def expect_str(t: T, got: string, want: string, label: string) -> bool
+```
+
+Record a failure unless two strings are equal.
+
+**Parameters**
+
+- `t: T` — the test context that accumulates failures.
+- `got: string` — the actual string produced by the code under test.
+- `want: string` — the expected string to compare against.
+- `label: string` — description included in the failure message.
+
+**Returns** `bool`
+
+Whether the check passed.
+
+---
+
+<a id="testing.expect_bool" />
+```gust
+def expect_bool(t: T, got: bool, want: bool, label: string) -> bool
+```
+
+Record a failure unless two booleans are equal.
+
+**Parameters**
+
+- `t: T` — the test context that accumulates failures.
+- `got: bool` — the actual boolean produced by the code under test.
+- `want: bool` — the expected boolean to compare against.
+- `label: string` — description included in the failure message.
+
+**Returns** `bool`
+
+Whether the check passed.
+
+---
+
+<a id="testing.expect_true" />
+```gust
+def expect_true(t: T, cond: bool, label: string) -> bool
+```
+
+Record a failure unless `cond` is true.
+
+**Parameters**
+
+- `t: T` — the test context that accumulates failures.
+- `cond: bool` — the condition that must hold.
+- `label: string` — description included in the failure message.
+
+**Returns** `bool`
+
+Whether the check passed.
+
+---
+
+<a id="testing.expect_false" />
+```gust
+def expect_false(t: T, cond: bool, label: string) -> bool
+```
+
+Record a failure unless `cond` is false.
+
+**Parameters**
+
+- `t: T` — the test context that accumulates failures.
+- `cond: bool` — the condition that must not hold.
+- `label: string` — description included in the failure message.
+
+**Returns** `bool`
+
+Whether the check passed.
+
+---
+
+<a id="testing.expect_contains" />
+```gust
+def expect_contains(
+    t: T,
+    haystack: string,
+    needle: string,
+    label: string,
+) -> bool
+```
+
+Record a failure unless `haystack` contains `needle`.
+
+**Parameters**
+
+- `t: T` — the test context that accumulates failures.
+- `haystack: string` — the string to search.
+- `needle: string` — the substring that must be present.
+- `label: string` — description included in the failure message.
+
+**Returns** `bool`
+
+Whether the check passed.
+
+---
+
+<a id="testing.expect_float" />
+```gust
+def expect_float(
+    t: T,
+    got: float,
+    want: float,
+    eps: float,
+    label: string,
+) -> bool
+```
+
+Record a failure unless `got` is within `eps` of `want`.
+
+**Parameters**
+
+- `t: T` — the test context that accumulates failures.
+- `got: float` — the actual float produced by the code under test.
+- `want: float` — the expected float to compare against.
+- `eps: float` — maximum allowed absolute difference between `got` and `want`.
+- `label: string` — description included in the failure message.
+
+**Returns** `bool`
+
+Whether the check passed.
+
+---
+
+<a id="testing.run_registered" />
+```gust
+def run_registered(cases: list[TestCase]) -> none
+```
+
+Run every registered test in order, each with a fresh context and full
+isolation, emit the result stream, then exit with the number of failed
+tests as the process status (0 when all pass).
+
+**Parameters**
+
+- `cases: list[TestCase]` — the registered tests to run, in order.
+
+---
+
+<a id="testing.assert_eq" />
+```gust
+def assert_eq(got: V, want: V, label: string) -> none
+```
+
+Fail unless `got == want`. Works for any type with `==`.
+
+**Parameters**
+
+- `got: V` — the actual value produced by the code under test.
+- `want: V` — the expected value to compare against.
+- `label: string` — description included in the failure message.
+
+**Raises**
+
+- `AssertionError` — when the values differ.
+
+---
+
+<a id="testing.assert_neq" />
+```gust
+def assert_neq(got: V, want: V, label: string) -> none
+```
+
+Fail when `got == want`.
+
+**Parameters**
+
+- `got: V` — the actual value produced by the code under test.
+- `want: V` — the value `got` must differ from.
+- `label: string` — description included in the failure message.
+
+**Raises**
+
+- `AssertionError` — when the values are equal.
+
+---
+
+<a id="testing.assert_int" />
+```gust
+def assert_int(got: integer, want: integer, label: string) -> none
+```
+
+Fail unless two integers are equal.
+
+**Parameters**
+
+- `got: integer` — the actual integer produced by the code under test.
+- `want: integer` — the expected integer to compare against.
+- `label: string` — description included in the failure message.
+
+**Raises**
+
+- `AssertionError` — when the integers differ.
+
+---
+
+<a id="testing.assert_str" />
+```gust
+def assert_str(got: string, want: string, label: string) -> none
+```
+
+Fail unless two strings are equal.
+
+**Parameters**
+
+- `got: string` — the actual string produced by the code under test.
+- `want: string` — the expected string to compare against.
+- `label: string` — description included in the failure message.
+
+**Raises**
+
+- `AssertionError` — when the strings differ.
+
+---
+
+<a id="testing.assert_bool" />
+```gust
+def assert_bool(got: bool, want: bool, label: string) -> none
+```
+
+Fail unless two booleans are equal.
+
+**Parameters**
+
+- `got: bool` — the actual boolean produced by the code under test.
+- `want: bool` — the expected boolean to compare against.
+- `label: string` — description included in the failure message.
+
+**Raises**
+
+- `AssertionError` — when the booleans differ.
+
+---
+
+<a id="testing.assert_true" />
+```gust
+def assert_true(cond: bool, label: string) -> none
+```
+
+Fail unless `cond` is true.
+
+**Parameters**
+
+- `cond: bool` — the condition that must hold.
+- `label: string` — description included in the failure message.
+
+**Raises**
+
+- `AssertionError` — when `cond` is false.
+
+---
+
+<a id="testing.assert_false" />
+```gust
+def assert_false(cond: bool, label: string) -> none
+```
+
+Fail unless `cond` is false.
+
+**Parameters**
+
+- `cond: bool` — the condition that must not hold.
+- `label: string` — description included in the failure message.
+
+**Raises**
+
+- `AssertionError` — when `cond` is true.
+
+---
+
+<a id="testing.assert_float" />
+```gust
+def assert_float(got: float, want: float, eps: float, label: string) -> none
+```
+
+Fail unless `got` is within `eps` of `want` — the float-safe counterpart
+to `assert_eq`, since exact `==` on floats is brittle.
+
+**Parameters**
+
+- `got: float` — the actual float produced by the code under test.
+- `want: float` — the expected float to compare against.
+- `eps: float` — maximum allowed absolute difference between `got` and `want`.
+- `label: string` — description included in the failure message.
+
+**Raises**
+
+- `AssertionError` — when the difference exceeds `eps`.
+
+---
+
+<a id="testing.assert_contains" />
+```gust
+def assert_contains(haystack: string, needle: string, label: string) -> none
+```
+
+Fail unless `haystack` contains `needle` as a substring.
+
+**Parameters**
+
+- `haystack: string` — the string to search.
+- `needle: string` — the substring that must be present.
+- `label: string` — description included in the failure message.
+
+**Raises**
+
+- `AssertionError` — when `needle` is absent.
+
+---
+
+<a id="testing.assert_gt" />
+```gust
+def assert_gt(got: integer, floor: integer, label: string) -> none
+```
+
+Fail unless `got > floor`.
+
+**Parameters**
+
+- `got: integer` — the actual integer produced by the code under test.
+- `floor: integer` — the exclusive lower bound `got` must exceed.
+- `label: string` — description included in the failure message.
+
+**Raises**
+
+- `AssertionError` — when `got <= floor`.
+
+---
+
+<a id="testing.assert_lt" />
+```gust
+def assert_lt(got: integer, ceil: integer, label: string) -> none
+```
+
+Fail unless `got < ceil`.
+
+**Parameters**
+
+- `got: integer` — the actual integer produced by the code under test.
+- `ceil: integer` — the exclusive upper bound `got` must stay below.
+- `label: string` — description included in the failure message.
+
+**Raises**
+
+- `AssertionError` — when `got >= ceil`.
+
+## Errors
+
+<a id="SkipError" />
+```gust
+error SkipError(message: string)
+```
+
+Raised by `T.skip` to unwind the current test as skipped. Caught by the
+harness; never propagates to the process.
+
+Fields:
+message: the skip reason, surfaced in the report.
+
+---
+
+<a id="FailNowError" />
+```gust
+error FailNowError(message: string)
+```
+
+Raised by `T.fatal` to stop the current test after a failure has already
+been recorded. Caught by the harness; never propagates to the process.
+
+Fields:
+message: the failure message, already appended to the test's failures.
+
+---
+
+<a id="AssertionError" />
+```gust
+error AssertionError(message: string)
+```
+
+Raised by a failing `assert_*`. The harness records its message and marks
+the current test failed.
+
+Fields:
+message: the failure description.

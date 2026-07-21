@@ -1,0 +1,103 @@
+---
+title: Conditional compilation
+description: Keep declarations and imports for one target and drop them for others with @cfg and the #gust:cfg import pragma — predicates over os, arch, abi, triple, and target flavor
+---
+
+Conditional compilation selects which code is compiled based on the target
+being built. A declaration or import gated for one platform is **removed before
+analysis** on every other platform, so the dropped branch may reference symbols
+— functions, packages, ABI seams — that exist only where it is kept.
+
+Two carriers share one predicate language:
+
+- `@cfg(<predicate>)` gates a **function, method, or struct**.
+- `#gust:cfg <predicate>`, a trailing pragma on a `use` line, gates an **import**.
+
+```gust
+@cfg(os == "linux")
+def stderr_write(s: string) -> none
+    write_fd(2, s)
+end
+
+@cfg(os == "windows")
+def stderr_write(s: string) -> none
+    write_console(s)
+end
+```
+
+Only the branch matching the build target survives, so two functions of the
+same name never collide — the other is gone before the compiler checks for
+duplicates.
+
+## Predicates
+
+A predicate is a boolean expression over a fixed set of keys, each compared
+against a string with `==` or `!=`, and combined with `and`, `or`, `not`, and
+parentheses:
+
+```gust
+@cfg(os == "linux")
+@cfg(os == "linux" or os == "macos")
+@cfg(arch == "x86_64" and abi != "musl")
+@cfg(not (target == "wasm"))
+```
+
+| Key       | Compares against                                              |
+| --------- | ------------------------------------------------------------ |
+| `os`      | operating system — `linux`, `macos`, `windows`, `none`, …    |
+| `arch`    | processor architecture — `x86_64`, `aarch64`, …              |
+| `abi`     | target ABI — `gnu`, `musl`, `none`, …                        |
+| `triple`  | the canonical `<arch>-<os>-<abi>` triple                     |
+| `target`  | build flavor — `native`, `wasm`, `esp`, `pico`, `freestanding` |
+
+The `target` key names the build flavor rather than a triple part: `native` for
+an ordinary hosted-OS build, `wasm` for `--target wasm`, `esp` / `pico` for the
+firmware targets, and `freestanding` for a bare-metal triple. Use it when a
+distinction the triple parts don't capture is what matters:
+
+```gust
+@cfg(target == "esp")
+def sleep_ms(ms: integer) -> none
+    esp_delay(ms)
+end
+```
+
+A malformed predicate — an unknown key, a non-string value, or an unsupported
+operator — is a compile error, never a silently ignored comment.
+
+## Gating imports
+
+A gated-out import is never resolved or fetched, so a package that exists only
+on another platform need not be present on the build host:
+
+```gust
+use epoll from os.linux          #gust:cfg os == "linux"
+use iocp  from os.windows        #gust:cfg os == "windows"
+```
+
+Because the import is removed, any code that references what it brought in must
+carry a matching `@cfg` — otherwise it fails to resolve on the platform where
+the import was dropped, which is the intended signal that a use is missing its
+guard.
+
+## Whole-file selection
+
+When an entire file is platform-specific, name it with a target suffix
+(`os_linux.g`, `os_windows.g`) instead of gating every declaration. The package
+loader selects files by suffix, so the file's imports and declarations come
+along for free — reach for `@cfg` / `#gust:cfg` when only *part* of a shared
+file differs.
+
+## When it runs
+
+Both forms are resolved by the compiler against the target it already knows,
+with no compile-time code execution:
+
+- Import pragmas are applied **before package loading**, so a dropped import is
+  never resolved.
+- `@cfg` declarations are pruned **before analysis**, so a dropped body is never
+  type-checked.
+
+For a build, the target is the resolved `--target` (or `[build].target`). For
+`gust check`, it is `[build].target` from `gust.toml`, defaulting to the native
+host.

@@ -1,0 +1,125 @@
+---
+title: cryptography.ed25519
+description: "Ed25519 digital signatures, backed by the system OpenSSL (`libcrypto`)"
+---
+
+```gust
+use cryptography.ed25519
+```
+
+Ed25519 digital signatures, backed by the system OpenSSL (`libcrypto`).
+Signatures prove *authenticity* and *integrity*: only the holder of the private
+key can produce a signature that verifies against the matching public key, and
+any change to the message makes verification fail. Use them to sign software
+releases, API tokens, or any message whose origin a third party must check.
+
+Ed25519 is the modern default — fast, with small fixed-size keys (32 bytes
+each) and signatures (64 bytes), and no per-signature randomness to get wrong.
+Keys and messages are `bytes`.
+
+Key handling: `generate()` makes a fresh `Ed25519KeyPair`; `public_key` derives
+the public half from a private key; `sign` produces a 64-byte signature; and
+`verify` returns whether a signature is valid (a bad signature is `false`, not
+an error). Keep the private key secret — anyone holding it can sign as you.
+
+**Examples**
+
+```gust
+use cryptography.ed25519
+
+def main() -> none
+    kp := ed25519.generate()
+    sig := ed25519.sign(kp.private_key, "release-v1.0" as bytes)
+    ok := ed25519.verify(kp.public_key, "release-v1.0" as bytes, sig)
+    print(ok)   # true
+end
+```
+
+**On this page:** [`Ed25519KeyPair`](#Ed25519KeyPair) · [`generate`](#cryptography.ed25519.generate) · [`public_key`](#cryptography.ed25519.public_key) · [`sign`](#cryptography.ed25519.sign) · [`verify`](#cryptography.ed25519.verify)
+
+## `Ed25519KeyPair`
+
+<a id="Ed25519KeyPair" />
+An Ed25519 key pair: a 32-byte private key (keep secret) and its 32-byte
+public key (share freely).
+
+```gust
+def Ed25519KeyPair
+
+    private_key: bytes
+    public_key: bytes
+
+end
+```
+
+**Fields**
+
+- `private_key: bytes` — The 32-byte secret signing key.
+- `public_key: bytes` — The 32-byte public verification key.
+
+<Warning>
+Anyone holding `private_key` can sign as the owner. Keep it secret and
+never transmit or log it.
+</Warning>
+
+## Functions
+
+<a id="cryptography.ed25519.generate" />
+```gust
+def generate() -> Ed25519KeyPair
+```
+
+Generate a fresh Ed25519 key pair from the system CSPRNG.
+
+---
+
+<a id="cryptography.ed25519.public_key" />
+```gust
+def public_key(private_key: bytes) -> bytes
+```
+
+Derive the 32-byte public key for a 32-byte Ed25519 `private_key`.
+
+**Parameters**
+
+- `private_key: bytes` — The 32-byte secret key.
+
+---
+
+<a id="cryptography.ed25519.sign" />
+```gust
+def sign(private_key: bytes, message: bytes) -> bytes
+```
+
+Sign `message` with a 32-byte Ed25519 `private_key`, returning the
+64-byte signature.
+
+**Parameters**
+
+- `private_key: bytes` — The 32-byte secret signing key.
+- `message: bytes` — The message to sign.
+
+**Raises**
+
+- `ValueError` — `private_key` is not 32 bytes.
+
+---
+
+<a id="cryptography.ed25519.verify" />
+```gust
+def verify(public_key: bytes, message: bytes, signature: bytes) -> bool
+```
+
+Return whether `signature` is a valid Ed25519 signature of `message`
+under `public_key`. A forged, tampered, or wrong-length signature returns
+`false`.
+
+**Parameters**
+
+- `public_key: bytes` — The 32-byte public verification key.
+- `message: bytes` — The message the signature should cover.
+- `signature: bytes` — The 64-byte signature to check.
+
+**Raises**
+
+- `ValueError` — `public_key` is not 32 bytes.

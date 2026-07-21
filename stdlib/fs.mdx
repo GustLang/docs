@@ -1,0 +1,922 @@
+---
+title: fs
+description: "Filesystem and path operations: querying and changing the working directory, building and splitting paths, file and directory reads/writes/creation/removal, recursive walking and copying, globbing, temp files and directories, and a `Path` wrapper that exposes these as method-style helpers (`.read()`, `.write()`, `.parent()`, `.ext()`, and more)"
+---
+
+```gust
+use fs
+```
+
+Filesystem and path operations: querying and changing the working directory,
+building and splitting paths, file and directory reads/writes/creation/removal,
+recursive walking and copying, globbing, temp files and directories, and a
+`Path` wrapper that exposes these as method-style helpers (`.read()`,
+`.write()`, `.parent()`, `.ext()`, and more).
+
+**Examples**
+
+```gust
+use fs
+
+def main() -> none
+    fs.write_file("notes.txt", "hello\n")
+    print(fs.read_file("notes.txt"))   # hello
+
+    p := fs.Path(path: "/src/main.g")
+    print(p.stem())                    # main
+    print(p.ext())                     # .g
+end
+```
+
+**On this page:** [`Path`](#Path) · [`Event`](#Event) · [`Watcher`](#Watcher) · [`cwd`](#fs.cwd) · [`chdir`](#fs.chdir) · [`remove`](#fs.remove) · [`rename`](#fs.rename) · [`mkdir`](#fs.mkdir) · [`rmdir`](#fs.rmdir) · [`list_dir`](#fs.list_dir) · [`cpu_count`](#fs.cpu_count) · [`canonicalize`](#fs.canonicalize) · [`glob`](#fs.glob) · [`home_dir`](#fs.home_dir) · [`tmp_dir`](#fs.tmp_dir) · [`sep`](#fs.sep) · [`join_path`](#fs.join_path) · [`abs_path`](#fs.abs_path) · [`read_file`](#fs.read_file) · [`read_bytes`](#fs.read_bytes) · [`write_file`](#fs.write_file) · [`append_file`](#fs.append_file) · [`mkdir_all`](#fs.mkdir_all) · [`remove_tree`](#fs.remove_tree) · [`tempfile`](#fs.tempfile) · [`tempdir`](#fs.tempdir) · [`walk`](#fs.walk) · [`copy_file`](#fs.copy_file) · [`watch`](#fs.watch)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `IN_ACCESS` | `integer` | `1` |
+| `IN_MODIFY` | `integer` | `2` |
+| `IN_ATTRIB` | `integer` | `4` |
+| `IN_CLOSE_WRITE` | `integer` | `8` |
+| `IN_CLOSE_NOWRITE` | `integer` | `16` |
+| `IN_OPEN` | `integer` | `32` |
+| `IN_MOVED_FROM` | `integer` | `64` |
+| `IN_MOVED_TO` | `integer` | `128` |
+| `IN_CREATE` | `integer` | `256` |
+| `IN_DELETE` | `integer` | `512` |
+| `IN_DELETE_SELF` | `integer` | `1024` |
+| `IN_MOVE_SELF` | `integer` | `2048` |
+| `IN_UNMOUNT` | `integer` | `8192` |
+| `IN_Q_OVERFLOW` | `integer` | `16384` |
+| `IN_IGNORED` | `integer` | `32768` |
+| `IN_ONLYDIR` | `integer` | `16777216` |
+| `IN_DONT_FOLLOW` | `integer` | `33554432` |
+| `IN_EXCL_UNLINK` | `integer` | `67108864` |
+| `IN_MASK_ADD` | `integer` | `536870912` |
+| `IN_ISDIR` | `integer` | `1073741824` |
+| `IN_ONESHOT` | `integer` | `2147483648` |
+| `IN_CLOSE` | `integer` | `24` |
+| `IN_MOVE` | `integer` | `192` |
+| `IN_ALL_EVENTS` | `integer` | `4095` |
+
+## `Path`
+
+<a id="Path" />
+A filesystem path. Wrap a string with `Path(path: "...")` to use the
+method-style helpers (`.read()`, `.write()`, `.parent()`, `.ext()`, etc.).
+
+```gust
+def Path
+
+    path: string
+
+end
+```
+
+**Fields**
+
+- `path: string` — The path string this wrapper holds.
+
+**Methods**
+
+<a id="Path.exists" />
+```gust
+def foreign Path.exists() -> bool
+```
+
+True if anything exists at this path (file, directory, symlink, ...).
+
+---
+
+<a id="Path.is_file" />
+```gust
+def foreign Path.is_file() -> bool
+```
+
+True if this path points to a regular file.
+
+---
+
+<a id="Path.is_dir" />
+```gust
+def foreign Path.is_dir() -> bool
+```
+
+True if this path points to a directory.
+
+---
+
+<a id="Path.is_link" />
+```gust
+def foreign Path.is_link() -> bool
+```
+
+True if this path is a symbolic link (without following it).
+
+---
+
+<a id="Path.size" />
+```gust
+def foreign Path.size() -> integer
+```
+
+Size of the file in bytes.
+
+**Raises**
+
+- `IOError` — when the path can't be stat'd.
+
+---
+
+<a id="Path.mtime" />
+```gust
+def foreign Path.mtime() -> integer
+```
+
+Last-modification time in milliseconds since the Unix epoch, matching the
+`time` package's millisecond epoch convention (`time.now_ms`). Sub-second
+precision is preserved where the platform records it.
+
+**Raises**
+
+- `IOError` — when the path can't be stat'd — call `exists()` first to distinguish a missing file from a stat failure.
+
+---
+
+<a id="Path.name" />
+```gust
+def Path.name() -> string
+```
+
+The final segment of the path, e.g. `"main.g"` from `"/src/main.g"`.
+
+---
+
+<a id="Path.stem" />
+```gust
+def Path.stem() -> string
+```
+
+The filename without its extension, e.g. `"main"` from `"/src/main.g"`.
+
+---
+
+<a id="Path.ext" />
+```gust
+def Path.ext() -> string
+```
+
+The file extension including the dot, e.g. `".g"`. Empty string if none.
+
+---
+
+<a id="Path.parent" />
+```gust
+def Path.parent() -> Path
+```
+
+The directory containing this path. Returns `"."` for a bare filename
+and the filesystem root for a top-level absolute path.
+
+---
+
+<a id="Path.join" />
+```gust
+def Path.join(other: string) -> Path
+```
+
+Append a segment to this path using the platform separator.
+
+**Parameters**
+
+- `other` — The segment to append.
+
+---
+
+<a id="Path.abs" />
+```gust
+def Path.abs() -> Path
+```
+
+Return this path resolved to its absolute form.
+
+---
+
+<a id="Path.read" />
+```gust
+def Path.read() -> string
+```
+
+Read the file's contents as a string.
+
+**Raises**
+
+- `IOError` — when the file can't be read.
+
+---
+
+<a id="Path.write" />
+```gust
+def Path.write(content: string) -> none
+```
+
+Write `content` to the file, creating or truncating it.
+
+**Parameters**
+
+- `content` — The data to write.
+
+**Raises**
+
+- `IOError` — when the file can't be written.
+
+<Warning>
+Truncates any existing file at this path.
+</Warning>
+
+---
+
+<a id="Path.canonicalize" />
+```gust
+def Path.canonicalize() -> Path
+```
+
+Return this path with symlinks resolved and absolute.
+
+**Raises**
+
+- `IOError` — when the path doesn't exist.
+
+---
+
+<a id="Path.walk" />
+```gust
+def Path.walk() -> list[string]
+```
+
+Recursively list every regular file under this directory as relative paths.
+
+**Raises**
+
+- `IOError` — when the directory can't be read.
+
+---
+
+<a id="Path.copy_to" />
+```gust
+def Path.copy_to(other: string) -> none
+```
+
+Copy this file to `other`, overwriting if it exists.
+
+**Parameters**
+
+- `other` — The destination path.
+
+**Raises**
+
+- `IOError` — when the copy fails.
+
+<Warning>
+Overwrites any existing file at `other`.
+</Warning>
+
+## `Event`
+
+<a id="Event" />
+A single filesystem change reported by a `Watcher`.
+
+```gust
+def Event
+
+    wd: integer
+    mask: integer
+    cookie: integer
+    name: string
+    path: string
+
+end
+```
+
+**Fields**
+
+- `wd: integer` — The watch descriptor the change occurred under, matching the value `Watcher.add` returned for that path.
+- `mask: integer` — Bitmask of `IN_*` flags describing what happened. Inspect it with the `is_*` helpers or `has`.
+- `cookie: integer` — Correlation id linking a `IN_MOVED_FROM` event to its matching `IN_MOVED_TO` (a rename). Zero for events that aren't part of a move.
+- `name: string` — The affected entry's name relative to the watched directory, or "" when the event targets the watched path itself.
+- `path: string` — The affected entry's full path — the watched directory joined with `name` — or the watched path itself when `name` is empty.
+
+**Methods**
+
+<a id="Event.has" />
+```gust
+def Event.has(flag: integer) -> bool
+```
+
+True if `flag` is set in this event's mask.
+
+**Parameters**
+
+- `flag` — An `IN_*` constant to test for.
+
+---
+
+<a id="Event.is_create" />
+```gust
+def Event.is_create() -> bool
+```
+
+True if a file or directory was created in the watched directory.
+
+---
+
+<a id="Event.is_delete" />
+```gust
+def Event.is_delete() -> bool
+```
+
+True if a file or directory was deleted from the watched directory.
+
+---
+
+<a id="Event.is_modify" />
+```gust
+def Event.is_modify() -> bool
+```
+
+True if the contents of a watched file were modified.
+
+---
+
+<a id="Event.is_moved_from" />
+```gust
+def Event.is_moved_from() -> bool
+```
+
+True if the entry was moved out of the watched directory (the source
+half of a rename); pair it with the matching `is_moved_to` event by
+`cookie`.
+
+---
+
+<a id="Event.is_moved_to" />
+```gust
+def Event.is_moved_to() -> bool
+```
+
+True if the entry was moved into the watched directory (the destination
+half of a rename); pair it with the matching `is_moved_from` event by
+`cookie`.
+
+---
+
+<a id="Event.is_dir" />
+```gust
+def Event.is_dir() -> bool
+```
+
+True if the event's subject is a directory rather than a file.
+
+## `Watcher`
+
+<a id="Watcher" />
+An open inotify instance tracking one or more paths. Create with
+`watch()`, register paths with `add` (or `add_recursive`), then drain events
+with `read` or `poll`. Close it with `close` when done.
+
+```gust
+def Watcher
+
+    _fd: integer
+    _open: bool
+    _paths: dict[integer, string]
+
+end
+```
+
+**Fields**
+
+- `_fd: integer` — The underlying inotify file descriptor.
+- `_open: bool` — False once `close` has been called.
+- `_paths: dict[integer, string]` — Maps each active watch descriptor to the path it watches, used to resolve every event to a full `path`.
+
+**Methods**
+
+<a id="Watcher.add" />
+```gust
+def Watcher.add(path: string, mask: integer) -> integer
+```
+
+Watch `path` for the changes selected by `mask` and return its watch
+descriptor. Re-adding an already-watched path updates its mask and returns
+the same descriptor.
+
+**Parameters**
+
+- `path` — The file or directory to watch.
+- `mask` — Bitwise-or of the `IN_*` flags to report.
+
+**Raises**
+
+- `IOError` — when the path can't be watched.
+
+---
+
+<a id="Watcher.add_recursive" />
+```gust
+def Watcher.add_recursive(path: string, mask: integer) -> integer
+```
+
+Watch `path` and every directory beneath it with the same `mask`,
+returning the watch descriptor of `path` itself.
+
+This covers the tree as it exists now. inotify watches are not inherited by
+directories created later, so a live observer should also watch for
+`IN_CREATE` with `IN_ISDIR` set and `add` each new subdirectory as it
+appears.
+
+**Parameters**
+
+- `path` — The root directory to watch recursively.
+- `mask` — Bitwise-or of the `IN_*` flags to report.
+
+**Raises**
+
+- `IOError` — when a directory in the tree can't be watched.
+
+---
+
+<a id="Watcher.remove" />
+```gust
+def Watcher.remove(wd: integer) -> none
+```
+
+Stop watching the path registered under watch descriptor `wd`.
+
+**Parameters**
+
+- `wd` — A descriptor returned by `add`.
+
+**Raises**
+
+- `IOError` — when `wd` is not a valid descriptor for this watcher.
+
+---
+
+<a id="Watcher.read" />
+```gust
+def Watcher.read() -> list[Event]
+```
+
+Block until at least one change occurs, then return every event drained
+in that batch. Never returns an empty list.
+
+**Raises**
+
+- `IOError` — when the underlying read fails.
+
+---
+
+<a id="Watcher.poll" />
+```gust
+def Watcher.poll(timeout_ms: integer) -> list[Event]
+```
+
+Wait up to `timeout_ms` milliseconds for changes and return the events
+drained, or an empty list if the timeout elapses first. A negative timeout
+blocks indefinitely (like `read`); zero returns immediately with whatever is
+already queued.
+
+**Parameters**
+
+- `timeout_ms` — Maximum time to wait, in milliseconds.
+
+---
+
+<a id="Watcher.close" />
+```gust
+def Watcher.close() -> none
+```
+
+Close the watcher and release its inotify instance and all watches.
+Idempotent — closing an already-closed watcher is a no-op.
+
+---
+
+<a id="Watcher.is_open" />
+```gust
+def Watcher.is_open() -> bool
+```
+
+True while the watcher has not been closed.
+
+---
+
+<a id="Watcher.fd" />
+```gust
+def Watcher.fd() -> integer
+```
+
+The raw inotify file descriptor, for callers polling it alongside other
+descriptors in their own event loop.
+
+## Functions
+
+<a id="fs.cwd" />
+```gust
+def foreign cwd() -> Path
+```
+
+Return the current working directory as a `Path`.
+
+---
+
+<a id="fs.chdir" />
+```gust
+def foreign chdir(path: string) -> none
+```
+
+Change the current working directory.
+
+**Parameters**
+
+- `path: string` — The directory to switch to.
+
+**Raises**
+
+- `IOError` — when the directory doesn't exist or can't be entered.
+
+---
+
+<a id="fs.remove" />
+```gust
+def foreign remove(path: string) -> none
+```
+
+Delete a file. Use `rmdir` for directories.
+
+**Parameters**
+
+- `path: string` — The file to delete.
+
+**Raises**
+
+- `IOError` — when the file doesn't exist or can't be deleted.
+
+---
+
+<a id="fs.rename" />
+```gust
+def foreign rename(old_path: string, new_path: string) -> none
+```
+
+Rename or move a file or directory.
+
+**Parameters**
+
+- `old_path: string` — The current path.
+- `new_path: string` — The destination path.
+
+**Raises**
+
+- `IOError` — when the rename fails.
+
+<Warning>
+Overwrites any existing file at `new_path`.
+</Warning>
+
+---
+
+<a id="fs.mkdir" />
+```gust
+def foreign mkdir(path: string) -> none
+```
+
+Create a single directory.
+
+**Parameters**
+
+- `path: string` — The directory to create.
+
+**Raises**
+
+- `IOError` — when the parent doesn't exist or the directory can't be created.
+
+---
+
+<a id="fs.rmdir" />
+```gust
+def foreign rmdir(path: string) -> none
+```
+
+Remove an empty directory.
+
+**Parameters**
+
+- `path: string` — The directory to remove.
+
+**Raises**
+
+- `IOError` — when the directory is missing, non-empty, or can't be removed.
+
+---
+
+<a id="fs.list_dir" />
+```gust
+def foreign list_dir(path: string) -> list[string]
+```
+
+List the entries of a directory (no leading `.` or `..`).
+
+**Parameters**
+
+- `path: string` — The directory to list.
+
+**Raises**
+
+- `IOError` — when the directory can't be read.
+
+---
+
+<a id="fs.cpu_count" />
+```gust
+def foreign cpu_count() -> integer
+```
+
+Number of logical CPUs available to the process.
+
+---
+
+<a id="fs.canonicalize" />
+```gust
+def foreign canonicalize(path: string) -> Path
+```
+
+Resolve symlinks and return the absolute canonical path as a `Path`.
+
+**Parameters**
+
+- `path: string` — The path to canonicalize.
+
+**Raises**
+
+- `IOError` — when the path doesn't exist.
+
+---
+
+<a id="fs.glob" />
+```gust
+def foreign glob(pattern: string) -> list[string]
+```
+
+Shell-style glob match. Returns the list of matching paths (empty if none).
+
+**Parameters**
+
+- `pattern: string` — The glob pattern to match.
+
+---
+
+<a id="fs.home_dir" />
+```gust
+def home_dir() -> Path
+```
+
+Return the current user's home directory as a `Path`.
+
+**Raises**
+
+- `IOError` — If `$HOME` is not set in the environment.
+
+---
+
+<a id="fs.tmp_dir" />
+```gust
+def tmp_dir() -> Path
+```
+
+Return the system temp directory (`$TMPDIR`, or `/tmp` when unset) as a
+`Path`.
+
+---
+
+<a id="fs.sep" />
+```gust
+def sep() -> string
+```
+
+Platform path separator (`/` on Unix, `\` on Windows).
+
+---
+
+<a id="fs.join_path" />
+```gust
+def join_path(a: string, b: string) -> string
+```
+
+Join two path segments using the platform separator.
+
+**Parameters**
+
+- `a: string` — The leading path segment.
+- `b: string` — The trailing path segment to append.
+
+---
+
+<a id="fs.abs_path" />
+```gust
+def abs_path(path: string) -> Path
+```
+
+Resolve a path to its absolute form, returned as a `Path`.
+
+**Parameters**
+
+- `path: string` — The path to resolve.
+
+---
+
+<a id="fs.read_file" />
+```gust
+def read_file(path: string) -> string
+```
+
+Read the entire contents of a file as a string.
+
+**Parameters**
+
+- `path: string` — The file to read.
+
+**Raises**
+
+- `IOError` — when the file can't be read.
+
+---
+
+<a id="fs.read_bytes" />
+```gust
+def read_bytes(path: string) -> bytes
+```
+
+Read the entire contents of a file as raw `bytes`. Unlike `read_file`
+this is binary-safe — it does not stop at a NUL and does not assume text.
+
+**Parameters**
+
+- `path: string` — The file to read.
+
+**Raises**
+
+- `IOError` — when the file can't be read.
+
+---
+
+<a id="fs.write_file" />
+```gust
+def write_file(path: string, content: string) -> none
+```
+
+Write `content` to a file, creating or truncating it.
+
+**Parameters**
+
+- `path: string` — The file to write.
+- `content: string` — The data to write.
+
+**Raises**
+
+- `IOError` — when the file can't be written.
+
+<Warning>
+Truncates any existing file at `path`.
+</Warning>
+
+---
+
+<a id="fs.append_file" />
+```gust
+def append_file(path: string, content: string) -> none
+```
+
+Append `content` to a file, creating it if it doesn't exist.
+
+**Parameters**
+
+- `path: string` — The file to append to.
+- `content: string` — The data to append.
+
+**Raises**
+
+- `IOError` — when the file can't be written.
+
+---
+
+<a id="fs.mkdir_all" />
+```gust
+def mkdir_all(path: string) -> none
+```
+
+Create a directory and any missing parents.
+
+**Parameters**
+
+- `path: string` — The directory to create.
+
+**Raises**
+
+- `IOError` — when the directory can't be created.
+
+---
+
+<a id="fs.remove_tree" />
+```gust
+def remove_tree(path: string) -> none
+```
+
+Recursively delete `path` and everything under it. Files are unlinked;
+directories are cleared bottom-up and then removed. Symbolic links are
+unlinked, not followed. A missing path is a silent no-op, which suits
+cache cleanup.
+
+**Parameters**
+
+- `path: string` — The root path to delete recursively.
+
+**Raises**
+
+- `IOError` — when an entry under `path` can't be removed.
+
+<Warning>
+Permanently deletes `path` and its entire subtree.
+</Warning>
+
+---
+
+<a id="fs.tempfile" />
+```gust
+def tempfile() -> Path
+```
+
+Create a new empty 0-byte file with a unique name in `$TMPDIR`.
+
+<Note>
+The caller is responsible for removing it.
+</Note>
+
+---
+
+<a id="fs.tempdir" />
+```gust
+def tempdir() -> Path
+```
+
+Create a new empty directory with a unique name in `$TMPDIR`.
+
+---
+
+<a id="fs.walk" />
+```gust
+def walk(path: string) -> list[string]
+```
+
+Recursively enumerate every regular file under `path`, returning relative paths.
+
+**Parameters**
+
+- `path: string` — The directory to walk.
+
+**Raises**
+
+- `IOError` — when the directory can't be read.
+
+---
+
+<a id="fs.copy_file" />
+```gust
+def copy_file(src: string, dst: string) -> none
+```
+
+Copy `src` to `dst`, overwriting `dst` if it exists.
+
+**Parameters**
+
+- `src: string` — The source file.
+- `dst: string` — The destination file.
+
+**Raises**
+
+- `IOError` — when the copy fails.
+
+<Warning>
+Overwrites any existing file at `dst`.
+</Warning>
+
+---
+
+<a id="fs.watch" />
+```gust
+def watch() -> Watcher
+```
+
+Create a new, empty inotify watcher. Register paths on it with `add`.
+Raises `IOError` if the inotify instance can't be created.

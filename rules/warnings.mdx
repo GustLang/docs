@@ -1,0 +1,1046 @@
+---
+title: Analyzer warnings (W)
+description: "The warnings gust check reports, grouped by category."
+---
+
+`W####` codes are warnings: the program still compiles. A rule marked fixable is repaired in place by `gust check --fix`.
+
+## Naming conventions
+
+### W0101 — fn-not-snake-case
+
+**Severity:** warning · **Autofix:** no
+
+Function name not in snake_case.
+
+Gust convention: function names use snake_case (e.g. `my_function`). Rename the function to follow the convention.
+
+**Example:**
+
+```gust
+def MyFunc() -> none  # should be my_func
+end
+```
+
+### W0102 — method-not-snake-case
+
+**Severity:** warning · **Autofix:** no
+
+Method name not in snake_case.
+
+Gust convention: method names use snake_case (e.g. `my_method`). Rename the method to follow the convention.
+
+**Example:**
+
+```gust
+def Point.GetX() -> integer  # should be get_x
+    return x
+end
+```
+
+### W0103 — param-not-snake-case
+
+**Severity:** warning · **Autofix:** no
+
+Parameter name not in snake_case.
+
+Gust convention: parameter names use snake_case (e.g. `my_param`). Rename the parameter to follow the convention.
+
+**Example:**
+
+```gust
+def scale(maxValue: integer) -> none  # should be max_value
+end
+```
+
+### W0104 — var-not-snake-case
+
+**Severity:** warning · **Autofix:** no
+
+Variable or binding name not in snake_case.
+
+Gust convention: local variables and loop / catch / match bindings use snake_case. Rename the binding to follow the convention.
+
+**Example:**
+
+```gust
+myValue := 10  # should be my_value
+```
+
+### W0105 — type-not-pascal-case
+
+**Severity:** warning · **Autofix:** no
+
+Struct or interface name not in PascalCase.
+
+Gust convention: struct and interface names use PascalCase (e.g. `MyStruct`). Rename the type to follow the convention.
+
+**Example:**
+
+```gust
+def my_point  # should be MyPoint
+    x: integer
+end
+```
+
+### W0106 — enum-not-pascal-case
+
+**Severity:** warning · **Autofix:** no
+
+Enum name not in PascalCase.
+
+Gust convention: enum and auto_enum names use PascalCase (e.g. `MyEnum`). Rename the enum to follow the convention.
+
+**Example:**
+
+```gust
+enum color  # should be Color
+    red
+end
+```
+
+### W0107 — enum-member-not-snake
+
+**Severity:** warning · **Autofix:** no
+
+Enum member not in snake_case.
+
+Gust convention: enum members use snake_case (e.g. `my_value`). Rename the member to follow the convention.
+
+**Example:**
+
+```gust
+enum Color
+    DarkRed  # should be dark_red
+end
+```
+
+### W0108 — constant-not-screaming
+
+**Severity:** warning · **Autofix:** no
+
+Constant name not in SCREAMING_SNAKE_CASE.
+
+Gust convention: top-level constants use SCREAMING_SNAKE_CASE (e.g. `MAX_SIZE`). Rename the constant to follow the convention.
+
+**Example:**
+
+```gust
+maxSize: constant[integer] = 10  # should be MAX_SIZE
+```
+
+### W0109 — error-no-error-suffix
+
+**Severity:** warning · **Autofix:** no
+
+Error type name does not end with 'Error'.
+
+Gust convention: error types end with the `Error` suffix (e.g. `ParseError`). Rename the error type to follow the convention.
+
+**Example:**
+
+```gust
+error BadInput(message: string)  # name should end with 'Error'
+```
+
+### W0110 — ambiguous-name
+
+**Severity:** warning · **Autofix:** no
+
+Ambiguous name.
+
+The single-character names `l`, `I`, and `O` are easily confused with `1` and `0`. Choose a more descriptive name.
+
+**Example:**
+
+```gust
+l := 1  # 'l' is ambiguous (reads like 1 or I)
+```
+
+## Shadowing
+
+### W0201 — builtin-variable-shadowing
+
+**Severity:** warning · **Autofix:** no
+
+Built-in variable shadowing.
+
+A variable, loop variable, or catch binding is named like a built-in (e.g. `print`, `range`, `chr`), hiding the built-in in that scope. Rename the binding.
+
+**Example:**
+
+```gust
+list := [1, 2]  # shadows the built-in 'list'
+```
+
+### W0202 — builtin-argument-shadowing
+
+**Severity:** warning · **Autofix:** no
+
+Built-in argument shadowing.
+
+A function or method parameter is named like a built-in (e.g. `print`, `range`, `chr`), hiding the built-in in the function body. Rename the parameter.
+
+**Example:**
+
+```gust
+def f(integer: string) -> none  # 'integer' shadows a built-in
+end
+```
+
+### W0203 — builtin-attribute-shadowing
+
+**Severity:** warning · **Autofix:** no
+
+Built-in attribute shadowing.
+
+A struct field is named like a built-in (e.g. `print`, `range`). It is only reached via `obj.field`, so the conflict is mild, but the name can still confuse readers.
+
+**Example:**
+
+```gust
+def Box
+    print: integer  # shadows the built-in 'print'
+end
+```
+
+### W0204 — builtin-import-shadowing
+
+**Severity:** warning · **Autofix:** no
+
+Built-in import shadowing.
+
+An import binds a name like a built-in (`use foo as print`, or `use print from pkg`), hiding the built-in. Rename with an alias.
+
+**Example:**
+
+```gust
+use mymod as print  # 'print' shadows a built-in
+```
+
+### W0205 — stdlib-module-shadowing
+
+**Severity:** warning · **Autofix:** no
+
+Stdlib module shadowing.
+
+A top-level definition named the same as a standard-library package (e.g. `json`, `math`, `time`) that is also imported (in this file or a merged sibling) shadows that package name, so a reader can't tell the symbol from the module. Rename the local definition, or drop the import. Fires only when the package is imported — an unrelated definition that merely happens to share a package's name is fine.
+
+**Example:**
+
+```gust
+math := 3  # shadows the stdlib module 'math'
+```
+
+## Unused
+
+### W0301 — unused-variable
+
+**Severity:** warning · **Autofix:** no
+
+Unused variable.
+
+A local binding was never read before leaving its scope. Rename it to `_` if it is intentionally ignored, or remove it if it is unnecessary.
+
+**Example:**
+
+```gust
+def f() -> none
+    total := compute()  # never read
+    print("done")
+end
+```
+
+### W0302 — unused-import
+
+**Severity:** warning · **Autofix:** no
+
+Unused import.
+
+A `use` statement was never referenced. Remove it, or use the imported package or names in the file.
+
+**Example:**
+
+```gust
+use math  # imported but never referenced
+```
+
+### W0303 — unused-function-argument
+
+**Severity:** warning · **Autofix:** no
+
+Unused function argument.
+
+A parameter is never referenced in the function body. Remove it, or rename it to a leading-underscore name (e.g. `_unused`) to mark it intentional.
+
+**Example:**
+
+```gust
+def f(x: integer) -> none  # 'x' is never used
+    print("hi")
+end
+```
+
+### W0304 — unused-method-argument
+
+**Severity:** warning · **Autofix:** no
+
+Unused method argument.
+
+A method parameter is never referenced in the body. Remove it, or rename it to a leading-underscore name to mark it intentional.
+
+**Example:**
+
+```gust
+def Point.move(dx: integer) -> none  # 'dx' is never used
+    print("moved")
+end
+```
+
+### W0305 — unused-private-function
+
+**Severity:** warning · **Autofix:** no
+
+Unused private function.
+
+A `private` function is only reachable from within its own package, and nothing in the package references it. Remove it, or call it where it is needed.
+
+**Example:**
+
+```gust
+def private compute() -> integer  # never called
+    return 42
+end
+```
+
+### W0306 — unused-gust-ignore
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+Unused #gust-ignore.
+
+A `#gust-ignore` pragma lists a rule code that did not suppress any diagnostic on its line, so the pragma is stale. Remove the code (or the whole pragma) so the remaining suppressions stay meaningful.
+
+**Example:**
+
+```gust
+x := compute()
+print(x)  #gust-ignore W0301  # x is used, so W0301 never fires here
+```
+
+### W0307 — invalid-rule-code
+
+**Severity:** warning · **Autofix:** no
+
+Invalid rule code.
+
+A `#gust-ignore` / `#gust-ignore-file` pragma references a token that isn't a well-formed rule code (`F###`, `W####`, `G####`). It suppresses nothing — fix the code, or drop the pragma.
+
+**Example:**
+
+```gust
+x := compute()  #gust-ignore unused-variable
+# a rule name is not a code — write W0301
+```
+
+## Control flow
+
+### W0401 — unreachable-after-return
+
+**Severity:** warning · **Autofix:** no
+
+Unreachable code after return.
+
+A statement appears after a guaranteed `return` in the same block, so it can never execute.
+
+**Example:**
+
+```gust
+def f() -> integer
+    return 1
+    print("never runs")  # unreachable
+end
+```
+
+### W0402 — unnecessary-return-none
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+Unnecessary `return none`.
+
+In a function declared `-> none`, the only value it can return is `none`, so an explicit `return none` is redundant — use a bare `return`.
+
+**Example:**
+
+```gust
+def f() -> none
+    print("hi")
+    return none  # redundant
+end
+```
+
+### W0403 — unnecessary-assign
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+Unnecessary assignment before return.
+
+Assigning to a variable and immediately returning it (`x = f()` then `return x`) is redundant — `return f()` directly.
+
+**Example:**
+
+```gust
+def f() -> integer
+    x := compute()
+    return x  # write 'return compute()'
+end
+```
+
+### W0404 — superfluous-else-return
+
+**Severity:** warning · **Autofix:** no
+
+Superfluous else after return.
+
+The `if` branch ends in `return`, so the following `else`/`elif` is unnecessary — dedent its body.
+
+**Example:**
+
+```gust
+def sign(n: integer) -> integer
+    if n > 0
+        return 1
+    else  # superfluous after return
+        return -1
+    end
+end
+```
+
+### W0405 — superfluous-else-raise
+
+**Severity:** warning · **Autofix:** no
+
+Superfluous else after raise.
+
+The `if` branch ends in `raise`, so the following `else`/`elif` is unnecessary — dedent its body.
+
+**Example:**
+
+```gust
+if bad
+    raise ValueError(message: "x")
+else  # superfluous after raise
+    run()
+end
+```
+
+### W0406 — superfluous-else-continue
+
+**Severity:** warning · **Autofix:** no
+
+Superfluous else after continue.
+
+The `if` branch ends in `continue`, so the following `else`/`elif` is unnecessary — dedent its body.
+
+**Example:**
+
+```gust
+for i in range(10)
+    if skip
+        continue
+    else  # superfluous after continue
+        use(i)
+    end
+end
+```
+
+### W0407 — superfluous-else-break
+
+**Severity:** warning · **Autofix:** no
+
+Superfluous else after break.
+
+The `if` branch ends in `break`, so the following `else`/`elif` is unnecessary — dedent its body.
+
+**Example:**
+
+```gust
+for i in range(10)
+    if done
+        break
+    else  # superfluous after break
+        step()
+    end
+end
+```
+
+### W0408 — needless-else
+
+**Severity:** warning · **Autofix:** no
+
+Needless else.
+
+An `else` clause that is empty or contains only `pass` has no effect — remove it.
+
+**Example:**
+
+```gust
+if cond
+    run()
+else
+    pass  # needless else
+end
+```
+
+### W0413 — collapsible-else-if
+
+**Severity:** warning · **Autofix:** no
+
+Collapsible else / if.
+
+An `else` arm whose only statement is an `if` should be written as `else if`, which reads the same and removes a level of indentation.
+
+**Example:**
+
+```gust
+if a
+    x()
+else
+    if b  # collapse to 'else if b'
+        y()
+    end
+end
+```
+
+## Simplification & style
+
+### W0501 — yoda-conditions
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+Yoda condition.
+
+A constant on the left of a comparison (`42 == x`) reads backwards. Put the variable first: `x == 42`.
+
+**Example:**
+
+```gust
+if 10 == count  # write 'count == 10'
+    run()
+end
+```
+
+### W0502 — if-else-block-instead-of-dict-get
+
+**Severity:** warning · **Autofix:** no
+
+If/else block instead of dict.get.
+
+An `if k in d` / `else` that assigns `d[k]` when the key is present and a fallback otherwise is exactly `d.get(k, default)`.
+
+**Example:**
+
+```gust
+if k in d
+    v := d[k]
+else
+    v := fallback
+end
+# write 'v := d.get(k, fallback)'
+```
+
+### W0503 — split-static-string
+
+**Severity:** warning · **Autofix:** no
+
+Split of a static string.
+
+Splitting a string literal (`"a b c".split(" ")`) produces a constant list — write the list literal directly.
+
+**Example:**
+
+```gust
+parts := "a,b,c".split(",")  # use a list literal instead
+```
+
+### W0504 — dict-get-with-none-default
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+dict.get with a redundant none default.
+
+`d.get(k, none)` is the same as `d.get(k)` — Gust's `dict.get` already returns `none` for a missing key. Drop the default.
+
+**Example:**
+
+```gust
+v := m.get(key, none)  # the 'none' default is redundant
+```
+
+### W0506 — unnecessary-cast-to-int
+
+**Severity:** warning · **Autofix:** no
+
+Unnecessary cast to integer.
+
+The value being cast with `as integer` is already an `integer`, so the cast does nothing. Remove it.
+
+**Example:**
+
+```gust
+n := 5 as integer  # 5 is already an integer
+```
+
+### W0507 — collapsible-if
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+Collapsible if.
+
+An `if` whose only statement is a nested `if`, with no `elif`/`else` on either, can be combined into a single `if` using `and`.
+
+**Example:**
+
+```gust
+if a
+    if b  # collapse to 'if a and b'
+        run()
+    end
+end
+```
+
+### W0508 — needless-bool
+
+**Severity:** warning · **Autofix:** no
+
+Needless bool.
+
+An `if`/`else` that returns `true` in one branch and `false` in the other just re-encodes the condition. Return the condition directly (or its negation).
+
+**Example:**
+
+```gust
+if cond
+    return true
+else
+    return false
+end
+# write 'return cond'
+```
+
+### W0509 — if-else-block-instead-of-if-exp
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+If/else block instead of a ternary.
+
+An `if`/`else` whose branches each assign the same variable — or an `if` with a single-return body immediately followed by a return — collapses to one ternary: `x := a if cond else b` / `return a if cond else b`.
+
+**Example:**
+
+```gust
+if cond
+    x := 1
+else
+    x := 2
+end
+# write 'x := 1 if cond else 2'
+```
+
+### W0510 — if-with-same-arms
+
+**Severity:** warning · **Autofix:** no
+
+If with same arms.
+
+Two consecutive branches of an `if` / `else if` chain that run the identical body are redundant — merge them into one branch whose conditions are joined with `or`.
+
+**Example:**
+
+```gust
+if cond
+    run()
+else
+    run()  # both arms are identical
+end
+```
+
+### W0511 — if-else-block-instead-of-dict-lookup
+
+**Severity:** warning · **Autofix:** no
+
+If/else block instead of a dict lookup.
+
+Three or more consecutive `if` / `else if` branches that compare the same variable against distinct literal keys and return / assign a value form a lookup table — build a dict keyed by the literals and index it instead.
+
+**Example:**
+
+```gust
+if c == "r"
+    return 1
+else if c == "g"
+    return 2
+end
+# use a dict lookup
+```
+
+### W0512 — in-dict-keys
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+Membership test against dict.keys().
+
+`k in d.keys()` is just `k in d` — the `.keys()` call is redundant.
+
+**Example:**
+
+```gust
+if k in m.keys()  # write 'k in m'
+    run()
+end
+```
+
+### W0513 — negate-equal-op
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+Negated equality.
+
+`not a == b` reads better as `a != b`.
+
+**Example:**
+
+```gust
+if not a == b  # write 'a != b'
+    run()
+end
+```
+
+### W0514 — negate-not-equal-op
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+Negated inequality.
+
+`not a != b` reads better as `a == b`.
+
+**Example:**
+
+```gust
+if not a != b  # write 'a == b'
+    run()
+end
+```
+
+### W0515 — double-negation
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+Double negation.
+
+`not (not x)` is just `x` (for a boolean `x`). Remove the double negation.
+
+**Example:**
+
+```gust
+y := not (not x)  # write 'x'
+```
+
+### W0516 — if-expr-with-true-false
+
+**Severity:** warning · **Autofix:** no
+
+If-expr with true/false.
+
+`true if cond else false` is just `cond` (when `cond` is boolean). Use the condition directly.
+
+**Example:**
+
+```gust
+flag := true if cond else false  # write 'cond'
+```
+
+### W0517 — if-expr-with-false-true
+
+**Severity:** warning · **Autofix:** no
+
+If-expr with false/true.
+
+`false if cond else true` is just `not cond`. Use `not cond` directly.
+
+**Example:**
+
+```gust
+flag := false if cond else true  # write 'not cond'
+```
+
+### W0518 — if-expr-with-twisted-arms
+
+**Severity:** warning · **Autofix:** no
+
+If-expr with twisted arms.
+
+A ternary with a negated condition (`a if not c else b`) is clearer with the arms swapped: `b if c else a`.
+
+**Example:**
+
+```gust
+v := a if not cond else b  # flip the condition: 'b if cond else a'
+```
+
+### W0519 — expr-and-not-expr
+
+**Severity:** warning · **Autofix:** no
+
+Expr and not expr.
+
+`a and not a` is always `False`. Replace the expression with `False`.
+
+**Example:**
+
+```gust
+if x and not x  # always false
+    run()
+end
+```
+
+### W0520 — expr-or-not-expr
+
+**Severity:** warning · **Autofix:** no
+
+Expr or not expr.
+
+`a or not a` is always `True`. Replace the expression with `True`.
+
+**Example:**
+
+```gust
+if x or not x  # always true
+    run()
+end
+```
+
+### W0521 — expr-or-true
+
+**Severity:** warning · **Autofix:** no
+
+Expr or true.
+
+`a or true` is always `True`. Replace the expression with `True`.
+
+**Example:**
+
+```gust
+if cond or true  # always true
+    run()
+end
+```
+
+### W0522 — expr-and-false
+
+**Severity:** warning · **Autofix:** no
+
+Expr and false.
+
+`a and false` is always `False`. Replace the expression with `False`.
+
+**Example:**
+
+```gust
+if cond and false  # always false
+    run()
+end
+```
+
+### W0523 — true-false-comparison
+
+**Severity:** warning · **Autofix:** no
+
+Comparison to a boolean literal.
+
+`x == true` is just `x`, `x == false` / `x != true` is `not x`, and `x != false` is `x`. Drop the comparison.
+
+**Example:**
+
+```gust
+if done == true  # write 'if done'
+    run()
+end
+```
+
+### W0524 — self-comparison
+
+**Severity:** warning · **Autofix:** no
+
+Comparison of a value with itself.
+
+Comparing an expression to itself (`x == x`, `x <= x`, …) is always constant and almost always a bug — a nearby name was probably meant. Float operands are exempt, since `x != x` / `x == x` is the idiomatic NaN test.
+
+**Example:**
+
+```gust
+if x == x  # always true
+    run()
+end
+```
+
+### W0525 — self-assignment
+
+**Severity:** warning · **Autofix:** no
+
+Self-assignment.
+
+Assigning a place to itself (`x = x`, `obj.field = obj.field`) has no effect and is almost always a typo.
+
+**Example:**
+
+```gust
+x = x  # no-op self-assignment
+```
+
+### W0526 — useless-import-alias
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+Useless import alias.
+
+An `as` alias that matches the name being imported (`use foo as foo`) renames nothing — drop the `as` clause.
+
+**Example:**
+
+```gust
+use math as math  # the alias renames nothing
+```
+
+### W0527 — unnecessary-range-start
+
+**Severity:** warning · **Autofix:** no
+
+Unnecessary range start.
+
+`range(0, n)` is the same as `range(n)` — the start defaults to 0. Drop the redundant `0`.
+
+**Example:**
+
+```gust
+for i in range(0, n)  # write range(n)
+    use(i)
+end
+```
+
+## Lexical & whitespace
+
+### W0601 — commented-out-code
+
+**Severity:** warning · **Autofix:** no
+
+Commented-out code.
+
+A full-line comment whose text reads as Gust source (a `def`, `if`, `return`, `name := …`, a bare call, …) is almost certainly dead code left behind. Delete it — version control remembers it if you need it back.
+
+**Example:**
+
+```gust
+# total := compute()
+# print(total)
+# (commented-out code)
+```
+
+### W0602 — missing-newline-at-end-of-file
+
+**Severity:** warning · **Autofix:** no
+
+Missing newline at end of file.
+
+The file does not end with a newline. Most tools expect a trailing newline; add one.
+
+**Example:**
+
+```gust
+print("the file ends here with no trailing newline")
+```
+
+### W0603 — invalid-escape-sequence
+
+**Severity:** warning · **Autofix:** no
+
+Invalid escape sequence.
+
+A backslash inside a string literal that isn't a recognized escape (`\n \t \r \0 \" \' \\ \xNN`) is almost always a mistake — write `\\` for a literal backslash, or use a raw string `r"…"`.
+
+**Example:**
+
+```gust
+s := "path\d+"  # '\d' is not a valid escape
+```
+
+### W0604 — blank-line-with-whitespace
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+Blank line contains whitespace.
+
+A line that is empty except for spaces / tabs should be truly empty. Strip the trailing whitespace.
+
+**Example:**
+
+```gust
+x := 1
+   
+y := 2  # the middle blank line contains spaces
+```
+
+### W0605 — tab-indentation
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+Tab in indentation.
+
+Gust indents with spaces (4 by default). A tab character in a line's leading indentation mixes poorly with spaces and renders inconsistently — replace it with spaces.
+
+**Example:**
+
+```gust
+def f() -> none
+	print("indented with a tab")  # use spaces
+end
+```
+
+## Types
+
+### W0701 — any-type-weakening
+
+**Severity:** warning · **Autofix:** no
+
+Type-safety weakening via `Any`.
+
+The declaration or annotation uses `Any`, which disables static checking for that value. Prefer a concrete type when possible.
+
+**Example:**
+
+```gust
+def f(x: Any) -> none  # 'Any' disables static checking
+end
+```
+
+## Error handling
+
+### W0802 — useless-try-except
+
+**Severity:** warning · **Autofix:** no
+
+Useless try/catch.
+
+A catch handler whose body is just a bare `raise` re-throws the same error unchanged — the handler accomplishes nothing. Remove it.
+
+**Example:**
+
+```gust
+try
+    run()
+catch
+    raise  # a catch that only re-raises is useless
+end
+```
+
+

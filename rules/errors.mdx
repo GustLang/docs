@@ -1,0 +1,863 @@
+---
+title: Analyzer errors (G)
+description: "The errors gust check and the analyzer report, grouped by category."
+---
+
+`G####` codes are hard errors: the analyzer rejects the program. Run `gust explain <code>` for the same text from the terminal.
+
+## Uncategorized
+
+### G0000 — generic
+
+**Severity:** error · **Autofix:** no
+
+Semantic error (uncategorized).
+
+A catch-all for analyzer diagnostics that intentionally do not yet have a dedicated rule code. If a specific G/W code would improve tooling or user guidance for a recurring message, that diagnostic should be promoted into its own rule.
+
+## Types
+
+### G0101 — arg-type-mismatch
+
+**Severity:** error · **Autofix:** no
+
+Argument type mismatch.
+
+A function was called with an argument whose type doesn't match the declared parameter type. Either convert the value with `as <type>`, change the call to pass a value of the expected type, or widen the parameter type to accept more shapes (e.g. `integer | string`).
+
+**Example:**
+
+```gust
+def f(n: integer) -> none
+end
+
+f("hi")  # expected integer, got string
+```
+
+### G0102 — assign-type-mismatch
+
+**Severity:** error · **Autofix:** no
+
+Variable assignment type mismatch.
+
+The value on the right-hand side of a typed declaration or assignment has a type incompatible with the declared type. If this is a union type you want to hold multiple shapes, declare the variable with the union: `x: integer | string = "hi"`.
+
+**Example:**
+
+```gust
+count: integer = 1
+count = "two"  # cannot assign a string to an integer
+```
+
+### G0103 — return-type-mismatch
+
+**Severity:** error · **Autofix:** no
+
+Return type mismatch.
+
+The function's declared return type doesn't match the value it tries to return. Change the return value, or change the declared return type on the signature.
+
+**Example:**
+
+```gust
+def total() -> integer
+    return "nope"  # expected integer
+end
+```
+
+### G0104 — condition-not-bool
+
+**Severity:** error · **Autofix:** no
+
+Condition must be bool.
+
+A control-flow condition or guard evaluated to a non-boolean type. Convert the value to `bool` or rewrite the condition.
+
+**Example:**
+
+```gust
+if 5
+    run()
+end  # condition must be bool
+```
+
+### G0105 — generic-inference-failure
+
+**Severity:** error · **Autofix:** no
+
+Generic type inference failure.
+
+The compiler could not infer one or more type parameters for a generic call. Add more concrete argument types or annotate the call explicitly.
+
+**Example:**
+
+```gust
+box := Box()  # cannot infer T for Box[T] — annotate or pass a typed arg
+```
+
+### G0106 — struct-field-default-mismatch
+
+**Severity:** error · **Autofix:** no
+
+Struct field default type mismatch.
+
+A field's default expression does not match the field's declared type, e.g. `retries: integer = "x"`.
+
+**Example:**
+
+```gust
+def Config
+    retries: integer = "x"  # default does not match integer
+end
+```
+
+### G0107 — missing-struct-field
+
+**Severity:** error · **Autofix:** no
+
+Missing struct field.
+
+A struct was constructed without one of its required fields. Either supply the field, e.g. `Point(x: 1, y: 2)`, or give the field a default in its declaration, e.g. `y: integer = 0`, so it may be omitted at construction.
+
+**Example:**
+
+```gust
+def Point
+    x: integer
+    y: integer
+end
+
+p := Point(x: 1)  # missing field 'y'
+```
+
+### G0108 — collection-literal-mismatch
+
+**Severity:** error · **Autofix:** no
+
+Mismatched collection literal element types.
+
+The elements of a list literal (or the keys/values of a dict literal) must share a single compatible type — the literal's type is taken from its first element, so a later element of an incompatible type would be silently truncated. Use a uniform element type, or widen to a union / `Any` if a mixed collection is intended.
+
+**Example:**
+
+```gust
+xs := [1, "two", 3]  # list elements must share one type
+```
+
+### G0109 — incomplete-type
+
+**Severity:** error · **Autofix:** no
+
+Incomplete type.
+
+A builtin generic type (`list`, `dict`, `tuple`, `ref`) was written without its element type, e.g. `-> list` instead of `-> list[T]`. These types are never valid bare — they must name what they contain: `list[integer]`, `dict[string, integer]`, `tuple[integer, string]`, `ref[integer]`. Add the missing `[...]` element list.
+
+**Example:**
+
+```gust
+def f() -> list  # incomplete — write list[integer]
+end
+```
+
+### G0110 — unknown-field
+
+**Severity:** error · **Autofix:** no
+
+Unknown field or method.
+
+A `value.member` access names something the value's struct type does not provide: a field/method that doesn't exist (check for a typo, or add it to the struct), or a method referenced without calling it (`obj.run` instead of `obj.run()`) — method values are not supported, so add the parentheses.
+
+**Example:**
+
+```gust
+def Point
+    x: integer
+end
+
+p := Point(x: 1)
+print(p.y)  # Point has no field 'y'
+```
+
+## Names
+
+### G0201 — unknown-identifier
+
+**Severity:** error · **Autofix:** no
+
+Unknown identifier.
+
+The name isn't in scope. Common causes: typo, missing `use <pkg>` import, or a variable declared in a narrower scope than the reference site.
+
+**Example:**
+
+```gust
+print(total)  # 'total' is not defined
+```
+
+### G0202 — unknown-type
+
+**Severity:** error · **Autofix:** no
+
+Unknown type.
+
+The type name isn't recognized. Primitive types are `string`, `integer`, `float`, `bool`, `none`, `Any`. Collections are `list[T]` and `dict[K, V]`. User-defined structs / enums / interfaces must be declared before they're used.
+
+Note: the integer type is spelled `integer` (not `int`) and the string type is spelled `string` (not `str`).
+
+**Example:**
+
+```gust
+def f(n: Integ) -> none  # no such type 'Integ'
+end
+```
+
+### G0203 — shadowing-outer-binding
+
+**Severity:** error · **Autofix:** no
+
+Shadowing outer binding.
+
+A local variable reuses the name of a constant or outer-scope binding. Rename the inner variable to avoid ambiguity.
+
+**Example:**
+
+```gust
+MAX: constant[integer] = 10
+
+def f() -> none
+    MAX := 5  # shadows the constant
+end
+```
+
+### G0204 — ambiguous-struct-reference
+
+**Severity:** error · **Autofix:** no
+
+Ambiguous struct reference.
+
+Multiple packages provide a struct with the same name, so the reference must be qualified with its package alias.
+
+**Example:**
+
+```gust
+v := Value()  # two packages export Value — qualify it: json.Value()
+```
+
+### G0205 — reserved-type-name
+
+**Severity:** error · **Autofix:** no
+
+Built-in type name used as a binding name.
+
+Names like `string`, `integer`, `float`, `bool`, `Any`, `list`, `dict`, and `tuple` denote built-in types and are reserved. Binding one as a variable, loop variable, catch binding, or parameter would shadow the type, so it is rejected. Choose a different name (e.g. `text` instead of `string`, `mapping` instead of `dict`, `items` instead of `list`).
+
+**Example:**
+
+```gust
+integer := 5  # 'integer' is a built-in type name
+```
+
+### G0206 — import-not-visible
+
+**Severity:** error · **Autofix:** no
+
+Import not visible in this file.
+
+A package alias or `from`-imported name was used in a file that did not import it. Imports are per-file: even though sibling files in the same directory share a package, an import in one file does not carry over to another. Add the `use` to this file too.
+
+**Example:**
+
+```gust
+print(math.pi)  # 'math' is not imported in this file — add `use math`
+```
+
+### G0207 — unsupported-dict-key
+
+**Severity:** error · **Autofix:** no
+
+Unsupported dict key type.
+
+The runtime can only hash and store `string` or `integer` dict keys. Other key types (`float`, `bool`, structs, enums, …) have no hashing path and would mis-store or crash at runtime, so they are rejected here rather than leaking a C compiler error. Use a `string` or `integer` key — e.g. format a float key as a string, or key on a struct's id field.
+
+**Example:**
+
+```gust
+scores: dict[float, string] = {}  # float keys are unsupported — use string or integer
+```
+
+## Arity & calls
+
+### G0301 — wrong-arg-count
+
+**Severity:** error · **Autofix:** no
+
+Wrong number of arguments.
+
+The call site passes a different number of arguments than the function's parameter list declares. Parameters with defaults may be omitted; required parameters must be supplied either positionally or as named arguments.
+
+**Example:**
+
+```gust
+def add(a: integer, b: integer) -> integer
+    return a + b
+end
+
+add(1)  # expected 2 arguments, got 1
+```
+
+## Interfaces, operators & conversions
+
+### G0401 — interface-conformance
+
+**Severity:** error · **Autofix:** no
+
+Interface conformance failure.
+
+A struct was used where an interface was expected, but it's missing one or more of the interface's methods. Implement the listed methods on the struct, or pick a type that already conforms.
+
+Gust uses structural conformance, so you don't write an explicit `impl` block — just define the methods and the struct auto-satisfies.
+
+**Example:**
+
+```gust
+interface Shape
+    def area() -> integer
+end
+
+def Dot implements Shape  # missing area()
+end
+```
+
+### G0402 — operator-dunder-missing
+
+**Severity:** error · **Autofix:** no
+
+Missing or malformed operator dunder.
+
+An operator (`==`, `<`, `in`, `obj[k]`, `for x in obj`, `obj.length`, ...) was applied to a type that doesn't support it. Either pick a different operand type or define the matching dunder on the type (`__lt` for `<`/`<=`/`>`/`>=`, `__eq` for `==`/`!=`, `__contains` for `in`, `__get`/`__set` for indexing, `__iter` for iteration, `__length` for `.length`). Primitives have these baked in, so `1 < 2`, `"a" in "abc"`, and `xs[0]` work without you defining anything.
+
+**Example:**
+
+```gust
+def Money
+    cents: integer
+end
+
+cheaper := Money(cents: 1) < Money(cents: 2)  # Money has no __lt
+```
+
+### G0403 — cast-dunder-missing
+
+**Severity:** error · **Autofix:** no
+
+Unsupported or malformed `as` conversion.
+
+The `as <type>` cast has no conversion path. Common causes:
+
+- Casting a collection (list / dict / tuple) or `none` to a number — `[1, 2] as integer` reinterprets a pointer and is rejected. Only `as string` (textual form) and `as bool` (truthiness) are defined for collections.
+- Casting any value to `none` — `none` is not a conversion target.
+- Casting a struct to a target type without defining the matching conversion dunder, or defining one with the wrong signature.
+
+Conversion dunders are zero-argument methods that return the target type (e.g. `__integer`, `__string`). Supported struct targets: integer, float, string, bool, list[T], dict[K, V].
+
+**Example:**
+
+```gust
+def Money
+    cents: integer
+end
+
+n := Money(cents: 100) as integer  # Money has no __integer
+```
+
+### G0404 — with-context-protocol
+
+**Severity:** error · **Autofix:** no
+
+Invalid `with` context.
+
+The expression after `with` must be a value whose type defines two zero-argument methods: `__enter`, run when the block is entered, and `__exit`, run when the block is left by any path. Define both on the type, or use a type that already has them. When the block binds a name (`with ctx as x`), `__enter` must return a value rather than `none`.
+
+**Example:**
+
+```gust
+def Guard
+    def __enter() -> none
+    def __exit() -> none
+end
+
+with Guard()
+    work()
+end
+```
+
+## Mutability & visibility
+
+### G0501 — mutate-constant
+
+**Severity:** error · **Autofix:** no
+
+Cannot mutate a constant.
+
+Values declared with `NAME: constant[Type] = value` are immutable. If the value genuinely needs to change, make it a variable (`name := value` inside a function) instead.
+
+**Example:**
+
+```gust
+MAX: constant[integer] = 10
+
+MAX = 20  # cannot mutate a constant
+```
+
+### G0502 — private-access
+
+**Severity:** error · **Autofix:** no
+
+Private access.
+
+A function, struct, constant, or field declared `private` is being accessed from outside its defining package. Either remove the `private` qualifier from the declaration, or don't reference it across package boundaries.
+
+Test files (`test_*.g` / `*_test.g`) are exempt, so tests can exercise a package's internals.
+
+**Example:**
+
+```gust
+def Box
+    _value: integer
+end
+
+b := Box(_value: 1)
+print(b._value)  # '_value' is private
+```
+
+### G0503 — invalid-assignment-target
+
+**Severity:** error · **Autofix:** no
+
+Invalid assignment target.
+
+The left side of an assignment must be a place that can hold a value: a variable (`name`), a struct or ref field (`obj.field`), or an index (`obj[key]`). Literals and computed expressions are not assignable, so `1 += 1` and `f() = x` are errors. Assign to a variable instead.
+
+**Example:**
+
+```gust
+1 += 1  # the left side is not an assignable place
+```
+
+## Definitions
+
+### G0601 — duplicate-definition
+
+**Severity:** error · **Autofix:** no
+
+Duplicate definition.
+
+A name is being declared twice in the same scope, or a named argument is being supplied twice in a single call. Rename one of the declarations or remove the duplicate argument.
+
+**Example:**
+
+```gust
+def greet() -> none
+end
+
+def greet() -> none  # 'greet' is already defined
+end
+```
+
+### G0602 — invalid-error-layout
+
+**Severity:** error · **Autofix:** no
+
+Invalid error type layout.
+
+Error types must declare a `message: string` field as their first field so runtime error reporting has a stable message payload.
+
+**Example:**
+
+```gust
+error BadThing(code: integer)  # first field must be message: string
+```
+
+### G0603 — field-method-conflict
+
+**Severity:** error · **Autofix:** no
+
+Field/method name conflict.
+
+A struct field and method share the same name, which would make member access ambiguous.
+
+**Example:**
+
+```gust
+def Box
+    size: integer
+end
+
+def Box.size() -> integer  # 'size' is also a field
+    return 0
+end
+```
+
+### G0604 — missing-return-type
+
+**Severity:** error · **Autofix:** no
+
+Missing return type annotation.
+
+Functions and methods must declare an explicit return type. Use `-> none` when no value is returned.
+
+**Example:**
+
+```gust
+def f()  # missing return type — add -> none
+    print("hi")
+end
+```
+
+### G0605 — missing-main
+
+**Severity:** error · **Autofix:** no
+
+Missing main function.
+
+An executable program must define `def main() -> none` as its entry point.
+
+**Example:**
+
+```gust
+def helper() -> none
+end
+
+# no `def main() -> none` entry point
+```
+
+### G0606 — reserved-decorator-name
+
+**Severity:** error · **Autofix:** no
+
+Reserved decorator name.
+
+A custom decorator (a function taking/returning the bare `Function` wildcard) was defined with the same name as a built-in decorator (`inline`, `no_tco`, `static`). `@name` always binds to the builtin, so the custom decorator could never run. An ordinary function with that name is allowed — only a decorator template is rejected. Rename it.
+
+**Example:**
+
+```gust
+def inline(f: Function) -> Function  # 'inline' is a built-in decorator
+    return f
+end
+```
+
+### G0607 — static-method-decorator
+
+**Severity:** error · **Autofix:** no
+
+User decorator on a @static method.
+
+A user-defined decorator wraps an instance receiver, which a `@static` associated function does not have. Drop `@static`, or remove the decorator.
+
+**Example:**
+
+```gust
+@static
+@logged
+def Box.make() -> Box  # user decorators can't wrap a @static method
+end
+```
+
+### G0608 — untrusted-unsafe-decorator
+
+**Severity:** error · **Autofix:** no
+
+`@raw`/`@manual` used outside a trusted file.
+
+The `@raw` (struct ownership exemption) and `@manual` (manual refcount management) decorators disable the compiler's automatic memory management, so a mistake causes leaks, double frees, or use-after-free. They are only allowed in files that opt into unsafe code: standard-library sources, or a file that imports the `unsafe` package with its own `use unsafe`.
+
+**Example:**
+
+```gust
+@manual
+def f() -> none  # this file does not `use unsafe`
+end
+```
+
+### G0609 — invalid-extends
+
+**Severity:** error · **Autofix:** no
+
+Invalid extends clause.
+
+The parent named in `def Sub extends Parent` must be a non-generic struct. Enums, interfaces, error types, ADTs, generic templates, and `@raw` structs cannot take part in a subclass hierarchy.
+
+**Example:**
+
+```gust
+def Sub extends Missing  # 'Missing' is not a struct
+end
+```
+
+### G0610 — extends-cycle
+
+**Severity:** error · **Autofix:** no
+
+Cyclic extends chain.
+
+A struct's `extends` chain reaches back to itself. Inheritance must form a tree.
+
+**Example:**
+
+```gust
+def A extends B
+end
+
+def B extends A  # A -> B -> A
+end
+```
+
+### G0611 — inherited-field-shadowing
+
+**Severity:** error · **Autofix:** no
+
+Inherited field shadowed.
+
+A subclass re-declares a field that it already inherits from an ancestor. Fields are inherited as-is and cannot be re-declared or re-typed; rename the new field or remove it.
+
+**Example:**
+
+```gust
+def Parent
+    name: string
+end
+
+def Sub extends Parent
+    name: string  # already inherited from Parent
+end
+```
+
+### G0612 — override-signature-mismatch
+
+**Severity:** error · **Autofix:** no
+
+Override signature mismatch.
+
+A subclass method overrides an inherited method but declares different parameter types or a different return type. An override must match the inherited signature exactly so calls through a parent-typed value stay well-typed.
+
+**Example:**
+
+```gust
+def Parent
+end
+
+def Parent.speak(volume: integer) -> none
+end
+
+def Sub extends Parent
+end
+
+def Sub.speak(volume: string) -> none  # parameter type differs
+end
+```
+
+### G0613 — invalid-super
+
+**Severity:** error · **Autofix:** no
+
+Invalid super call.
+
+`super.method(...)` statically calls the inherited implementation, so it is only valid inside a method of a struct that `extends` a parent, and the named method must exist on an ancestor.
+
+**Example:**
+
+```gust
+def f() -> none
+    super.run()  # not inside a subclass method
+end
+```
+
+### G0614 — post-init-signature
+
+**Severity:** error · **Autofix:** no
+
+Invalid @post_init hook signature.
+
+A `@post_init` method runs automatically at the end of every constructor, invoked on the freshly built instance with no arguments. It must therefore be an instance method (not `@static`), take no parameters, and return `none`.
+
+**Example:**
+
+```gust
+@post_init
+def Circle.check(scale: float) -> none  # @post_init takes no parameters
+end
+```
+
+## Imports
+
+### G0701 — import-error
+
+**Severity:** error · **Autofix:** no
+
+Package / import error.
+
+A `use <path>` refers to a package that doesn't exist on the stdlib path, or the package (or one of its symbols) is marked `private` and can't be accessed from outside. Check the package path and any `private` qualifiers.
+
+**Example:**
+
+```gust
+use nonexistent_pkg  # no such package
+```
+
+### G0702 — unknown-package-member
+
+**Severity:** error · **Autofix:** no
+
+Unknown package member.
+
+A qualified package access referenced a function that the imported package does not export.
+
+**Example:**
+
+```gust
+use math
+
+x := math.nope(1)  # math exports no 'nope'
+```
+
+### G0703 — invalid-inspect-target
+
+**Severity:** error · **Autofix:** no
+
+Invalid inspect target.
+
+An `inspect` extractor (e.g. `signature`, `kind`, `fields`) was given an argument it can't introspect — a literal, local, or expression rather than the declaration kind it expects. Pass a bare function/type name or a `Type.method` reference. The `is_*` predicates accept anything.
+
+**Example:**
+
+```gust
+use inspect
+
+n := inspect.signature(42)  # pass a function or type, not a value
+```
+
+## Control flow
+
+### G0801 — break-outside-loop
+
+**Severity:** error · **Autofix:** no
+
+Control-flow statement outside a loop.
+
+`break` and `continue` are only meaningful inside `for` or `while` loops. If you meant to exit a function, use `return`.
+
+**Example:**
+
+```gust
+def f() -> none
+    break  # 'break' outside a loop
+end
+```
+
+### G0802 — invalid-error-usage
+
+**Severity:** error · **Autofix:** no
+
+Invalid error handling usage.
+
+A `raise` or `catch` refers to an unknown error type, uses invalid fields, or performs a bare re-raise outside a catch clause.
+
+**Example:**
+
+```gust
+raise NotAnError(message: "x")  # 'NotAnError' is not an error type
+```
+
+### G0803 — invalid-match-structure
+
+**Severity:** error · **Autofix:** no
+
+Invalid match structure.
+
+A `match` block is structurally invalid, such as being empty or containing an empty case/else body.
+
+**Example:**
+
+```gust
+match x
+end  # a match needs at least one case
+```
+
+### G0804 — invalid-match-pattern
+
+**Severity:** error · **Autofix:** no
+
+Invalid match pattern.
+
+A pattern does not fit the scrutinee type or binds the wrong number of names for the matched variant.
+
+**Example:**
+
+```gust
+match opt
+    case Some(a, b)  # Some binds one value, not two
+        run()
+end
+```
+
+### G0805 — non-exhaustive-match
+
+**Severity:** error · **Autofix:** no
+
+Non-exhaustive match.
+
+A `match` over an enum or ADT is missing one or more cases and has no `else` arm to cover the remainder.
+
+**Example:**
+
+```gust
+match color
+    case Color.Red
+        run()
+end  # Green/Blue uncovered and no else
+```
+
+### G0806 — missing-return-path
+
+**Severity:** error · **Autofix:** no
+
+Missing explicit return on some path.
+
+A non-`none` function or method can fall off the end without returning a value on every control-flow path.
+
+**Example:**
+
+```gust
+def sign(n: integer) -> integer
+    if n > 0
+        return 1
+    end
+    # falls off the end with no return
+end
+```
+
+## Destructuring
+
+### G0901 — unpack-mismatch
+
+**Severity:** error · **Autofix:** no
+
+Unpack / destructuring mismatch.
+
+A `for a, b in <iter>` binding doesn't match what the iterable yields.
+
+  - `for a, b in dict[K, V]` binds (key, value).
+  - `for a in dict[K, V]` binds keys only.
+  - `for a, b in list[tuple[T1, T2]]` binds tuple slots.
+  - `for a, b in list[T]` where `T` isn't a 2-tuple is an error.
+
+Either restructure the iterable to yield the right shape, or change the number of binding names to match.
+
+**Example:**
+
+```gust
+a, b := (1, 2, 3)  # 3 values unpacked into 2 names
+```
+
+

@@ -1,0 +1,397 @@
+---
+title: toml
+description: "`encode` serializes a `dict[string, Any]` back into TOML text, the inverse of `parse`"
+---
+
+```gust
+use toml
+```
+
+`encode` serializes a `dict[string, Any]` back into TOML text, the inverse
+of `parse`. Nested `dict[string, Any]` values become `[table]` sections,
+a list of tables becomes an `[[array-of-tables]]` block, `time.DateTime`
+values render as RFC 3339 date-times, and remaining scalars/arrays render
+inline as `key = value`.
+
+A `none` value has no TOML representation, so any key (or array element)
+holding `none` is omitted from the output.
+
+**Examples**
+
+```gust
+use toml
+
+def main() -> none
+    cfg: dict[string, Any] = {}
+    cfg["title"] = "app"
+    print(toml.encode(cfg))   # title = "app"
+end
+```
+
+**On this page:** [`TomlParser`](#TomlParser) · [`TomlError`](#TomlError) · [`encode`](#toml.encode) · [`parse`](#toml.parse)
+
+## `TomlParser`
+
+<a id="TomlParser" />
+Cursor over the TOML source. `pos` is the byte offset; `line` is
+the 1-based line tracked for error messages.
+
+```gust
+def TomlParser
+
+    src: string
+    pos: integer
+    line: integer
+
+end
+```
+
+**Fields**
+
+- `src: string`
+- `pos: integer`
+- `line: integer`
+
+**Methods**
+
+<a id="TomlParser.at_end" />
+```gust
+def TomlParser.at_end() -> bool
+```
+
+True once the cursor has consumed the whole source.
+
+---
+
+<a id="TomlParser.peek" />
+```gust
+def TomlParser.peek() -> string
+```
+
+Current character, or `""` at end of input.
+
+---
+
+<a id="TomlParser.peek_at" />
+```gust
+def TomlParser.peek_at(offset: integer) -> string
+```
+
+Character `offset` positions ahead, or `""` past the end.
+
+---
+
+<a id="TomlParser.advance" />
+```gust
+def TomlParser.advance() -> string
+```
+
+Consume and return the current character, updating the line count.
+
+---
+
+<a id="TomlParser.skip_inline_ws" />
+```gust
+def TomlParser.skip_inline_ws() -> none
+```
+
+Skip spaces and tabs on the current line (never a newline).
+
+---
+
+<a id="TomlParser.skip_comment" />
+```gust
+def TomlParser.skip_comment() -> none
+```
+
+If the cursor is on `#`, consume to (but not past) the newline.
+
+---
+
+<a id="TomlParser.skip_to_statement" />
+```gust
+def TomlParser.skip_to_statement() -> none
+```
+
+Skip blank lines, whitespace, and comments until the next
+significant character (a key, `[`, or end of input).
+
+---
+
+<a id="TomlParser.expect_line_end" />
+```gust
+def TomlParser.expect_line_end() -> none
+```
+
+After a key/value or header, require the rest of the line to be
+blank or a comment.
+
+**Raises**
+
+- `TomlError` — when non-comment text follows the value on the line.
+
+---
+
+<a id="TomlParser.read_basic_string" />
+```gust
+def TomlParser.read_basic_string() -> string
+```
+
+Read a single-line basic string (assumes the cursor is on the
+opening `"`). Honors backslash escapes.
+
+**Raises**
+
+- `TomlError` — on an unterminated string or a newline inside it.
+
+---
+
+<a id="TomlParser.read_escape" />
+```gust
+def TomlParser.read_escape() -> string
+```
+
+Decode the escape sequence after a backslash in a basic string.
+
+**Raises**
+
+- `TomlError` — on an unrecognized escape sequence.
+
+---
+
+<a id="TomlParser.read_unicode_escape" />
+```gust
+def TomlParser.read_unicode_escape(width: integer) -> string
+```
+
+Read `width` hex digits after `\u`/`\U` and encode the code
+point as UTF-8.
+
+**Raises**
+
+- `TomlError` — on a non-hex digit within the escape.
+
+---
+
+<a id="TomlParser.read_literal_string" />
+```gust
+def TomlParser.read_literal_string() -> string
+```
+
+Read a single-line literal string (assumes cursor on opening `'`).
+No escape processing — the contents are verbatim.
+
+**Raises**
+
+- `TomlError` — on an unterminated literal string or a newline inside it.
+
+---
+
+<a id="TomlParser.read_ml_basic_string" />
+```gust
+def TomlParser.read_ml_basic_string() -> string
+```
+
+Read a multi-line basic string `"""..."""`. Trims an immediate
+leading newline and handles line-ending backslash continuations.
+
+**Raises**
+
+- `TomlError` — on an unterminated string or an invalid escape sequence.
+
+---
+
+<a id="TomlParser.read_ml_literal_string" />
+```gust
+def TomlParser.read_ml_literal_string() -> string
+```
+
+Read a multi-line literal string `'''...'''`. Trims an immediate
+leading newline; no escapes.
+
+**Raises**
+
+- `TomlError` — on an unterminated multi-line literal string.
+
+---
+
+<a id="TomlParser.read_key_part" />
+```gust
+def TomlParser.read_key_part() -> string
+```
+
+Read one key segment: a bare key, or a quoted (basic/literal)
+key.
+
+**Raises**
+
+- `TomlError` — when no key characters are present, or from the quoted-string reader on a malformed quoted key.
+
+---
+
+<a id="TomlParser.read_key_path" />
+```gust
+def TomlParser.read_key_path() -> list[string]
+```
+
+Read a dotted key path (`a.b.c`), returning each segment.
+
+**Raises**
+
+- `TomlError` — from the segment reader on a missing or malformed key.
+
+---
+
+<a id="TomlParser.parse_value" />
+```gust
+def TomlParser.parse_value() -> Any
+```
+
+Parse a single TOML value at the cursor: string, array, inline
+table, boolean, number, or date-time.
+
+**Raises**
+
+- `TomlError` — when no value is present, or from the delegated reader on a malformed string, array, table, or scalar.
+
+---
+
+<a id="TomlParser.parse_array" />
+```gust
+def TomlParser.parse_array() -> list[Any]
+```
+
+Parse a `[...]` array. Elements may be any value; arrays span
+lines and allow a trailing comma.
+
+**Raises**
+
+- `TomlError` — on an unterminated array or a missing `,`/`]` separator, or from parsing an element value.
+
+---
+
+<a id="TomlParser.parse_inline_table" />
+```gust
+def TomlParser.parse_inline_table() -> dict[string, Any]
+```
+
+Parse a `{ k = v, ... }` inline table. Supports dotted keys;
+spec-style inline tables stay on one line.
+
+**Raises**
+
+- `TomlError` — on a missing `=`, a missing `,`/`}` separator, a duplicate key, or from parsing a key path or value.
+
+---
+
+<a id="TomlParser.parse_scalar_token" />
+```gust
+def TomlParser.parse_scalar_token() -> Any
+```
+
+Parse a bare token (no quotes/brackets): boolean, integer, float,
+or date-time. The token runs to the next delimiter; a date followed
+by a space and a time is rejoined into one date-time.
+
+**Raises**
+
+- `TomlError` — when the token is not a valid boolean, number, or date-time.
+
+---
+
+<a id="TomlParser.parse_table_header" />
+```gust
+def TomlParser.parse_table_header(root: dict[string, Any]) -> dict[string, Any]
+```
+
+Parse a `[a.b.c]` header and return the dict of the addressed
+table, creating the path as needed.
+
+**Raises**
+
+- `TomlError` — on a missing closing `]`, or from reading the key path.
+
+---
+
+<a id="TomlParser.parse_array_table_header" />
+```gust
+def TomlParser.parse_array_table_header(root: dict[string, Any]) -> dict[string, Any]
+```
+
+Parse a `[[a.b]]` array-of-tables header: append a fresh table to
+the array at the path's last segment and return its dict.
+
+**Raises**
+
+- `TomlError` — on a missing closing `]]`, when the last segment already holds a non-array value, or from reading the key path.
+
+---
+
+<a id="TomlParser.parse_document" />
+```gust
+def TomlParser.parse_document() -> dict[string, Any]
+```
+
+Top-level loop: route each statement into the current table,
+switching tables on `[header]` / `[[array]]` lines.
+
+**Raises**
+
+- `TomlError` — on a missing `=` after a key, or from parsing any header, key path, or value in the document.
+
+## Functions
+
+<a id="toml.encode" />
+```gust
+def encode(root: dict[string, Any]) -> string
+```
+
+Serialize a mapping to a TOML document.
+
+Root scalars and arrays are emitted first as `key = value` lines, then
+each nested table as a `[header]` section and each list-of-tables as a
+sequence of `[[header]]` blocks. Table headers use the dotted key path,
+quoting any segment that isn't a bare key. `time.DateTime` values render
+with `DateTime.iso()`; `none` values are omitted.
+
+The output round-trips through `parse`: `parse(encode(m))` reconstructs
+an equivalent mapping.
+
+**Parameters**
+
+- `root: dict[string, Any]` — The mapping to serialize.
+
+---
+
+<a id="toml.parse" />
+```gust
+def parse(source: string) -> dict[string, Any]
+```
+
+Parse a TOML document and return its root table as a
+`dict[string, Any]`.
+
+**Parameters**
+
+- `source: string` — The TOML text to parse.
+
+**Raises**
+
+- `TomlError` — on malformed input, carrying the offending source line.
+
+## Errors
+
+<a id="TomlError" />
+```gust
+error TomlError(message: string, line: integer)
+```
+
+Raised by `parse` on malformed TOML. `message` describes the
+problem; `line` is the 1-based source line it was detected on.
+
+Fields:
+
+```gust
+message: human-readable description of the parse failure.
+line: the 1-based source line the error was detected on.
+```

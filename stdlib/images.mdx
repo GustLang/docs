@@ -1,0 +1,299 @@
+---
+title: images
+description: "Self-contained image processing with no external runtime dependency, backed by the public-domain stb headers vendored in this package"
+---
+
+```gust
+use images
+```
+
+Self-contained image processing with no external runtime dependency, backed
+by the public-domain stb headers vendored in this package. Decoding covers PNG,
+JPEG, BMP, GIF (first frame), TGA, PSD, HDR, and PNM; encoding covers PNG,
+JPEG, BMP, and TGA. Images are 8-bit/channel in mode `L`, `LA`, `RGB`, or
+`RGBA`. Operations work on file paths and include creating, saving,
+resizing, thumbnailing, cropping, rotating, mode conversion, grayscale, and
+blur, plus orientation queries on the `Image` metadata type.
+
+Decoding, encoding, and resizing run through the stb libraries; every other
+operation — channel conversion, colour fill, luma, sampling, blur, crop, and
+rotate — runs in pure Gust over the decoded pixels.
+
+**Examples**
+
+```gust
+use images
+
+def main() -> none
+    img := images.open("photo.png")
+    print(f"{img.width}x{img.height}")   # e.g. 1920x1080
+    images.thumbnail("photo.png", "thumb.png", 128, 128)
+end
+```
+
+**On this page:** [`Image`](#Image) · [`open`](#images.open) · [`new_image`](#images.new_image) · [`encode`](#images.encode) · [`save`](#images.save) · [`resize`](#images.resize) · [`thumbnail`](#images.thumbnail) · [`crop`](#images.crop) · [`rotate`](#images.rotate) · [`convert`](#images.convert) · [`grayscale`](#images.grayscale) · [`blur`](#images.blur)
+
+## `Image`
+
+<a id="Image" />
+Metadata for an image on disk. Operations return a fresh `Image`
+describing the output path.
+
+```gust
+def Image
+
+    path: string
+    width: integer
+    height: integer
+    mode: string
+    format: string
+
+end
+```
+
+**Fields**
+
+- `path: string` — Filesystem path to the image.
+- `width: integer` — Image width in pixels.
+- `height: integer` — Image height in pixels.
+- `mode: string` — Pixel mode (`L`, `LA`, `RGB`, or `RGBA`).
+- `format: string` — Image format (e.g. `PNG`, `JPEG`).
+
+**Methods**
+
+<a id="Image.aspect_ratio" />
+```gust
+def Image.aspect_ratio() -> float
+```
+
+Return `width / height`, or `0.0` for an empty image.
+
+---
+
+<a id="Image.is_landscape" />
+```gust
+def Image.is_landscape() -> bool
+```
+
+True when the image is wider than it is tall.
+
+---
+
+<a id="Image.is_portrait" />
+```gust
+def Image.is_portrait() -> bool
+```
+
+True when the image is taller than it is wide.
+
+---
+
+<a id="Image.is_square" />
+```gust
+def Image.is_square() -> bool
+```
+
+True when width and height are equal.
+
+## Functions
+
+<a id="images.open" />
+```gust
+def foreign open(path: string) -> Image
+```
+
+Open an image file and return its metadata.
+
+**Parameters**
+
+- `path: string` — Filesystem path to the image to open.
+
+---
+
+<a id="images.new_image" />
+```gust
+def new_image(
+    path: string,
+    width: integer,
+    height: integer,
+    mode: string,
+    color: string,
+) -> Image
+```
+
+Create a new image filled with `color` and write it to `path`.
+
+**Parameters**
+
+- `path: string` — Destination filesystem path.
+- `width: integer` — Image width in pixels.
+- `height: integer` — Image height in pixels.
+- `mode: string` — Pixel mode (`L`, `LA`, `RGB`, or `RGBA`).
+- `color: string` — Fill color — a named color (`"white"`, `"red"`, `"transparent"`, …), hex (`"#336699"`, `"#RRGGBBAA"`), or `"rgb(r, g, b)"` / `"rgba(r, g, b, a)"`.
+
+---
+
+<a id="images.encode" />
+```gust
+def encode(
+    pixels: bytes,
+    width: integer,
+    height: integer,
+    mode: string,
+    dst: string,
+    format: string,
+) -> Image
+```
+
+Encode raw pixel bytes to an image file.
+
+**Parameters**
+
+- `pixels: bytes` — Row-major 8-bit pixel bytes, `width` × `height` × the channel count implied by `mode`.
+- `width: integer` — Image width in pixels.
+- `height: integer` — Image height in pixels.
+- `mode: string` — Pixel mode (`L`, `LA`, `RGB`, or `RGBA`).
+- `dst: string` — Destination path to write.
+- `format: string` — Output format (`"PNG"`, `"JPEG"`, `"BMP"`, or `"TGA"`); pass `""` to infer it from the `dst` extension.
+
+---
+
+<a id="images.save" />
+```gust
+def save(src: string, dst: string, format: string) -> Image
+```
+
+Save `src` to `dst`, optionally forcing an output format.
+
+**Parameters**
+
+- `src: string` — Source image path.
+- `dst: string` — Destination path to write.
+- `format: string` — Output format (`"PNG"`, `"JPEG"`, `"BMP"`, or `"TGA"`); pass `""` to infer it from the `dst` extension.
+
+---
+
+<a id="images.resize" />
+```gust
+def foreign resize(
+    src: string,
+    dst: string,
+    width: integer,
+    height: integer,
+) -> Image
+```
+
+Resize `src` exactly to `width` × `height` and write `dst`.
+
+**Parameters**
+
+- `src: string` — Source image path.
+- `dst: string` — Destination path to write.
+- `width: integer` — Target width in pixels.
+- `height: integer` — Target height in pixels.
+
+---
+
+<a id="images.thumbnail" />
+```gust
+def thumbnail(
+    src: string,
+    dst: string,
+    max_width: integer,
+    max_height: integer,
+) -> Image
+```
+
+Resize `src` to fit inside the bounds while preserving aspect ratio.
+
+**Parameters**
+
+- `src: string` — Source image path.
+- `dst: string` — Destination path to write.
+- `max_width: integer` — Maximum width in pixels.
+- `max_height: integer` — Maximum height in pixels.
+
+---
+
+<a id="images.crop" />
+```gust
+def crop(
+    src: string,
+    dst: string,
+    left: integer,
+    top: integer,
+    right: integer,
+    bottom: integer,
+) -> Image
+```
+
+Crop the rectangle `[left, top, right, bottom)` from `src`.
+
+**Parameters**
+
+- `src: string` — Source image path.
+- `dst: string` — Destination path to write.
+- `left: integer` — Left edge (inclusive) in pixels.
+- `top: integer` — Top edge (inclusive) in pixels.
+- `right: integer` — Right edge (exclusive) in pixels.
+- `bottom: integer` — Bottom edge (exclusive) in pixels.
+
+---
+
+<a id="images.rotate" />
+```gust
+def rotate(src: string, dst: string, degrees: float, expand: bool) -> Image
+```
+
+Rotate `src` by degrees and write `dst`.
+
+**Parameters**
+
+- `src: string` — Source image path.
+- `dst: string` — Destination path to write.
+- `degrees: float` — Rotation angle in degrees.
+- `expand: bool` — When true, grow the canvas enough to hold the rotated image.
+
+---
+
+<a id="images.convert" />
+```gust
+def convert(src: string, dst: string, mode: string) -> Image
+```
+
+Convert `src` to a different image mode and write `dst`.
+
+**Parameters**
+
+- `src: string` — Source image path.
+- `dst: string` — Destination path to write.
+- `mode: string` — Target mode (`"L"`, `"LA"`, `"RGB"`, or `"RGBA"`).
+
+---
+
+<a id="images.grayscale" />
+```gust
+def grayscale(src: string, dst: string) -> Image
+```
+
+Convert `src` to grayscale (`L`) and write `dst`.
+
+**Parameters**
+
+- `src: string` — Source image path.
+- `dst: string` — Destination path to write.
+
+---
+
+<a id="images.blur" />
+```gust
+def blur(src: string, dst: string, radius: float) -> Image
+```
+
+Apply a Gaussian blur and write `dst`.
+
+**Parameters**
+
+- `src: string` — Source image path.
+- `dst: string` — Destination path to write.
+- `radius: float` — Blur radius.

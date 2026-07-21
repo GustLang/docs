@@ -1,0 +1,318 @@
+---
+title: Imports
+description: The use keyword and its every form — whole-package, from, aliases, subpackages, path imports, qualified access, per-file enforcement, private, and collisions
+---
+
+Gust has one import keyword: `use`. Every dependency — a standard library
+package, a subpackage, another file in your own project, or a published user
+package — is brought in with `use`. This page covers every form the keyword
+takes and how names resolve once they are in scope.
+
+## Whole-package import
+
+`use <pkg>` brings a package into scope under its name. Access its members
+qualified with `pkg.name`:
+
+```gust
+use math
+use time
+
+def main() -> none
+    print(math.sqrt(2.0))
+    print(time.now_ms())
+end
+```
+
+Each package needs its own `use` line — there is no `use math, time`. One
+package, one line.
+
+The qualifier reaches **every** public declaration a package exports, not
+just its functions: structs, enums, errors, constants, interfaces, and
+tagged-union variants all resolve through the `pkg.` prefix.
+
+```gust
+use ast
+
+def classify(e: ast.Expr) -> string
+    lit := ast.IntLit(42, ast.no_span())     # qualified struct construction
+    match e
+        case ast.IntLit(v, sp)               # qualified variant in a match arm
+            return "int"
+        case ast.StringLit(s, sp2)
+            return "str"
+        else
+            return "other"
+    end
+end
+```
+
+A qualified type name works anywhere a type is expected — annotations,
+constructor calls (positional or named), `case` patterns, and `as` casts:
+
+```gust
+use time
+
+def main() -> none
+    d: time.DateTime = time.now()            # qualified annotation
+    print(d.year)
+end
+```
+
+The qualifier is dropped during analysis, so `ast.IntLit` and a bare-imported
+`IntLit` name the same declaration.
+
+## Importing a specific name — the `from` form
+
+For a name you reference repeatedly, `use X from pkg` brings `X` into scope
+**unqualified**:
+
+```gust
+use Path from os
+
+def main() -> none
+    p := Path(path: "/etc/hosts")
+    print(p.read())
+end
+```
+
+List several names comma-separated:
+
+```gust
+use DateTime, Duration from time
+```
+
+For a long list, the parenthesized form spans multiple lines. A trailing
+comma is allowed:
+
+```gust
+use (
+    DateTime,
+    Duration,
+    Instant,
+) from time
+```
+
+A `use X from Y` brings only `X` into bare scope. Other members of `Y` still
+need `Y.name` and a separate `use Y`. The two forms compose freely — `use
+time` and `use DateTime from time` at the top of the same file is fine, and
+lets you write both `DateTime` and `time.now_ms()`.
+
+Convention: when a file pulls in more than roughly ten names from one
+package, prefer a single `use pkg` with qualified access over a long `from`
+list.
+
+## Import aliases
+
+Rename a whole-package import with `as`. The alias replaces the package name
+at every call site:
+
+```gust
+use fs as filesystem
+
+def main() -> none
+    print(filesystem.abs_path("/tmp").exists())
+end
+```
+
+Aliases are the standard fix for a package name that collides with a local
+variable or a name you would rather spell differently. The `as` clause is
+only for whole-package (and subpackage, and path) imports — the `from` form
+imports the name exactly as the package spells it and takes no `as`.
+
+## Subpackage imports
+
+A package can nest subpackages in directories. Reach one with a dotted path.
+The alias is the **last** segment:
+
+```gust
+use cryptography.random
+
+def main() -> none
+    print(random.int_in(1, 10))
+    print(random.coin())
+end
+```
+
+`use cryptography.random` binds the name `random`; you write `random.int_in`,
+not `cryptography.random.int_in`. Add `as` to pick a different alias
+(`use cryptography.random as rng`), and the `from` form works against a
+subpackage too (`use int_in from cryptography.random`).
+
+Inside a package that imports its own subpackage (`use highlight.languages`
+from within `highlight`), the dotted import can shadow bare references to the
+package's own same-named types. Import the specific type instead
+(`use Foo from highlight`) to keep the bare reference resolving.
+
+## Path imports — files and directories in your project
+
+To pull in another part of your own project by location rather than by
+package name, quote a relative filesystem path. The alias is the final path
+segment:
+
+```gust
+use "./lib/mathx"
+
+def main() -> none
+    print(mathx.triple(4))
+end
+```
+
+A path import targets either a **single `.g` file** or a **directory**. When
+the path names a directory, the whole directory becomes one package — every
+`.g` file in it is merged, so importing one file pulls in its siblings.
+Importing a single file that references its directory siblings likewise pulls
+the whole directory.
+
+All the same modifiers apply to path imports:
+
+```gust
+use "./lib/multi/core" as multi      # aliased path import
+use sixfold from "./lib/relay"       # selective path import
+use (triple, quadruple) from "./lib/mathx"   # parenthesized selective
+```
+
+Path imports are transitive: a path-imported package may itself `use` a
+sibling by relative path (`use "../mathx"` from inside `lib/relay`), and that
+resolves the same way.
+
+## Re-exposing another package's names
+
+A `from` import is local to the file it appears in — importing a name into a
+package does **not** re-export it. Writing `use Widget from other` inside
+package `mid` does not let a user write `use Widget from mid`; the name still
+belongs to `other`, and the user imports it from there.
+
+To surface another package's functionality under your own package, wrap it —
+define a function or type of your own that calls into the dependency:
+
+```gust
+use "../mathx"
+
+def sixfold(n: integer) -> integer
+    return mathx.triple(n) + mathx.triple(n)
+end
+```
+
+Callers `use` your package and get `sixfold`; the wrapped dependency stays an
+implementation detail.
+
+## Each file imports what it uses
+
+Imports are enforced **per file**, not per project. If a file references a
+package name or a `from`-imported symbol, that same file must carry the
+matching `use`. A sibling file's import does not carry over, even though both
+files compile into one program.
+
+Referencing something the current file did not import is a hard error
+(`G0206`) whose hint tells you which `use` to add:
+
+```
+'DateTime' is used here but not imported in this file — add `use DateTime from time`.
+Every file must import what it references; a sibling file's import does not carry over.
+```
+
+The flip side: an import a file never uses draws an unused-import warning
+(`W0302`). The warning names the exact form — `unused import: 'time'`,
+`unused import: 'fs as filesystem'`, or `unused import from 'time': DateTime,
+Duration`.
+
+Note that a qualified reference (`json.Value`) counts as using the package
+import (`use json`), and satisfies the per-file rule without a bare `from`
+import of `Value`.
+
+## `private` — package-internal names
+
+A declaration prefixed with `private` is visible inside its declaring package
+only. Other files that `use <pkg>` cannot see it. This is how packages expose
+helpers to their own files without leaking them to callers:
+
+```gust
+private def _helper(x: integer) -> integer
+    return x * 2
+end
+
+def public_api(x: integer) -> integer
+    return _helper(x) + 1
+end
+```
+
+Everything without the keyword is public — that is the default. Use `private`
+for implementation details you want to refactor freely later.
+
+## What ships without `use`
+
+The **prelude** is auto-imported into every program. You never `use prelude`
+— it is always there:
+
+- `print(value)`
+- `input(prompt)`
+- `round(x, decimals)`
+- `ValueError`, `IOError`, `IndexError`, `KeyError`, `RuntimeError`
+
+For the packages you do need `use` for, see the [Standard library](/stdlib).
+
+## User packages
+
+You can depend on Gust packages published as GitHub repositories. Declare
+them in a `[dependencies]` table in `gust.toml` (or run `gust add
+owner/repo`), and the toolchain fetches, caches, and pins each one so you
+`use` it like any standard library package:
+
+```toml
+[dependencies]
+semver = "GustLang/semver@v1.4.0"
+```
+
+```gust
+use semver
+```
+
+Resolution is dependencies-first, then standard library — a fetched package
+under `.gust/deps/<name>/` resolves the same way the compiler resolves a
+built-in package. See [Packages & dependencies](/tooling/packages) for the
+full grammar, commands, and lockfile.
+
+Within a single project, split your program into multiple `.g` files
+(`lib/foo.g`, `lib/bar.g`, `main.g`) and invoke the compiler with your top
+file — the build system discovers the rest.
+
+## Name collisions
+
+Two packages that export the same name coexist without trouble as long as you
+address each one through its package prefix. `math.log` and `random.log`, or
+`json.Value` and `database.Value`, live side by side — the compiler mangles
+each colliding declaration to a package-scoped name internally, so their
+generated code never clashes and a bare reference inside a package always
+reaches its own declaration.
+
+The one case you must resolve yourself is pulling the same bare name into one
+file from two packages. `use Value from json` and `use Value from database`
+in the same file is a genuine ambiguity, reported at the second import:
+
+```
+ambiguous import: 'Value' is imported from both 'json' and 'database' —
+drop one of the `from` imports and qualify it (e.g. `use database` then write `database.Value`).
+```
+
+The fix is to import at least one of them whole and qualify it.
+
+A `use X from pkg` that names a symbol the package does not actually export
+is caught at the import (`package 'pkg' has no exported symbol 'X'`) rather
+than leaking a later error at the use site.
+
+## No circular imports
+
+Packages may not form an import cycle. Standard library packages are arranged
+so they never do; if you write a new package (or a user package) whose
+imports close a loop, the compiler rejects it with a pointed error.
+
+## Platform-gated imports
+
+A trailing `#gust:cfg <predicate>` pragma on a `use` line keeps the import only
+for the targets the predicate matches; on any other target it is dropped before
+resolution, so a package needed only on one platform need not exist on the build
+host. See [conditional compilation](/lang/conditional-compilation).
+
+```gust
+use epoll from os.linux    #gust:cfg os == "linux"
+```

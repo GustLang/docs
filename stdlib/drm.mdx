@@ -1,0 +1,197 @@
+---
+title: drm
+description: "Tear-free display output through the Linux kernel mode-setting interface (DRM/KMS, `/dev/dri/card<index>`)"
+---
+
+```gust
+use drm
+```
+
+Tear-free display output through the Linux kernel mode-setting interface
+(DRM/KMS, `/dev/dri/card<index>`). Unlike a raw framebuffer, this owns the
+display: it enumerates the connected monitor, sets its video mode, and presents
+frames with double-buffered page-flips synchronized to the vertical refresh, so
+the screen never tears or shows a half-drawn frame.
+
+`open` finds the first connected output, allocates two dumb buffers in the
+XRGB8888 format, and begins scanning out. All drawing lands in an off-screen
+back buffer; `flush` page-flips it onto the display and blocks until the flip
+completes at the next vblank, then swaps buffers. A UI redraws the full frame
+each iteration and calls `flush` to present it.
+
+Colors are 24-bit `0xRRGGBB` integers, stored directly as XRGB8888 pixels.
+
+Linux only, and requires DRM master — no window system or compositor may own
+the display (a bare console the program takes over, or a device with the
+console detached from the card). On other platforms, or when no display can be
+acquired, `open` returns -1 and the drawing calls are no-ops.
+
+**Examples**
+
+```gust
+use drm
+
+def main() -> none
+    screen := drm.open(0)
+    if screen < 0
+        return
+    end
+    drm.clear(screen, 0x101828)
+    drm.fill_rect(screen, 20, 20, 200, 80, 0x3B82F6)
+    drm.flush(screen)
+    drm.close(screen)
+end
+```
+
+**On this page:** [`open`](#drm.open) · [`width`](#drm.width) · [`height`](#drm.height) · [`bpp`](#drm.bpp) · [`clear`](#drm.clear) · [`set_pixel`](#drm.set_pixel) · [`fill_rect`](#drm.fill_rect) · [`flush`](#drm.flush) · [`close`](#drm.close)
+
+## Functions
+
+<a id="drm.open" />
+```gust
+def foreign open(index: integer) -> integer
+```
+
+Open `/dev/dri/card<index>`, acquire the first connected display, set its
+preferred video mode, and begin double-buffered scanout. Returns a handle
+(>= 0) for the drawing calls, or -1 on error (device missing, no permission,
+no connected display, or another process holds DRM master). Both buffers
+start black.
+
+**Parameters**
+
+- `index: integer` — DRM card index (0 for `/dev/dri/card0`).
+
+---
+
+<a id="drm.width" />
+```gust
+def foreign width(handle: integer) -> integer
+```
+
+Width of the active video mode in pixels, or 0 for an invalid handle.
+
+**Parameters**
+
+- `handle: integer` — A handle from `open`.
+
+---
+
+<a id="drm.height" />
+```gust
+def foreign height(handle: integer) -> integer
+```
+
+Height of the active video mode in pixels, or 0 for an invalid handle.
+
+**Parameters**
+
+- `handle: integer` — A handle from `open`.
+
+---
+
+<a id="drm.bpp" />
+```gust
+def foreign bpp(handle: integer) -> integer
+```
+
+Bits per pixel of the presented buffers (always 32 for XRGB8888), or 0
+for an invalid handle.
+
+**Parameters**
+
+- `handle: integer` — A handle from `open`.
+
+---
+
+<a id="drm.clear" />
+```gust
+def foreign clear(handle: integer, rgb: integer) -> none
+```
+
+Fill the entire back buffer with `rgb`. Not visible until `flush`.
+
+**Parameters**
+
+- `handle: integer` — A handle from `open`.
+- `rgb: integer` — Color as `0xRRGGBB`.
+
+---
+
+<a id="drm.set_pixel" />
+```gust
+def foreign set_pixel(
+    handle: integer,
+    x: integer,
+    y: integer,
+    rgb: integer,
+) -> none
+```
+
+Set the pixel at (`x`, `y`) to `rgb` in the back buffer. Coordinates
+outside the display are ignored. Not visible until `flush`.
+
+**Parameters**
+
+- `handle: integer` — A handle from `open`.
+- `x: integer` — Column, 0 at the left.
+- `y: integer` — Row, 0 at the top.
+- `rgb: integer` — Color as `0xRRGGBB`.
+
+---
+
+<a id="drm.fill_rect" />
+```gust
+def foreign fill_rect(
+    handle: integer,
+    x: integer,
+    y: integer,
+    w: integer,
+    h: integer,
+    rgb: integer,
+) -> none
+```
+
+Fill the `w`x`h` rectangle whose top-left is (`x`, `y`) with `rgb` in the
+back buffer. The rectangle is clipped to the display. Not visible until
+`flush`.
+
+**Parameters**
+
+- `handle: integer` — A handle from `open`.
+- `x: integer` — Left edge column.
+- `y: integer` — Top edge row.
+- `w: integer` — Rectangle width in pixels.
+- `h: integer` — Rectangle height in pixels.
+- `rgb: integer` — Color as `0xRRGGBB`.
+
+---
+
+<a id="drm.flush" />
+```gust
+def foreign flush(handle: integer) -> none
+```
+
+Present the back buffer: page-flip it onto the display, block until the
+flip completes at the next vertical refresh, then swap buffers so subsequent
+drawing targets the newly hidden buffer. The freshly exposed back buffer
+still holds the previous frame, so a caller that does not redraw the whole
+frame each time should `clear` first.
+
+**Parameters**
+
+- `handle: integer` — A handle from `open`.
+
+---
+
+<a id="drm.close" />
+```gust
+def foreign close(handle: integer) -> none
+```
+
+Restore the display's prior mode, release the buffers, drop DRM master,
+and free the handle.
+
+**Parameters**
+
+- `handle: integer` — A handle from `open`.

@@ -1,0 +1,319 @@
+---
+title: list
+description: "Dynamic array (slice)"
+---
+
+Dynamic array (slice). Backed by `GSlice*` in the C runtime.
+
+Literals:
+
+```gust
+["a", "b", "c"]     # list of strings
+[1, 2, 3]           # list of integers
+[]                  # empty list (type inferred from context)
+```
+
+Operators:
+
+```gust
+in, not in          # containment check: 3 in [1, 2, 3] → true
+for x in xs         # iterate elements
+for a, b in pairs   # tuple unpack — element type must be tuple[A, B]
+```
+
+Access:
+
+```gust
+items[0]            # index access (0-based)
+items[i]            # variable index
+items[a:b]          # slice — returns a new list[T]
+```
+
+## Fields
+
+- `length: integer` — Number of elements currently in the list.
+
+## Dunders
+
+<a id="list.__string" />
+```gust
+def list.__string() -> string
+```
+
+Triggered by `print(xs)` and f-string interpolation. Renders as `[a, b, c]`.
+
+---
+
+<a id="list.__list" />
+```gust
+def list.__list() -> list[T]
+```
+
+Triggered by `xs as list[T]`. Identity.
+
+---
+
+<a id="list.__bool" />
+```gust
+def list.__bool() -> bool
+```
+
+Triggered by `xs as bool`. True for non-empty lists.
+
+---
+
+<a id="list.__length" />
+```gust
+def list.__length() -> integer
+```
+
+Triggered by `xs.length`. Number of elements.
+
+---
+
+<a id="list.__contains" />
+```gust
+def list.__contains(item: T) -> bool
+```
+
+Triggered by `item in xs` and `item not in xs`.
+
+**Parameters**
+
+- `item: T` — The element to test for membership.
+
+---
+
+<a id="list.__iter" />
+```gust
+def list.__iter() -> list[T]
+```
+
+Triggered by `for x in xs`. Identity.
+
+---
+
+<a id="list.__get" />
+```gust
+def list.__get(index: integer) -> T
+```
+
+Triggered by `xs[i]` reads.
+
+**Parameters**
+
+- `index: integer` — Zero-based position to read.
+
+**Raises**
+
+- `IndexError` — When `index` is outside `0..length`.
+
+---
+
+<a id="list.__set" />
+```gust
+def list.__set(index: integer, value: T) -> none
+```
+
+Triggered by `xs[i] = v` writes.
+
+**Parameters**
+
+- `index: integer` — Zero-based position to overwrite.
+- `value: T` — The new element value to store at `index`.
+
+---
+
+<a id="list.__eq" />
+```gust
+def list.__eq(other: list[T]) -> bool
+```
+
+Triggered by `==` and `!=` (auto-negated). Element-wise comparison.
+
+**Parameters**
+
+- `other: list[T]` — The list to compare against element-wise.
+
+## Methods
+
+<a id="list.append" />
+```gust
+def list.append(item: T) -> none
+```
+
+Add an element to the end of the list.
+
+**Parameters**
+
+- `item: T` — The element to append.
+
+---
+
+<a id="list.insert" />
+```gust
+def list.insert(index: integer, item: T) -> none
+```
+
+Insert `item` at `index`, shifting subsequent elements right. An
+out-of-range index is clamped to [0, length].
+
+**Parameters**
+
+- `index: integer` — Position to insert at, clamped to [0, length].
+- `item: T` — The element to insert.
+
+---
+
+<a id="list.pop" />
+```gust
+def list.pop() -> T
+```
+
+Remove and return the last element.
+
+**Raises**
+
+- `IndexError` — When the list is empty.
+
+---
+
+<a id="list.pop_at" />
+```gust
+def list.pop_at(index: integer) -> T
+```
+
+Remove and return the element at `index`.
+
+**Parameters**
+
+- `index: integer` — Zero-based position of the element to remove.
+
+**Raises**
+
+- `IndexError` — When `index` is outside `0..length`.
+
+---
+
+<a id="list.extend" />
+```gust
+def list.extend(other: list[T]) -> none
+```
+
+Append every element of `other` to this list.
+
+**Parameters**
+
+- `other: list[T]` — The list whose elements are appended.
+
+---
+
+<a id="list.delete" />
+```gust
+def list.delete(index: integer) -> bool
+```
+
+Remove the element at the given index, shifting remaining elements.
+Returns true if the index was in range, false otherwise (no-op).
+
+**Parameters**
+
+- `index: integer` — Zero-based position of the element to remove.
+
+---
+
+<a id="list.clear" />
+```gust
+def list.clear() -> none
+```
+
+Remove every element, leaving the list empty.
+
+---
+
+<a id="list.copy" />
+```gust
+def list.copy() -> list[T]
+```
+
+Return a shallow copy.
+
+---
+
+<a id="list.slice" />
+```gust
+def list.slice(start: integer, stop: integer) -> list[T]
+```
+
+Return a new list with elements from `start` (inclusive) to `stop`
+(exclusive). Equivalent to `xs[start:stop]`.
+
+**Parameters**
+
+- `start: integer` — Inclusive start index of the slice.
+- `stop: integer` — Exclusive end index of the slice.
+
+---
+
+<a id="list.index_of" />
+```gust
+def list.index_of(item: T) -> integer
+```
+
+Return the index of the first occurrence of `item`, or -1 if absent.
+Works on list[string], list[integer], list[float].
+
+**Parameters**
+
+- `item: T` — The element to search for.
+
+---
+
+<a id="list.count" />
+```gust
+def list.count(item: T) -> integer
+```
+
+Return the number of times `item` appears in the list.
+Works on list[string], list[integer], list[float].
+
+**Parameters**
+
+- `item: T` — The element to count occurrences of.
+
+---
+
+<a id="list.sort" />
+```gust
+def list.sort() -> none
+```
+
+Sort the list in ascending order. Works on list[string], list[integer], list[float].
+
+---
+
+<a id="list.reverse" />
+```gust
+def list.reverse() -> none
+```
+
+Reverse the list in place.
+
+---
+
+<a id="list.join" />
+```gust
+def list.join(sep: string) -> string
+```
+
+Concatenate elements with `sep` between them. list[string] only.
+
+**Parameters**
+
+- `sep: string` — The separator inserted between elements.
+
+**Examples**
+
+```gust
+["a", "b", "c"].join(", ") → "a, b, c"
+```

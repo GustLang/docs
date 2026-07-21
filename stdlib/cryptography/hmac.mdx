@@ -1,0 +1,158 @@
+---
+title: cryptography.hmac
+description: "HMAC (keyed-hash message authentication code, RFC 2104), implemented in pure Gust on top of `cryptography.sha`"
+---
+
+```gust
+use cryptography.hmac
+```
+
+HMAC (keyed-hash message authentication code, RFC 2104), implemented in pure
+Gust on top of `cryptography.sha`. An HMAC proves a message was produced by
+someone holding the secret key and was not altered — the workhorse behind API
+request signing, webhook verification, signed cookies, and JWT (HS256/384/512).
+
+Variants are provided over SHA-256, SHA-512, and SHA-1, each returning the MAC
+as raw `bytes` (`hmac_sha256`) or lowercase hex (`hmac_sha256_hex`). To check a
+MAC, recompute it and compare with `equal`, which is constant-time — comparing
+MACs with `==` leaks, through timing, how many leading bytes matched and can
+let an attacker forge one byte at a time. Always verify with `equal`.
+
+Keys and messages are `bytes`; pass `value as bytes` to MAC a string. The key
+may be any length — HMAC hashes keys longer than the block size and zero-pads
+shorter ones, per the RFC.
+
+**Examples**
+
+```gust
+use cryptography.hmac
+
+def main() -> none
+    key := "shared-secret" as bytes
+    mac := hmac.hmac_sha256(key, "payload" as bytes)
+    received := hmac.hmac_sha256(key, "payload" as bytes)
+    print(hmac.equal(mac, received))   # true — verify with equal, never ==
+end
+```
+
+**On this page:** [`hmac_sha256`](#cryptography.hmac.hmac_sha256) · [`hmac_sha256_hex`](#cryptography.hmac.hmac_sha256_hex) · [`hmac_sha512`](#cryptography.hmac.hmac_sha512) · [`hmac_sha512_hex`](#cryptography.hmac.hmac_sha512_hex) · [`hmac_sha1`](#cryptography.hmac.hmac_sha1) · [`hmac_sha1_hex`](#cryptography.hmac.hmac_sha1_hex) · [`equal`](#cryptography.hmac.equal)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `SHA256_BLOCK` | `integer` | `64` |
+| `SHA1_BLOCK` | `integer` | `64` |
+| `SHA512_BLOCK` | `integer` | `128` |
+
+## Functions
+
+<a id="cryptography.hmac.hmac_sha256" />
+```gust
+def hmac_sha256(key: bytes, msg: bytes) -> bytes
+```
+
+HMAC-SHA-256 of `msg` under `key`, as a 32-byte MAC.
+
+**Parameters**
+
+- `key: bytes` — The secret key (any length).
+- `msg: bytes` — The message to authenticate.
+
+---
+
+<a id="cryptography.hmac.hmac_sha256_hex" />
+```gust
+def hmac_sha256_hex(key: bytes, msg: bytes) -> string
+```
+
+HMAC-SHA-256 of `msg` under `key`, as a 64-character lowercase hex
+string.
+
+**Parameters**
+
+- `key: bytes` — The secret key (any length).
+- `msg: bytes` — The message to authenticate.
+
+---
+
+<a id="cryptography.hmac.hmac_sha512" />
+```gust
+def hmac_sha512(key: bytes, msg: bytes) -> bytes
+```
+
+HMAC-SHA-512 of `msg` under `key`, as a 64-byte MAC.
+
+**Parameters**
+
+- `key: bytes` — The secret key (any length).
+- `msg: bytes` — The message to authenticate.
+
+---
+
+<a id="cryptography.hmac.hmac_sha512_hex" />
+```gust
+def hmac_sha512_hex(key: bytes, msg: bytes) -> string
+```
+
+HMAC-SHA-512 of `msg` under `key`, as a 128-character lowercase hex
+string.
+
+**Parameters**
+
+- `key: bytes` — The secret key (any length).
+- `msg: bytes` — The message to authenticate.
+
+---
+
+<a id="cryptography.hmac.hmac_sha1" />
+```gust
+def hmac_sha1(key: bytes, msg: bytes) -> bytes
+```
+
+HMAC-SHA-1 of `msg` under `key`, as a 20-byte MAC. SHA-1 is legacy;
+prefer `hmac_sha256` unless a protocol mandates SHA-1.
+
+**Parameters**
+
+- `key: bytes` — The secret key (any length).
+- `msg: bytes` — The message to authenticate.
+
+---
+
+<a id="cryptography.hmac.hmac_sha1_hex" />
+```gust
+def hmac_sha1_hex(key: bytes, msg: bytes) -> string
+```
+
+HMAC-SHA-1 of `msg` under `key`, as a 40-character lowercase hex string.
+
+**Parameters**
+
+- `key: bytes` — The secret key (any length).
+- `msg: bytes` — The message to authenticate.
+
+---
+
+<a id="cryptography.hmac.equal" />
+```gust
+def equal(a: bytes, b: bytes) -> bool
+```
+
+Constant-time equality of two byte strings — the safe way to compare a
+received MAC against an expected one. The running time depends only on the
+length, never on how many bytes match, so it leaks nothing an attacker
+could use to forge a MAC. Use this instead of `==` for any secret-dependent
+comparison.
+
+**Parameters**
+
+- `a: bytes` — First byte string.
+- `b: bytes` — Second byte string.
+
+<Warning>
+Never compare a MAC (or any secret) with `==`. That comparison
+short-circuits on the first differing byte, and the timing leak lets
+an attacker recover the correct MAC one byte at a time. Always verify
+with this function.
+</Warning>

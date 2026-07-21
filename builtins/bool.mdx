@@ -1,0 +1,58 @@
+---
+title: bool
+description: "Boolean value"
+---
+
+Boolean value. Backed by `bool` (`stdbool.h`) in the C runtime.
+
+Literals:
+```gust
+  true
+  false
+```
+
+Operators:
+```gust
+  and                 # logical AND
+  or                  # logical OR
+  not                 # logical NOT
+  == !=               # equality
+  is, is not          # identity check (mainly for none)
+```
+
+Casting:
+```gust
+  x as string         # "true" or "false"
+  x as integer        # not supported on bool itself; use `1 if x else 0`
+```
+
+## Dunders
+
+<a id="bool.__string" />
+```gust
+def bool.__string() -> string
+```
+
+Triggered by `print(b)` and f-string interpolation. Returns "true" or "false".
+
+---
+
+<a id="bool.__bool" />
+```gust
+def bool.__bool() -> bool
+```
+
+Triggered by `b as bool`. Identity conversion.
+
+---
+
+<a id="bool.__eq" />
+```gust
+def bool.__eq(other: bool) -> bool
+```
+
+Triggered by `==` and `!=` (auto-negated).
+
+**Parameters**
+
+- `other: bool` — The bool to compare against.

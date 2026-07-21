@@ -1,0 +1,499 @@
+---
+title: Decorators
+description: Every decorator in Gust — the built-in compiler markers (@inline, @no_tco, @static, @test, @post_init, @manual, @raw, @derive, @cfg), user-defined wrapping decorators and factories, dotted registration decorators, and derive-macro application
+---
+
+A decorator is an annotation written on a line **before** a declaration,
+introduced with `@`. It either tells the compiler to treat the declaration
+specially (a built-in marker) or wraps the declaration through code of your own
+(a user decorator, a factory, or a registration call).
+
+```gust
+@inline
+def square(n: integer) -> integer
+    return n * n
+end
+```
+
+Decorators apply to free functions, to methods (`def Type.method()`), and — for
+`@raw` and derive-macro names — to structs. Stack several by putting each on its
+own line; they combine freely, and a built-in marker can sit alongside a user
+decorator:
+
+```gust
+@inline
+@logged
+def square(n: integer) -> integer
+    return n * n
+end
+```
+
+## Built-in decorators
+
+These names are understood directly by the compiler — no function definition is
+needed. Some change how the declaration is emitted to C, some are consumed by an
+earlier compiler pass, and two open the door to manual memory management.
+
+| Decorator     | Applies to        | Effect |
+| ------------- | ----------------- | ------ |
+| `@inline`     | function, method  | Emits the function as `static inline` C — hints the C compiler to inline it. |
+| `@no_tco`     | function          | Disables tail-call optimization, so self-recursion grows the stack normally. |
+| `@static`     | method            | Makes the method an **associated function** — no `self`, called on the type as `Type.fn(...)`. |
+| `@test`       | function          | Marks a test in a `test_*.g` / `*_test.g` file; the test runner synthesizes a `main` that runs it. |
+| `@post_init`  | method            | Runs the method automatically at the end of every constructor, on the new instance. |
+| `@manual`     | function, method  | Suppresses the compiler's automatic refcount injection inside the body. Trusted files only (`G0608`). |
+| `@raw`        | struct            | Exempts the struct from managed-field ownership. Trusted files only (`G0608`). |
+| `@derive`     | handler function  | Registers a compile-time derive macro under a name (see [derive macros](#derive-macros)). |
+| `@cfg`        | function, method, struct | Keeps the declaration only when its predicate holds for the target being built (see [conditional compilation](/lang/conditional-compilation)). |
+
+### `@inline`
+
+Emits the function or method as `static inline`, hinting the C compiler to
+inline the body at each call site. It changes only the generated C — the
+callable and its signature are unchanged.
+
+```gust
+@inline
+def square(n: integer) -> integer
+    return n * n
+end
+```
+
+`@inline` works on a method too:
+
+```gust
+def Point
+
+    x: integer
+    y: integer
+
+end
+
+
+@inline
+def Point.sum() -> integer
+    return x + y
+end
+```
+
+### `@no_tco`
+
+Gust normally rewrites a function's own tail-recursive self-calls into a loop so
+deep recursion does not overflow the stack. `@no_tco` turns that off for one
+function, so self-recursion grows the call stack the ordinary way.
+
+```gust
+@no_tco
+def count_down(n: integer) -> integer
+    return 0 if n <= 0 else count_down(n - 1)
+end
+```
+
+See [Functions → Recursion](/lang/functions#recursion) for the tail-call rewrite
+`@no_tco` opts out of.
+
+### `@static`
+
+On a method, `@static` drops the implicit `self` receiver and makes it an
+**associated function** — invoked on the type itself, not on an instance:
+
+```gust
+def Vec
+
+    x: integer
+    y: integer
+
+end
+
+
+@static
+def Vec.origin() -> Vec
+    return Vec(x: 0, y: 0)
+end
+
+
+def main() -> none
+    o := Vec.origin()
+    print(o.x)
+end
+```
+
+See [Structs → Associated functions](/lang/structs#associated-functions-static)
+for the full treatment.
+
+### `@test`
+
+`@test` marks a test function in a test file (`test_*.g` or `*_test.g`). The test
+runner collects every `@test` function and synthesizes a `main` that drives each
+one through the `testing` harness, so you never write a `main` in a test file.
+The decorator is consumed by that pass — it is never lowered as an ordinary
+decorator.
+
+```gust
+use testing
+
+
+@test
+def test_addition(t: testing.T) -> none
+    testing.assert_int(2 + 2, 4, "arithmetic still works")
+end
+```
+
+See [testing](/stdlib/testing) for the harness and the assertion functions.
+
+### `@post_init`
+
+`@post_init` marks an instance method that runs automatically at the end of
+every constructor, after all fields have been assigned and just before the new
+value is returned. It does not replace the constructor — it appends to it — so
+field initialization always happens first and the hook cannot be skipped or
+overridden.
+
+Use it to derive a computed field, normalize inputs, or validate the built
+value in one place, no matter how the value is constructed:
+
+```gust
+def Circle
+
+    radius: float
+    area: float = 0.0
+
+end
+
+
+@post_init
+def Circle.derive_area() -> none
+    area = 3.14159 * radius * radius
+end
+
+
+def main() -> none
+    c := Circle(radius: 2.0)
+    print(c.area)    # 12.56636 — filled in by the hook
+end
+```
+
+The hook runs for every way of building the value — named-argument and
+positional constructors and a `dict as Struct` cast alike — so `area` is always
+consistent. The method is also an ordinary method: you can still call
+`c.derive_area()` by hand.
+
+Because the constructor invokes it on the new instance with no arguments, a
+`@post_init` method must be an instance method (not `@static`), take no
+parameters, and return `none`. Breaking any of those is error `G0614`.
+
+### `@manual` and `@raw` (unsafe)
+
+These two decorators switch off Gust's automatic memory management for a single
+declaration, so a mistake can leak, double-free, or use-after-free. They are
+restricted to **trusted files**: standard-library sources, or a file that opts
+in with its own `use unsafe`. Using either outside a trusted file is error
+`G0608`.
+
+`@manual` suppresses the compiler's automatic refcount injection (retains and
+scope-exit drops) inside a function or method body, handing you full control of
+reference counting:
+
+```gust
+use unsafe
+
+
+@manual
+def touch(h: integer) -> integer
+    return h
+end
+```
+
+`@raw` exempts a struct from managed-field ownership, so the struct no longer
+deep-retains or deep-drops its refcounted fields:
+
+```gust
+use unsafe
+
+
+@raw
+def Handle
+
+    ptr: integer
+
+end
+```
+
+See [unsafe](/stdlib/unsafe) for the low-level access these decorators pair with.
+
+### `@derive`
+
+`@derive("name")` sits on a **handler function**, registering it as a
+compile-time derive macro answering to `@name`. It is not applied to the struct
+you want to generate code for — that struct is tagged with `@name` instead. The
+whole mechanism is covered under [derive macros](#derive-macros).
+
+### `@cfg`
+
+`@cfg(<predicate>)` gates a function, method, or struct on the target being
+built: the declaration is kept when the predicate holds and dropped before
+analysis otherwise, so a dropped branch may freely reference symbols that exist
+only on another platform. The predicate language and the companion `#gust:cfg`
+import pragma are covered under [conditional compilation](/lang/conditional-compilation).
+
+### Reserved names (`G0606`)
+
+The nine built-in names — `inline`, `no_tco`, `static`, `test`, `post_init`,
+`manual`, `raw`, `derive`, and `cfg` — are **reserved**. You may still declare an
+ordinary function with one of these names, but you may not define a *custom
+decorator* (a `Function`-wildcard template, described below) with one, because
+`@name` always binds to the builtin and the template could never run. The
+compiler rejects that with error `G0606`.
+
+## User decorators
+
+A user decorator is an ordinary top-level function that takes a function and
+returns a function of the **same type** — a transformer. Applying it with
+`@name` replaces the decorated function with `name(original)`.
+
+```gust
+def logged(f: Function) -> Function
+    print("decorator applied")
+    return f
+end
+
+
+@logged
+def add(a: integer, b: integer) -> integer
+    return a + b
+end
+
+
+def main() -> none
+    print(add(10, 5))    # prints "decorator applied" once, then 15
+end
+```
+
+Writing the parameter and return type as a bare `Function` lets the compiler
+fill in the decorated function's own signature per use, so one decorator works
+on functions of any shape. To pin a decorator to a single signature, spell it
+out instead: `Function(integer, integer)[integer]` puts the parameter types
+inside `Function(...)` and the return type inside `[...]`. See
+[Functions → First-class functions](/lang/functions#first-class-functions) for
+the function-value type syntax.
+
+```gust
+def logged(f: Function(integer, integer)[integer]) -> Function(integer, integer)[integer]
+    print("decorator applied")
+    return f
+end
+```
+
+### How it works
+
+The compiler does not inline the wrapper at every call site. Instead it emits a
+**trampoline**:
+
+1. The original body becomes a private `_impl_` function.
+2. A lazy function pointer starts as `NULL`.
+3. The public function, on its **first** call, computes `logged(_impl_add)`,
+   caches the result in the pointer, and forwards to it. Every later call goes
+   straight through the cached pointer.
+
+So the decorator function itself runs exactly once, the first time the decorated
+function is called. The decorated function keeps its original name and signature
+at every call site — callers just call `add(10, 5)` as usual and never see the
+wrapper.
+
+## Decorator factories (`@name(args...)`)
+
+Add arguments to a decorator and it becomes a *factory*. A factory has the same
+shape as an ordinary decorator — it takes the decorated function as its **first
+parameter** — with the `@name(args...)` arguments appended after it. `@scale(10)`
+lowers to `scale(_impl_fn, 10)`.
+
+```gust
+def scale(f: Function, factor: integer) -> Function
+    print("building scale decorator, factor =")
+    print(factor)
+    return f
+end
+
+
+@scale(10)
+def triple(x: integer) -> integer
+    return x * 3
+end
+```
+
+A factory can take several arguments; they follow the function in order:
+
+```gust
+def label(f: Function, tag: string, level: integer) -> Function
+    print(tag)
+    print(level)
+    return f
+end
+
+
+@label("audit", 2)
+def negate(x: integer) -> integer
+    return 0 - x
+end
+```
+
+So a factory is just one ordinary function: the decorated function comes first,
+then its arguments. There is no nested transformer to write. The call
+(`scale(_impl_fn, 10)`) is evaluated **lazily, once**, the first time the
+decorated function is called — exactly like the no-argument form — so the same
+decorator is never rebuilt on later calls.
+
+## Decorators on methods
+
+Every user decorator and factory also applies to a method. A method's underlying
+function takes the receiver as a leading `ref[Struct]` (the `self` pointer), so
+a decorator for `Struct.m() -> R` receives a function of that shape. You may
+spell the parameter explicitly, or leave it as the bare `Function` wildcard and
+let the compiler fill it in per use.
+
+```gust
+def Point
+
+    x: integer
+    y: integer
+
+end
+
+
+def trace_method(f: Function(ref[Point])[integer]) -> Function(ref[Point])[integer]
+    print("wrapping a Point method")
+    return f
+end
+
+
+def with_factor(f: Function, factor: integer) -> Function
+    print("building method decorator, factor =")
+    print(factor)
+    return f
+end
+
+
+@trace_method
+def Point.sum() -> integer
+    return x + y
+end
+
+
+@with_factor(100)
+def Point.product() -> integer
+    return x * y
+end
+```
+
+The trampoline works exactly as it does for free functions: the wrapper runs
+once, lazily, on the first call to the method, and callers still write
+`p.sum()`.
+
+## Registration decorators (`@receiver.method(args...)`)
+
+A **dotted** decorator on a free function is a registration side-effect, not a
+wrapper. `@receiver.method(args...)` lowers to a single method-call statement
+`receiver.method(fn, args...)` prepended to `main`'s body, so the call runs once
+at startup (after constant initialization, before the rest of `main`). The
+decorated function is passed **first**, then the decorator's own arguments, and
+the function itself is returned unchanged.
+
+```gust
+use registry
+
+
+@registry.register("/health")
+def health() -> string
+    return "ok"
+end
+
+
+@registry.register("/status")
+def status() -> string
+    return "up"
+end
+
+
+def main() -> none
+    print("started")
+end
+```
+
+Here each `@registry.register(path)` lowers to `registry.register(health, "/health")`
+(and likewise for `status`), prepended to `main`. The receiver may be a package,
+or a dotted path such as `app.router` (which folds into a field access on the
+leading identifier). The synthesized call is type-checked in `main`'s scope like
+any other, so a wrong receiver, method, or argument count surfaces as an ordinary
+diagnostic. The receiver method takes the function value first, so type its first
+parameter with the function's concrete signature (for example
+`Function()[string]`) rather than the bare `Function` wildcard.
+
+A dotted name never matches a free-function template, so registration decorators
+and wrapping decorators never collide — the compiler routes on the presence of a
+`.` in the decorator name.
+
+## Derive macros
+
+A derive is a compile-time macro that generates Gust source for every
+declaration tagged with its name. It has two sides: the **handler**, registered
+with `@derive("name")`, and the **application**, `@name` on a struct.
+
+The handler is an ordinary Gust function living in an importable package. It
+takes a `derive.Struct` describing the decorated type and returns a `derive.Code`
+fragment — generated source that the compiler parses and splices back into the
+program before analysis:
+
+```gust
+use derive
+
+
+@derive("hello")
+def hello(s: derive.Struct) -> derive.Code
+    return quote
+    @static
+    def ${s.name}.greeting() -> string
+        return ${derive.str("hi " + s.name)}
+    end
+end
+end
+```
+
+Apply it by importing the handler's package and tagging a struct with `@hello`.
+At compile time the handler runs and its output is spliced onto the struct — here
+adding a `greeting()` associated function:
+
+```gust
+use "./myd_pkg" as myd
+
+
+@hello
+def Foo
+
+    x: integer
+
+end
+
+
+def main() -> none
+    print(Foo.greeting())    # prints "hi Foo"
+end
+```
+
+A struct may carry several derive decorators (each yields a separate expansion),
+and a derive that takes arguments — `@describe("acct")` — passes them through to
+the handler via `derive.Struct`. If you already define a method or function with
+the same name the derive would generate, your definition wins and the generated
+one is skipped, so a derive can be customized without inheritance.
+
+Two constraints follow from how derives run — the compiler compiles and executes
+the real handler as a subprocess of itself:
+
+- The handler must live in an **imported package**. A `@derive` handler compiled
+  directly in the entry program is rejected, because there is nothing to import.
+- The handler function is genuine Gust, so it can use the full language to build
+  its output.
+
+See [derive](/stdlib/derive) for the `Struct`, `Field`, and `Code` types, the
+`quote … end` quasi-quotation construct with `${expr}` interpolation holes, and
+the helpers (`derive.str`, `derive.raw`, `derive.join`) used to assemble
+generated source.

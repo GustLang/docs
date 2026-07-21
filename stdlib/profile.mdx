@@ -1,0 +1,183 @@
+---
+title: profile
+description: "A deterministic section profiler"
+---
+
+```gust
+use profile
+```
+
+A deterministic section profiler. Sections are named and opened or closed
+explicitly. Nested and recursive sections are supported; cumulative time is
+counted only on the outermost entry.
+
+A section's stack is thread-local, so two calls that fan out across threads
+will each bill the full elapsed time of their subtree. Keep the body you want
+attributed to a single section on one thread if you need serial numbers.
+
+Alongside timing, the package exposes process memory statistics and runtime
+diagnostics (resident set size, live object count, try-frame depth).
+
+**Examples**
+
+```gust
+use profile
+
+def work() -> none
+    profile.start("work")
+    # ... do stuff ...
+    profile.stop("work")
+end
+
+def main() -> none
+    work()
+    profile.print_stats()
+end
+```
+
+**On this page:** [`start`](#profile.start) · [`stop`](#profile.stop) · [`reset`](#profile.reset) · [`print_stats`](#profile.print_stats) · [`elapsed`](#profile.elapsed) · [`calls`](#profile.calls) · [`memory_peak_rss`](#profile.memory_peak_rss) · [`live_objects`](#profile.live_objects) · [`try_depth`](#profile.try_depth) · [`memory_rss`](#profile.memory_rss) · [`print_memory_stats`](#profile.print_memory_stats)
+
+## Functions
+
+<a id="profile.start" />
+```gust
+def foreign start(name: string) -> none
+```
+
+Begin timing a section. Nested sections are allowed; the same name may
+re-enter (recursion) and only the outermost call adds to cumtime.
+
+**Parameters**
+
+- `name: string` — Label identifying the section to begin timing.
+
+---
+
+<a id="profile.stop" />
+```gust
+def foreign stop(name: string) -> none
+```
+
+End the currently open section. The name must match the most recent start
+on this thread; a mismatch aborts with a clear error.
+
+**Parameters**
+
+- `name: string` — Label of the section to end; must match the most recent start.
+
+---
+
+<a id="profile.reset" />
+```gust
+def foreign reset() -> none
+```
+
+Erase all recorded stats and reset the active stack on this thread.
+
+---
+
+<a id="profile.print_stats" />
+```gust
+def foreign print_stats() -> none
+```
+
+Print a stats table to stdout, sorted by cumulative time (descending).
+
+Columns:
+
+```gust
+ncalls: number of start/stop pairs entered (recursive calls included)
+tottime: total time spent in the section, excluding nested sections
+percall: tottime / ncalls
+cumtime: cumulative time including nested sections (outermost only)
+percall: cumtime / ncalls
+name: section label passed to start/stop
+```
+
+---
+
+<a id="profile.elapsed" />
+```gust
+def foreign elapsed(name: string) -> float
+```
+
+Cumulative time in milliseconds recorded for a section, 0.0 if unknown.
+
+**Parameters**
+
+- `name: string` — Label of the section to read cumulative time for.
+
+---
+
+<a id="profile.calls" />
+```gust
+def foreign calls(name: string) -> integer
+```
+
+Number of times a section has completed (start followed by stop).
+
+**Parameters**
+
+- `name: string` — Label of the section to read the completed-call count for.
+
+---
+
+<a id="profile.memory_peak_rss" />
+```gust
+def foreign memory_peak_rss() -> integer
+```
+
+Peak resident set size since process start, in bytes (getrusage ru_maxrss).
+Linux reports this in kilobytes; we convert to bytes.
+
+---
+
+<a id="profile.live_objects" />
+```gust
+def foreign live_objects() -> integer
+```
+
+Running count of refcounted heap objects initialized minus those freed
+through refcount-reaching-zero. Every GSlice / GDict / GBytes / GBuffer /
+GFuture etc. increments it on allocation and decrements it when its
+refcount hits zero.
+
+Caveat for arena users: objects bump-allocated inside an `os.arena_push`
+region are reclaimed wholesale by `arena_pop` (the pages are freed without
+running destructors), so their allocation increment is never balanced by a
+decrement. In a program that brackets work in per-task arenas, this count
+therefore climbs monotonically and overstates the objects actually live —
+it is not a true live-set size there. It is an accurate leak signal only
+for allocations made outside any arena, where snapshotting before and after
+a workload gives a meaningful delta.
+
+---
+
+<a id="profile.try_depth" />
+```gust
+def foreign try_depth() -> integer
+```
+
+Current depth of the thread-local try/catch (setjmp) stack. A value
+that climbs across requests indicates leaked try frames.
+
+---
+
+<a id="profile.memory_rss" />
+```gust
+def memory_rss() -> integer
+```
+
+Current resident set size of this process in bytes. Reads /proc/self/status
+on Linux; falls back to getrusage() ru_maxrss elsewhere. Returns 0 if neither
+source is available.
+
+---
+
+<a id="profile.print_memory_stats" />
+```gust
+def print_memory_stats() -> none
+```
+
+Print a one-line memory summary to stdout: rss, peak rss, and live
+object count.

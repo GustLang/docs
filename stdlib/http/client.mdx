@@ -1,0 +1,402 @@
+---
+title: http.client
+description: "An HTTP/1.1 client built entirely on the `socket` package (plaintext `http://`) and `cryptography.ssl` (TLS `https://`) — no libcurl"
+---
+
+```gust
+use http.client
+```
+
+An HTTP/1.1 client built entirely on the `socket` package (plaintext `http://`)
+and `cryptography.ssl` (TLS `https://`) — no libcurl. Offers convenience
+functions for the common verbs (get/post/put/delete/patch/head), a general
+`request` for full control over method, body, and headers, and a `Response`
+type carrying the status code, body, and headers. Redirects, chunked transfer
+decoding, and `Content-Encoding` decompression are handled transparently.
+
+Every request-sending function takes an optional `headers` map, and the
+body-bearing ones (`post`/`put`/`patch`/`request`) also take a `json` argument:
+pass any JSON-serializable value and it is encoded into the body with a
+`Content-Type: application/json` header set for you.
+
+**Examples**
+
+```gust
+use http.client
+
+def main() -> none
+    resp := client.post("https://api.example.com/items", json: {"name": "widget"})
+    if resp.ok()
+        print(resp.status_code)   # 201
+        data := resp.json()
+    end
+end
+```
+
+**On this page:** [`Response`](#Response) · [`StreamResponse`](#StreamResponse) · [`get`](#http.client.get) · [`post`](#http.client.post) · [`put`](#http.client.put) · [`delete`](#http.client.delete) · [`patch`](#http.client.patch) · [`head`](#http.client.head) · [`request`](#http.client.request) · [`get_all`](#http.client.get_all) · [`stream`](#http.client.stream) · [`stream_request`](#http.client.stream_request)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `MAX_REDIRECTS` | `integer` | `10` |
+| `USER_AGENT` | `string` | `"gust-http/1.0"` |
+| `REQUEST_TIMEOUT_MS` | `integer` | `60000` |
+
+## `Response`
+
+<a id="Response" />
+The result of an HTTP call.
+
+```gust
+def Response
+
+    status_code: integer
+    method: string
+    url: string
+    body: string
+    headers: Headers
+    cookies: dict[string, string]
+    content_type: string
+
+end
+```
+
+**Fields**
+
+- `status_code: integer` — The numeric HTTP status code of the response.
+- `method: string` — The HTTP method of the request that produced this response (e.g. "GET"), reflecting the final method after any redirects.
+- `url: string` — The URL that produced this response — the final URL after any redirects were followed.
+- `body: string` — The response body, decoded from any `Content-Encoding`.
+- `headers: Headers` — Response headers as a case-insensitive `Headers` view. Look a value up with `resp.headers.get(name)` or `resp.headers[name]`.
+- `cookies: dict[string, string]` — The cookies the server set, parsed from `Set-Cookie` into a name → value map.
+- `content_type: string` — The response's media type without parameters, e.g. "application/json" from a `Content-Type: application/json; charset=utf-8` header. "" when the header is absent.
+
+**Methods**
+
+<a id="Response.ok" />
+```gust
+def Response.ok() -> bool
+```
+
+True if the status code is in the 2xx range.
+
+---
+
+<a id="Response.is_json" />
+```gust
+def Response.is_json() -> bool
+```
+
+True when the response's Content-Type announces JSON.
+
+---
+
+<a id="Response.json" />
+```gust
+def Response.json() -> Any
+```
+
+Parse the response body as JSON into native Gust values: an object
+becomes a `dict[string, Any]`, an array a `list[Any]`, and scalars their
+matching primitive.
+
+**Raises**
+
+- `ValueError` — the request body is not valid JSON.
+
+## `StreamResponse`
+
+<a id="StreamResponse" />
+A streaming HTTP response. The status code and response headers are
+available immediately; the body is pulled incrementally with `read`, which
+returns empty bytes once the body is fully consumed. Obtain one from
+`stream` or `stream_request`, and `close` it when done.
+
+```gust
+def StreamResponse
+
+    status_code: integer
+    headers: dict[string, string]
+    _sock: Stream
+    _chunked: bool
+
+end
+```
+
+**Fields**
+
+- `status_code: integer` — The numeric HTTP status code of the response.
+- `headers: dict[string, string]` — Response headers mapping name → value, names in their original casing.
+- `_sock: Stream` — The live connection the body is pulled from. Don't touch it directly.
+- `_chunked: bool` — True when the body uses `Transfer-Encoding: chunked` framing, which `read` decodes; otherwise bytes are pulled verbatim until the peer closes.
+
+**Methods**
+
+<a id="StreamResponse.ok" />
+```gust
+def StreamResponse.ok() -> bool
+```
+
+True if the status code is in the 2xx range.
+
+---
+
+<a id="StreamResponse.read" />
+```gust
+def StreamResponse.read() -> bytes
+```
+
+Pull the next chunk of the response body, blocking until data arrives.
+Returns empty bytes once the body is fully consumed, which is the signal to
+stop reading. Chunk boundaries follow the network (or the chunked framing),
+not the payload — one logical record may span two chunks, or several may
+share one.
+
+---
+
+<a id="StreamResponse.close" />
+```gust
+def StreamResponse.close() -> none
+```
+
+Release the underlying connection. Call this once done with the response,
+whether or not the body was fully read.
+
+<Warning>
+Using the response after `close` is undefined behavior.
+</Warning>
+
+## Functions
+
+<a id="http.client.get" />
+```gust
+def get(url: string, headers: dict[string, string]) -> Response
+```
+
+Issue an HTTP GET request and return the response.
+
+**Parameters**
+
+- `url: string` — The URL to request.
+- `headers: dict[string, string]` — Request headers mapping name → value.
+
+**Raises**
+
+- `IOError` — If the request fails at the network or transport layer.
+- `TLSError` — If an `https://` handshake fails.
+
+---
+
+<a id="http.client.post" />
+```gust
+def post(
+    url: string,
+    body: string,
+    headers: dict[string, string],
+    json: Any,
+) -> Response
+```
+
+Issue an HTTP POST and return the response.
+
+**Parameters**
+
+- `url: string` — The URL to request.
+- `body: string` — The request body to send; pass "" for none.
+- `headers: dict[string, string]` — Request headers mapping name → value.
+- `json: Any` — A JSON-serializable value to send as the body; when given, it is encoded and a `Content-Type: application/json` header is set, overriding `body`.
+
+**Raises**
+
+- `IOError` — If the request fails at the network or transport layer.
+- `TLSError` — If an `https://` handshake fails.
+
+---
+
+<a id="http.client.put" />
+```gust
+def put(
+    url: string,
+    body: string,
+    headers: dict[string, string],
+    json: Any,
+) -> Response
+```
+
+Issue an HTTP PUT and return the response.
+
+**Parameters**
+
+- `url: string` — The URL to request.
+- `body: string` — The request body to send; pass "" for none.
+- `headers: dict[string, string]` — Request headers mapping name → value.
+- `json: Any` — A JSON-serializable value to send as the body; when given, it is encoded and a `Content-Type: application/json` header is set, overriding `body`.
+
+**Raises**
+
+- `IOError` — If the request fails at the network or transport layer.
+- `TLSError` — If an `https://` handshake fails.
+
+---
+
+<a id="http.client.delete" />
+```gust
+def delete(url: string, headers: dict[string, string]) -> Response
+```
+
+Issue an HTTP DELETE request and return the response.
+
+**Parameters**
+
+- `url: string` — The URL to request.
+- `headers: dict[string, string]` — Request headers mapping name → value.
+
+**Raises**
+
+- `IOError` — If the request fails at the network or transport layer.
+- `TLSError` — If an `https://` handshake fails.
+
+---
+
+<a id="http.client.patch" />
+```gust
+def patch(
+    url: string,
+    body: string,
+    headers: dict[string, string],
+    json: Any,
+) -> Response
+```
+
+Issue an HTTP PATCH and return the response.
+
+**Parameters**
+
+- `url: string` — The URL to request.
+- `body: string` — The request body to send; pass "" for none.
+- `headers: dict[string, string]` — Request headers mapping name → value.
+- `json: Any` — A JSON-serializable value to send as the body; when given, it is encoded and a `Content-Type: application/json` header is set, overriding `body`.
+
+**Raises**
+
+- `IOError` — If the request fails at the network or transport layer.
+- `TLSError` — If an `https://` handshake fails.
+
+---
+
+<a id="http.client.head" />
+```gust
+def head(url: string, headers: dict[string, string]) -> Response
+```
+
+Issue an HTTP HEAD request — same headers as GET, no body.
+
+**Parameters**
+
+- `url: string` — The URL to request.
+- `headers: dict[string, string]` — Request headers mapping name → value.
+
+**Raises**
+
+- `IOError` — If the request fails at the network or transport layer.
+- `TLSError` — If an `https://` handshake fails.
+
+---
+
+<a id="http.client.request" />
+```gust
+def request(
+    method: string,
+    url: string,
+    body: string,
+    headers: dict[string, string],
+    json: Any,
+) -> Response
+```
+
+Send any method with optional body, headers, and JSON payload.
+
+**Parameters**
+
+- `method: string` — The HTTP method to use (e.g. "GET", "POST").
+- `url: string` — The URL to request.
+- `body: string` — The request body to send; pass "" for none.
+- `headers: dict[string, string]` — Request headers mapping name → value.
+- `json: Any` — A JSON-serializable value to send as the body; when given, it is encoded and a `Content-Type: application/json` header is set unless one is already present in `headers`, overriding `body`.
+
+**Raises**
+
+- `IOError` — If the request fails at the network or transport layer.
+- `TLSError` — If an `https://` handshake fails.
+
+---
+
+<a id="http.client.get_all" />
+```gust
+def get_all(urls: list[string]) -> list[Response]
+```
+
+Issue an HTTP GET for every URL concurrently and return the
+responses in the same order as `urls`. Network latency overlaps across
+requests, so fetching N independent URLs takes roughly as long as the
+slowest one rather than their sum.
+
+Each request is independent; a failure in one (which raises `IOError`
+from the transport) aborts the batch like any other uncaught error. For
+per-URL error handling, call `get` yourself inside a `try`.
+
+**Parameters**
+
+- `urls: list[string]` — The URLs to fetch.
+
+**Raises**
+
+- `IOError` — If any request fails; the failure aborts the whole batch.
+
+---
+
+<a id="http.client.stream" />
+```gust
+def stream(url: string) -> StreamResponse
+```
+
+Issue an HTTP GET whose body is streamed rather than buffered, returning a
+`StreamResponse` to pull chunks from with `read`.
+
+**Parameters**
+
+- `url: string` — The URL to request.
+
+**Raises**
+
+- `IOError` — If the connection fails before the response headers arrive.
+- `TLSError` — If an `https://` handshake fails.
+
+---
+
+<a id="http.client.stream_request" />
+```gust
+def stream_request(
+    method: string,
+    url: string,
+    body: string,
+    headers: dict[string, string],
+) -> StreamResponse
+```
+
+Send any method whose response body is streamed rather than buffered. The
+full-control counterpart to `stream`. The returned `StreamResponse` already
+carries the status code and response headers; its body is pulled with `read`.
+
+**Parameters**
+
+- `method: string` — The HTTP method to use (e.g. "GET", "POST").
+- `url: string` — The URL to request.
+- `body: string` — The request body to send; pass an empty string for none.
+- `headers: dict[string, string]` — Request headers mapping name → value; pass an empty dict for none.
+
+**Raises**
+
+- `IOError` — If the connection fails before the response headers arrive.
+- `TLSError` — If an `https://` handshake fails.

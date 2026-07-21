@@ -1,0 +1,302 @@
+---
+title: yaml
+description: "Line-cursor block parser"
+---
+
+```gust
+use yaml
+```
+
+Line-cursor block parser. `YamlParser` advances over the source line by line,
+turning indentation-based block mappings and sequences, plain and block
+scalars, and document boundaries into native values.
+
+**On this page:** [`YamlParser`](#YamlParser) · [`FlowScanner`](#FlowScanner) · [`YamlError`](#YamlError) · [`parse`](#yaml.parse) · [`encode`](#yaml.encode)
+
+## `YamlParser`
+
+<a id="YamlParser" />
+Line cursor over the YAML source. `lines` holds the raw lines
+(mutated in place when a `-` sequence dash is rewritten to spaces);
+`idx` is the current line; `ended` latches once a `...`/`---` document
+boundary is reached.
+
+```gust
+def YamlParser
+
+    lines: list[string]
+    idx: integer
+    ended: bool
+
+end
+```
+
+**Fields**
+
+- `lines: list[string]`
+- `idx: integer`
+- `ended: bool`
+
+**Methods**
+
+<a id="YamlParser.at_end" />
+```gust
+def YamlParser.at_end() -> bool
+```
+
+True at end of input or once a document boundary has been seen.
+
+---
+
+<a id="YamlParser.cur" />
+```gust
+def YamlParser.cur() -> string
+```
+
+The current raw line, or `""` past the end.
+
+---
+
+<a id="YamlParser.skip_insignificant" />
+```gust
+def YamlParser.skip_insignificant() -> none
+```
+
+Advance past blank and comment-only lines. Latches `ended` at a
+`...` or `---` document boundary.
+
+---
+
+<a id="YamlParser.parse_node" />
+```gust
+def YamlParser.parse_node(ind: integer) -> Any
+```
+
+Parse the block node beginning at indentation `ind` into a native
+value: a sequence, a mapping, or a single scalar line.
+
+---
+
+<a id="YamlParser.parse_child" />
+```gust
+def YamlParser.parse_child(parent_indent: integer) -> Any
+```
+
+Parse the value block under a `key:` (or `-`) whose own indent is
+`parent_indent`. A deeper block becomes that value; a same-indent
+sequence is also accepted; otherwise the value is `none`.
+
+---
+
+<a id="YamlParser.parse_mapping" />
+```gust
+def YamlParser.parse_mapping(ind: integer) -> dict[string, Any]
+```
+
+Parse a block mapping into a `dict[string, Any]`: consecutive
+`key: value` lines at indentation `ind`.
+
+---
+
+<a id="YamlParser.parse_sequence" />
+```gust
+def YamlParser.parse_sequence(ind: integer) -> list[Any]
+```
+
+Parse a block sequence into a `list[Any]`: `-` entries at
+indentation `ind`. Each entry is parsed by rewriting its dash to spaces
+and parsing the remaining content as a node at the content column.
+
+---
+
+<a id="YamlParser.parse_block_scalar" />
+```gust
+def YamlParser.parse_block_scalar(
+    parent_indent: integer,
+    header: string,
+) -> string
+```
+
+Collect a literal (`|`) or folded (`>`) block scalar into a string.
+Lines more indented than `parent_indent` belong to the block; the
+block's own indentation (taken from its first content line) is
+stripped.
+
+## `FlowScanner`
+
+<a id="FlowScanner" />
+Cursor over an inline flow node string. `pos` is the byte offset;
+`line` is carried only for error reporting.
+
+```gust
+def FlowScanner
+
+    s: string
+    pos: integer
+    line: integer
+
+end
+```
+
+**Fields**
+
+- `s: string`
+- `pos: integer`
+- `line: integer`
+
+**Methods**
+
+<a id="FlowScanner.peek" />
+```gust
+def FlowScanner.peek() -> string
+```
+
+Current character, or `""` at end.
+
+---
+
+<a id="FlowScanner.skip_ws" />
+```gust
+def FlowScanner.skip_ws() -> none
+```
+
+Skip spaces and tabs.
+
+---
+
+<a id="FlowScanner.parse_value" />
+```gust
+def FlowScanner.parse_value() -> Any
+```
+
+Parse one flow value into a native value: nested collection, quoted
+scalar, or plain scalar up to the next `,`/`]`/`}`.
+
+---
+
+<a id="FlowScanner.read_double" />
+```gust
+def FlowScanner.read_double() -> string
+```
+
+Read a double-quoted scalar from the cursor.
+
+---
+
+<a id="FlowScanner.read_single" />
+```gust
+def FlowScanner.read_single() -> string
+```
+
+Read a single-quoted scalar from the cursor (handling `''`).
+
+---
+
+<a id="FlowScanner.read_flow_key" />
+```gust
+def FlowScanner.read_flow_key() -> string
+```
+
+Read a mapping key inside a flow map: a quoted scalar, or a plain
+token up to the `:` separator.
+
+---
+
+<a id="FlowScanner.parse_seq" />
+```gust
+def FlowScanner.parse_seq() -> Any
+```
+
+Parse a `[...]` flow sequence into a `list[Any]`.
+
+**Raises**
+
+- `YamlError` — when the sequence is unterminated or an element separator is missing.
+
+---
+
+<a id="FlowScanner.parse_map" />
+```gust
+def FlowScanner.parse_map() -> Any
+```
+
+Parse a `{...}` flow mapping into a `dict[string, Any]`.
+
+**Raises**
+
+- `YamlError` — when the mapping is unterminated or an entry separator is missing.
+
+## Functions
+
+<a id="yaml.parse" />
+```gust
+def parse(source: string) -> dict[string, Any]
+```
+
+Parse a YAML document and return its root mapping as a
+`dict[string, Any]`. Only the first document is read (parsing stops at a
+`...` or a second `---`).
+
+Nested mappings are `dict[string, Any]`, sequences are `list[Any]`, and
+scalars are `integer` / `float` / `bool` / `string` / `none`. Read a
+value with an `as` cast and fill a struct with `parse(src) as MyConfig`.
+
+**Parameters**
+
+- `source: string` — The YAML text to parse.
+
+**Raises**
+
+- `YamlError` — when a flow collection is malformed or the document root is not a mapping.
+
+---
+
+<a id="yaml.encode" />
+```gust
+def encode(root: dict[string, Any]) -> string
+```
+
+Serialize a mapping to a YAML block document.
+
+Nested `dict[string, Any]` values become block mappings, `list[Any]`
+values become block sequences, and scalars are rendered as `null`,
+`true` / `false`, integers, floats, or plain strings. A string is
+double-quoted only when a plain rendering would be ambiguous — empty,
+padded with whitespace, containing a comment or key-colon sequence, or
+one that would parse back as a bool, number, or `null`. Empty
+collections render inline as `{}` and `[]`.
+
+The output round-trips through `parse`: `parse(encode(m))` reconstructs
+an equivalent mapping.
+
+**Parameters**
+
+- `root: dict[string, Any]` — The mapping to serialize.
+
+**Examples**
+
+```gust
+use yaml
+
+def main() -> none
+    doc: dict[string, Any] = {"name": "gust", "port": 8080}
+    print(yaml.encode(doc))   # name: gust\nport: 8080
+end
+```
+
+## Errors
+
+<a id="YamlError" />
+```gust
+error YamlError(message: string, line: integer)
+```
+
+Raised by `parse` on malformed YAML (for example an unterminated flow
+collection or a non-mapping document root).
+
+Fields:
+
+```gust
+message: human-readable description of the parse failure.
+line: the 1-based source line the error was detected on.
+```

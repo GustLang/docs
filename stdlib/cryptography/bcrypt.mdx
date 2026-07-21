@@ -1,0 +1,107 @@
+---
+title: cryptography.bcrypt
+description: "bcrypt password hashing, backed by the system libxcrypt (`crypt_rn` / `crypt_gensalt_rn` with the `$2b$` prefix)"
+---
+
+```gust
+use cryptography.bcrypt
+```
+
+bcrypt password hashing, backed by the system libxcrypt (`crypt_rn` /
+`crypt_gensalt_rn` with the `$2b$` prefix). bcrypt is a deliberately slow,
+salted password hash: each `hash` embeds a fresh random salt and a tunable
+`cost` (work factor) directly in the returned string, so the digest is
+self-describing and `verify` needs nothing but the password and that string.
+
+Use this for storing user passwords — never a plain hash like SHA-256, which
+is far too fast to resist offline guessing. The implementation rides the
+audited system crypt library rather than re-rolling Blowfish in Gust.
+
+The cost is a base-2 exponent on the number of rounds (each +1 doubles the
+work). 12 (`DEFAULT_COST`) is a reasonable default on current hardware; raise
+it as machines get faster. `verify` is total — it returns `false` for a wrong
+password or a malformed stored hash, and never raises, so it is safe to call
+directly on untrusted input in an authentication path.
+
+Note bcrypt only considers the first 72 bytes of a password (a property of the
+algorithm); longer inputs are silently truncated by the underlying library.
+
+**Examples**
+
+```gust
+use cryptography.bcrypt
+
+def main() -> none
+    stored := bcrypt.hash_default("hunter2")   # store this string
+    print(bcrypt.verify("hunter2", stored))    # true
+    print(bcrypt.verify("guess", stored))      # false
+end
+```
+
+**On this page:** [`hash`](#cryptography.bcrypt.hash) · [`hash_default`](#cryptography.bcrypt.hash_default) · [`verify`](#cryptography.bcrypt.verify)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `DEFAULT_COST` | `integer` | `12` |
+| `SALT_BYTES` | `integer` | `16` |
+
+## Functions
+
+<a id="cryptography.bcrypt.hash" />
+```gust
+def hash(password: string, cost: integer) -> string
+```
+
+Hash `password` with bcrypt at the given `cost` and return the
+self-describing `$2b$` digest string (salt + cost + hash). A fresh random
+salt is drawn from the OS CSPRNG for every call, so hashing the same
+password twice yields different strings — both verify.
+
+`cost` is the work factor (4-31); each step doubles the rounds. See
+`DEFAULT_COST` for a sensible default.
+
+**Parameters**
+
+- `password: string` — The plaintext password (only its first 72 bytes are used).
+- `cost: integer` — Work factor, 4-31.
+
+**Raises**
+
+- `ValueError` — `cost` is outside the 4-31 range.
+- `IOError` — No system CSPRNG is available to draw the salt.
+
+---
+
+<a id="cryptography.bcrypt.hash_default" />
+```gust
+def hash_default(password: string) -> string
+```
+
+Hash `password` with bcrypt at `DEFAULT_COST` (12) — the common case.
+
+**Parameters**
+
+- `password: string` — The plaintext password (only its first 72 bytes are used).
+
+**Raises**
+
+- `IOError` — No system CSPRNG is available to draw the salt.
+
+---
+
+<a id="cryptography.bcrypt.verify" />
+```gust
+def verify(password: string, stored: string) -> bool
+```
+
+Check `password` against a `stored` bcrypt digest (as produced by
+`hash`). Returns `true` only on a match. The comparison is constant-time
+over the digest, and a malformed `stored` value returns `false` rather than
+raising — safe to call directly in an auth path.
+
+**Parameters**
+
+- `password: string` — The plaintext password to check.
+- `stored: string` — A `$2b$` digest previously returned by `hash`.

@@ -1,0 +1,53 @@
+---
+title: ioctl
+description: "Device control through the POSIX `ioctl` call"
+---
+
+```gust
+use ioctl
+```
+
+Device control through the POSIX `ioctl` call. A request is identified by its
+numeric code (device-specific, defined by the kernel headers for the device in
+question). The third argument is passed straight through as an `integer`: for
+requests that read or write a struct, allocate a buffer with `unsafe.alloc`
+and pass its address; for requests that take a scalar by value, pass the value
+directly; for requests that take nothing, pass 0.
+
+Available on Linux and macOS. On Windows every call fails gracefully
+(returns -1) rather than failing to link.
+
+**Examples**
+
+```gust
+use ioctl
+use unsafe
+
+def main() -> none
+    fd := ...                       # an open device fd
+    buf := unsafe.alloc(256)        # room for the request's struct
+    rc := ioctl.call(fd, 0x4600, buf)   # e.g. FBIOGET_VSCREENINFO
+    if rc == 0
+        width := unsafe.load32(buf, 0)  # first field of the struct
+    end
+    unsafe.free(buf)
+end
+```
+
+**On this page:** [`call`](#ioctl.call)
+
+## Functions
+
+<a id="ioctl.call" />
+```gust
+def foreign call(fd: integer, request: integer, arg: integer) -> integer
+```
+
+Issue `request` on `fd`, passing `arg` as the request's third argument.
+Returns the call's result (0 on success for most requests), or -1 on error.
+
+**Parameters**
+
+- `fd: integer` — An open file descriptor for the device.
+- `request: integer` — The device-specific request code from the kernel headers.
+- `arg: integer` — The request's third argument — an address of a struct buffer, a scalar value, or 0 when the request takes none.

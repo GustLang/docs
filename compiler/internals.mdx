@@ -1,0 +1,253 @@
+---
+title: Compiler internals
+description: How the Gust compiler turns source into a native binary, end to end
+---
+
+This page is for people who want to hack on the compiler, write a new stdlib package, or understand exactly what `gust run` does to their code. If you're writing Gust programs, you don't need any of this.
+
+## Pipeline
+
+```
+source.g  →  Lexer  →  Parser  →  Analyzer  →  CodeGen  →  C source  →  GCC  →  binary
+```
+
+The compiler is **self-hosted** — written in Gust and able to build itself. Everything except the final `gcc` is Gust code under `gustc/`. (An original Python implementation still lives in `python_compiler/`, but it is a frozen emergency bootstrap seed only — never used for day-to-day work. The normal way to rebuild `gustc` is with an existing `gustc` binary.) The runtime that your binary links against is C — see `runtime/`.
+
+## Source layout
+
+```
+stdlib/ast/                         # Compiler front-end, shipped as a stdlib package
+├── ast.g              # AST node definitions + helpers (every node carries a SrcSpan)
+├── lexer.g            # Tokenizer
+├── tokens.g           # Token types and keywords
+├── parser.g           # Recursive descent parser
+├── markup.g           # GML markup-template parsing
+└── parse.g            # `ast.parse(source)` → Program (also usable by tooling)
+
+gustc/                              # Self-hosted compiler (Gust source)
+├── gustc.g            # Entry point: assembles the `cli.app` command group
+├── commands/          # One file per subcommand (build, run, test, check,
+│                      #   format, emit, explain, add/install/update/remove,
+│                      #   repl, lsp, flash, …); commands/core/ holds the
+│                      #   shared compile pipeline (pipeline.g)
+├── driver/            # config.g (gust.toml loader, via the `toml` pkg),
+│                      #   derive.g (`@derive` comptime macros), decorators.g,
+│                      #   test_main.g (test-entry synthesis)
+├── analyzer/          # Semantic analysis: analyzer.g, register.g, imports.g,
+│                      #   inference.g, inheritance.g, mangle.g, diagnostics.g,
+│                      #   rule_dispatch.g (runs the lint/style rule registry)
+├── rules/             # Lint/style rule registry: registry.g + rule.g +
+│                      #   one dir per category (names, types, mutability, …)
+├── codegen/           # AST → C
+│   ├── decl.g, stmt.g, expr.g  # Declaration / statement / expression emit
+│   ├── decl_generics.g, decl_tuples.g  # Monomorphization + tuple typedefs
+│   ├── classes.g      # Subclassing: class tables, vtable dispatch, super
+│   ├── stmt_async.g   # `def!` / `for!` / `while!` / `spawn` lowering
+│   ├── expr_fstring.g, expr_comp.g  # F-strings + list/dict comprehensions
+│   ├── infer.g, scope.g
+│   ├── tags.g         # Type-tag reader (the string type representation)
+│   └── inspect.g      # Compile-time `inspect` package lowering
+├── backend/           # toolchain.g (CC discovery, link spec, target triples
+│                      #   incl. wasm), pico.g (RP2350 `.uf2`), cache.g
+│                      #   (object cache, ~/.cache/gust/objcache/)
+├── diagnostics/       # Diagnostic rendering: render.g, sink.g, suggest.g,
+│                      #   types.g (Rust-style source-line + caret output)
+├── pkg/               # fetch.g (GitHub dependency resolver, gust.lock) +
+│                      #   loader.g
+├── formatter/         # `gust format` (core.g, wrap.g, blanks.g, spacing.g,
+│                      #   import_sort.g, markup.g)
+├── lsp/               # Language server (server.g + one handler per feature)
+├── repl/              # Interactive REPL (repl.g, eval.g, input.g, state.g)
+├── gust_cli/          # CLI helpers (init.g, completion.g, explain.g, …)
+└── support/           # builtins.g (single source of truth for built-in
+                       #   methods), type_tags.g, context.g, paths.g
+```
+
+The front-end (lexer, parser, AST) lives in the `stdlib/ast/` package rather
+than inside `gustc/`, so `gustc` imports it like any other package (`use
+Program, Lexer, Parser from ast`) and your own tooling can too —
+`use parse from ast` lexes and parses Gust source to a `Program` AST.
+
+## Lexer
+
+Plain hand-written tokenizer. Interesting bits:
+
+- Tracks line + column on every token so errors can point at the source.
+- Newline significance is decided by a frame stack: a bracket frame (`(`, `[`, `{`) suppresses newlines — which is how multi-line calls and struct literals work without continuation characters — while a block frame, pushed for a lambda body opened inside a call's argument list, makes them significant again so `end`-closed blocks nest inside brackets.
+- F-string tokens (`f"..."`) carry the whole literal; the parser rescans each `{...}` block through the lexer and parser recursively.
+
+Token types and the full keyword list live in [`stdlib/ast/tokens.g`](https://github.com/GustLang/gust/blob/main/stdlib/ast/tokens.g).
+
+## Parser
+
+Recursive descent with precedence climbing for expressions. Notable:
+
+- `name := expr` is a distinct statement form (walrus declaration).
+- `StructName(...)` is parsed as struct initialization when the identifier begins with an uppercase letter — otherwise it's a call.
+- `try` / `catch`, and `match` are all statement forms, not expressions.
+
+Expression precedence (low to high):
+
+1. Ternary (`value if cond else other`)
+2. `or`
+3. `and`
+4. `not`
+5. Comparison (`==`, `!=`, `<`, `>`, `<=`, `>=`, `in`, `not in`, `is`, `is not`)
+6. Bitwise or (`|`)
+7. Bitwise xor (`^`)
+8. Bitwise and (`&`)
+9. Shifts (`<<`, `>>`)
+10. Addition / subtraction
+11. Multiplication / division / floor-division / modulo
+12. Type cast (`as`)
+13. Unary minus
+14. Postfix (`.field`, `.method(...)`, `[index]`)
+15. Primary
+
+## Analyzer
+
+Type-checks the AST and resolves names. Walks every declaration top-down and every expression bottom-up. Inference (`gustc/analyzer/inference.g`) decides the type of `x := <expr>` from `<expr>`'s type.
+
+AST dispatch uses the **visitor pattern**, not type-tag conditional chains: every node has an `accept` method, and `CodeGen` and `Analyzer` implement the matching `visit_*` handlers. Lint/style checks live in a **rule registry** (`gustc/rules/`, one subdirectory per category) run by `gustc/analyzer/rule_dispatch.g`, rather than being scattered through the analyzer.
+
+Each rule is a `Rule` object registered in `gustc/rules/registry.g:all_rules()`; `rule_dispatch.g` builds a per-node-kind index over them and fires only the rules that registered for the node's kind. Diagnostics carry a coded prefix — `G####` for analyzer errors, `W####` for warnings, `F###` for formatter fixes — banded by category. The full catalogue (every code, its name, severity, and whether an autofix exists) is the spec at [`gustc/rules/RULES.md`](https://github.com/GustLang/gust/blob/main/gustc/rules/RULES.md). Many lint rules also emit an autofix that `gust check --fix` and `gust format` apply in place.
+
+Things the analyzer enforces:
+
+- All variables are declared before use.
+- Every `return` matches the declared return type.
+- Every `raise` uses a declared error type with a matching field list.
+- Struct and error initialization uses only named arguments, and covers every field.
+- Interface implementations line up in type.
+- `//` and `%` are `integer`-only.
+
+## Code generator
+
+`gustc/codegen/` (entry point `codegen_program`) emits C in a fixed dependency order:
+
+1. `#include "g_runtime.h"` + `<inttypes.h>` + the `<sys/resource.h>` stack-limit guard
+2. Inline C from top-level `foreign """..."""` blocks (verbatim)
+3. Error type structs + ID enum
+4. Enum definitions
+5. Struct / ADT forward declarations
+6. Interface vtable typedefs
+7. Tuple struct typedefs (multi-return) + function-pointer typedefs
+8. Struct / ADT bodies
+9. `GValue` helpers, struct constructors, type/ADT constructors
+10. Function + method forward declarations
+11. Closure adapters (`__cl_<sym>`) and default-`__string` forward decls
+12. Async wrappers (args structs + thread functions for `def!`/`for!`/`while!`/`spawn`)
+13. Interface adapter + constructor functions
+14. Constants
+15. Default `__string` method bodies
+16. File-scope helpers, then function and method bodies (`int main()` is just the function named `main`)
+
+Type mapping:
+
+| Gust        | C           |
+|-------------|-------------|
+| `string`    | `char*`     |
+| `integer`   | `int64_t`   |
+| `float`     | `double`    |
+| `bool`      | `bool`      |
+| `none`      | `void*` (NULL) |
+| `Any`       | `GValue`    |
+| `bytes`     | `GBytes*`   |
+| `list[T]`   | `GSlice*`   |
+| `dict[K,V]` | `GDict*`    |
+| Union types | `GValue`    |
+| Tuple `(T, U)` | `_Tuple_T_U` struct |
+| `ref[T]`    | `GBox*` (heap cell) |
+| Structs     | C typedef struct |
+| Interfaces  | vtable struct with function pointers |
+| `Function(...)` values / lambdas | `GClosure*` |
+
+Internally, types are represented as **strings** ("type tags"), not an ADT — e.g. `[]integer`, `dict[K,V]`, `union(A|B)`, `(integer,string)`, `ref[T]`, `fn(p1;p2)->R`. `gustc/codegen/tags.g` holds the canonical readers (`infer_c_from_tag`, `mangle_tuple_tag`). Generics are **monomorphized** at codegen time: a worklist over discovered construction/call shapes emits one specialized copy per concrete instantiation, with mangled names like `Box__integer`.
+
+### Tail-call optimization
+
+A `return fname(...)` where `fname` is the enclosing function and the arg count matches the parameter list is rewritten into a parameter reassignment + `goto __tco_entry`. Self-recursion runs in O(1) stack.
+
+Not yet TCO'd:
+
+- Named-argument tail calls.
+- Sibling-function tail calls.
+- Tail calls inside `try` / `for` / `while`.
+
+### Concurrency (the `!` suffix)
+
+Concurrency is **explicit and opt-in** — nothing runs in parallel unless you ask for it with a `!` suffix. There is no global auto-parallelizer (an earlier release had one; it was removed) and no `await` keyword.
+
+- `def! name(...)` — inside the body, consecutive independent call sequences spawn in parallel threads, joined before the next dependent use.
+- `for! i in iter` — each iteration spawns a thread; all are joined at loop end. Falls back to sequential (with a `/* for! fell back ... */` comment in the emitted C) when the loop shape doesn't support it (tuple unpack, dict iteration, or `break`/`continue`/`raise`/`return` in the body).
+- `while! cond` — spawns the whole loop as a detached background thread. Locals it reads are snapshotted by value at spawn time; writes to a captured local are rejected at the C compile stage.
+
+Plain `def`/`for`/`while` are strictly sequential. The codegen emits async wrappers (args structs + thread functions) only for the `!`-marked constructs.
+
+Async is pthread-backed via the runtime's `g_future.c` / `g_spawn.c`.
+
+### Interface dispatch
+
+For each interface, a vtable struct with function pointers. For each struct implementing the interface, adapter functions that cast `void*` back to the struct. Method calls become one indirect call — comparable to a C++ `virtual` call.
+
+### Closures and lambdas
+
+First-class function values (`Function(...)` types) and block lambdas (`def(x) -> R … end`) compile to `GClosure*` — a heap struct holding a function pointer plus a captured environment. Captures are by value by default; a local that a lambda reassigns is lifted into a `GBox` cell so the mutation is visible on both sides. Decorators (`@name`) are lowered as ordinary functions that receive and return a closure.
+
+### Diagnostics
+
+User-facing errors and warnings are rendered by `gustc/diagnostics/` (not the raw C compiler). `render.g` formats a `Diagnostic` into a Rust-style block: a `severity[CODE]: title` header, a `--> file:line:col` locator, the offending source line with a caret underline, optional notes/help, and a `For more information, run gust explain <CODE>` footer. `suggest.g` powers "did you mean?" name suggestions. Colors are suppressed when output isn't a TTY (and over LSP).
+
+## Targets
+
+Beyond the native host, `gustc` cross-compiles and emits for other backends, all routed through `gustc/toolchain.g`:
+
+- **Cross targets** — `--target <arch>-<os>-<abi>` (e.g. `x86_64-linux-musl`, `aarch64-macos-none`) build through `zig cc`'s bundled sysroots. `--static` links a static binary.
+- **wasm** — `--target wasm` compiles through Emscripten (`emcc`), emitting a `.js` loader + `.wasm` (plus a servable `index.html`). `gust run --target wasm` builds the bundle and serves it on a local dev server. The browser-only packages (`web.dom`, `web.document`, etc.) require this target; packages with no browser story are rejected up front.
+- **Pico (RP2350)** — `--target` for a Pico board emits a bare-metal `.uf2` via `gustc/pico_build.g` and the C SDK; `gust build --flash` pushes it to a connected board.
+
+## Runtime
+
+The C runtime (`runtime/`) provides:
+
+- **`GSlice`** — `list[T]` backing type. Functions: `g_slice_new`, `g_slice_append`, `g_slice_get`, `g_slice_free`.
+- **`GDict`** — `dict[K, V]` backing type. FNV-1a hash, open addressing.
+- **`GValue`** — tagged union for `Any` / union types.
+- **`GBytes`** — `bytes` backing type.
+- **`GBox`** — heap cell for `ref[T]` and mutable closure captures (refcounted).
+- **`GClosure`** — function pointer + captured environment for `Function(...)` values and lambdas.
+- **`GFuture`** — pthread wrapper for `def!`-style async calls; `g_spawn.c` backs detached `spawn` / `while!` work.
+- **`g_str_*`** — string functions (concat, upper, lower, trim, split, ...).
+- **`g_error`** — thread-local setjmp / longjmp stack for `try` / `catch`. 64 levels deep.
+- **`g_arena`** — bump allocator the driver brackets per-compile and per-file (LSP / `gust check` directory walks) to reclaim the whole AST + diagnostic graph at once. A no-op under AddressSanitizer.
+
+## Adding a stdlib package
+
+The easiest way is to copy an existing small package — `convert/` or `exitcode/` work well — and rename. Two files:
+
+1. **`stdlib/<pkg>/<pkg>.g`** — function signatures only, no bodies. The parser treats bodyless `def` at stdlib paths as "implemented in C."
+2. **`stdlib/<pkg>/<pkg>.c`** — implementations. Functions are named `<pkg>_<name>` and use the runtime helpers.
+
+The compiler picks up new packages without code changes. `use <pkg>` just works as long as both files are on disk and follow the naming convention.
+
+User code can also drop down to C directly: a top-level `foreign """..."""` block emits its body verbatim into the generated C (right after the runtime include), and a sibling `<stem>.c` file next to a `<stem>.g` is auto-linked. This is the FFI seam for binding a C library without authoring a whole stdlib package.
+
+## Testing changes
+
+The `gust test` runner discovers and runs every `test_*.g` / `*_test.g` under a path, in parallel:
+
+```bash
+gust test tests/                  # run the whole suite
+gust test tests/dict/             # narrow to a subdirectory
+gust test --filter dict tests/    # substring filter
+```
+
+There is no single aggregate test file — the runner walks the tree. For an ad-hoc smoke check, `gust run tests/<dir>/<file>.g`.
+
+When hacking on the compiler itself, rebuild `gustc` with the existing binary (`gust build gustc/gustc.g -o gustc/build/gustc`) and re-run the suite; a self-host fixed point plus a green suite is the validation signal.
+
+## Reading further
+
+- Each top-level folder (`gustc/`, `runtime/`, `stdlib/`, …) has its own `README.md` with deeper detail.
+- `gustc/rules/RULES.md` is the spec for the lint/style rule registry.
+- `tests/` contains small programs exercising every feature; they're both the test suite and the worked examples.

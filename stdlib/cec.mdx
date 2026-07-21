@@ -1,0 +1,327 @@
+---
+title: cec
+description: "HDMI-CEC (Consumer Electronics Control) bus access — the low-speed control channel on the HDMI wire that lets connected devices power each other on and off, switch inputs, and pass remote-control keys"
+---
+
+```gust
+use cec
+```
+
+HDMI-CEC (Consumer Electronics Control) bus access — the low-speed control
+channel on the HDMI wire that lets connected devices power each other on and
+off, switch inputs, and pass remote-control keys.
+
+Access is handle-based over the Linux CEC character devices (`/dev/cec<N>`);
+the handle is the open file descriptor. Each adapter needs a physical address
+(its position in the HDMI topology, e.g. `0x1000` for "1.0.0.0") and one
+claimed logical address (a role on the bus, e.g. `LogicalAddress.playback_1`)
+before it can send. On most systems the HDMI driver reports the physical
+address for you; where it does not, set it with `set_physical_address` before
+claiming.
+
+This package works on Linux only and in native builds only — it drives the
+kernel CEC device directly. The CEC device is typically root-owned, so run
+with the right privileges.
+
+Frames are `list[integer]`: byte 0 is the header `(initiator << 4) | destination`,
+byte 1 (when present) is the opcode, and the rest are operands. `decode` turns a
+received frame into a `Msg`.
+
+**Examples**
+
+```gust
+use cec
+
+def main() -> none
+    h := cec.open(0)
+    if h < 0
+        return
+    end
+    la := cec.claim(h, cec.DeviceType.playback, "Gust")
+    if la >= 0
+        # Ask the TV (logical address 0) to power on, then show our stream.
+        cec.transmit(h, la, cec.LogicalAddress.tv, cec.Opcode.image_view_on, [])
+        cec.transmit(h, la, cec.LogicalAddress.tv, cec.Opcode.active_source, [0x10, 0x00])
+    end
+    cec.close(h)
+end
+```
+
+**On this page:** [`LogicalAddress`](#LogicalAddress) · [`DeviceType`](#DeviceType) · [`Opcode`](#Opcode) · [`Msg`](#Msg) · [`open`](#cec.open) · [`close`](#cec.close) · [`claim`](#cec.claim) · [`set_physical_address`](#cec.set_physical_address) · [`get_physical_address`](#cec.get_physical_address) · [`transmit`](#cec.transmit) · [`ping`](#cec.ping) · [`receive`](#cec.receive) · [`decode`](#cec.decode)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `IOC_S_MODE` | `integer` | `1074028809` |
+| `IOC_G_PHYS_ADDR` | `integer` | `2147639553` |
+| `IOC_S_PHYS_ADDR` | `integer` | `1073897730` |
+| `IOC_S_LOG_ADDRS` | `integer` | `3227279620` |
+| `IOC_TRANSMIT` | `integer` | `3224920325` |
+| `IOC_RECEIVE` | `integer` | `3224920326` |
+| `MODE_INITIATOR_FOLLOWER` | `integer` | `17` |
+| `MSG_SIZE` | `integer` | `56` |
+| `MSG_LEN_OFFSET` | `integer` | `16` |
+| `MSG_TIMEOUT_OFFSET` | `integer` | `20` |
+| `MSG_BYTES_OFFSET` | `integer` | `32` |
+| `MSG_TX_STATUS_OFFSET` | `integer` | `50` |
+| `LA_SIZE` | `integer` | `92` |
+| `LA_LOG_ADDR_OFFSET` | `integer` | `0` |
+| `LA_CEC_VERSION_OFFSET` | `integer` | `6` |
+| `LA_NUM_LOG_ADDRS_OFFSET` | `integer` | `7` |
+| `LA_VENDOR_ID_OFFSET` | `integer` | `8` |
+| `LA_FLAGS_OFFSET` | `integer` | `12` |
+| `LA_OSD_NAME_OFFSET` | `integer` | `16` |
+| `LA_PRIMARY_TYPE_OFFSET` | `integer` | `31` |
+| `LA_LOG_ADDR_TYPE_OFFSET` | `integer` | `35` |
+| `LA_ALL_TYPES_OFFSET` | `integer` | `39` |
+| `CEC_VERSION_2_0` | `integer` | `6` |
+| `VENDOR_ID_NONE` | `integer` | `4294967295` |
+| `FL_ALLOW_UNREG_FALLBACK` | `integer` | `1` |
+| `LOG_ADDR_INVALID` | `integer` | `255` |
+| `TX_STATUS_OK` | `integer` | `1` |
+| `OSD_NAME_MAX` | `integer` | `14` |
+| `MAX_OPERANDS` | `integer` | `14` |
+
+## `LogicalAddress`
+
+<a id="LogicalAddress" />
+```gust
+enum LogicalAddress: integer
+```
+
+A role on the CEC bus. The 4-bit address identifies a device by function;
+several `tuner`/`playback`/`recorder` slots exist so multiple devices of the
+same kind can coexist. Pass one as a `transmit`/`ping` target, or compare it
+against a decoded `Msg`.
+
+**Variants**
+
+- `tv = 0` — The television (the bus's root device).
+- `recorder_1 = 1` — First recording device.
+- `recorder_2 = 2` — Second recording device.
+- `tuner_1 = 3` — First tuner.
+- `playback_1 = 4` — First playback device.
+- `audio_system = 5` — The audio/AV receiver.
+- `playback_2 = 8` — Second playback device.
+- `broadcast = 15` — Address 15 — every device on the bus when used as a destination, or an unregistered sender when used as an initiator.
+
+## `DeviceType`
+
+<a id="DeviceType" />
+```gust
+enum DeviceType: integer
+```
+
+The kind of device to present as when claiming a logical address with
+`claim`. It selects which pool of logical addresses the kernel draws from.
+
+**Variants**
+
+- `tv = 0` — Television.
+- `playback = 1` — Playback device (e.g. a media streamer).
+- `recorder = 2` — Recording device.
+- `tuner = 3` — Tuner.
+- `audio = 4` — Audio system / AV receiver.
+
+## `Opcode`
+
+<a id="Opcode" />
+```gust
+enum Opcode: integer
+```
+
+A CEC message opcode — the command byte that follows the header. Pass one
+to `transmit`; compare it against a decoded `Msg.opcode`. Opcodes outside
+this set are still valid on the wire and may be sent as raw integers.
+
+**Variants**
+
+- `image_view_on = 4` — Wake the TV and select this source's input.
+- `text_view_on = 13` — Wake the TV for a text/OSD display.
+- `active_source = 130` — Announce this device as the active source.
+- `standby = 54` — Put the addressed device(s) into standby.
+- `user_control_pressed = 68` — Send a remote-control key press.
+- `user_control_released = 69` — Release the last remote-control key.
+- `give_osd_name = 70` — Request the device's on-screen name.
+- `set_osd_name = 71` — Report an on-screen name.
+- `give_physical_address = 131` — Request the device's physical address.
+- `report_physical_address = 132` — Report a physical address.
+- `request_active_source = 133` — Ask which device is the active source.
+- `set_stream_path = 134` — Make the device at a physical address the active source.
+- `give_device_vendor_id = 140` — Request the device's vendor ID.
+- `give_device_power_status = 143` — Request the device's power state.
+- `report_power_status = 144` — Report a power state.
+- `get_cec_version = 159` — Request the device's CEC version.
+- `cec_version = 158` — Report a CEC version.
+
+## `Msg`
+
+<a id="Msg" />
+A decoded CEC message.
+
+```gust
+def Msg
+
+    initiator: integer
+    destination: integer
+    opcode: integer
+    operands: list[integer]
+
+end
+```
+
+**Fields**
+
+- `initiator: integer` — Sender logical address.
+- `destination: integer` — Target logical address (`LogicalAddress.broadcast` for a broadcast).
+- `opcode: integer` — Message opcode, or -1 for a header-only poll.
+- `operands: list[integer]` — Operand bytes following the opcode.
+
+## Functions
+
+<a id="cec.open" />
+```gust
+def foreign open(index: integer) -> integer
+```
+
+Open CEC adapter `index` (`/dev/cec<index>`) and put it into
+initiator + follower mode so it can both send and receive. Returns a
+non-negative handle for the other calls, or -1 on error.
+
+**Parameters**
+
+- `index: integer` — CEC adapter number.
+
+---
+
+<a id="cec.close" />
+```gust
+def close(handle: integer) -> none
+```
+
+Release a handle returned by `open`.
+
+**Parameters**
+
+- `handle: integer` — The adapter handle to release.
+
+---
+
+<a id="cec.claim" />
+```gust
+def claim(handle: integer, device_type: DeviceType, osd_name: string) -> integer
+```
+
+Claim a logical address on the bus for a device of `device_type`,
+advertising `osd_name` as the on-screen name (up to 14 characters). The
+kernel picks a free address for the role. Returns the granted logical
+address, or -1 if none could be claimed (for example when the adapter has
+no physical address yet).
+
+**Parameters**
+
+- `handle: integer` — The adapter handle from `open`.
+- `device_type: DeviceType` — The role to present as.
+- `osd_name: string` — On-screen device name reported to other devices.
+
+---
+
+<a id="cec.set_physical_address" />
+```gust
+def set_physical_address(handle: integer, address: integer) -> integer
+```
+
+Set the adapter's 16-bit physical address (its position in the HDMI
+topology, e.g. `0x1000` for "1.0.0.0"). Only needed when the HDMI driver
+does not report it automatically. Returns 0 on success, non-zero on error.
+
+**Parameters**
+
+- `handle: integer` — The adapter handle from `open`.
+- `address: integer` — 16-bit physical address.
+
+---
+
+<a id="cec.get_physical_address" />
+```gust
+def get_physical_address(handle: integer) -> integer
+```
+
+Return the adapter's current 16-bit physical address, or -1 on error.
+`0xFFFF` means no address is configured.
+
+**Parameters**
+
+- `handle: integer` — The adapter handle from `open`.
+
+---
+
+<a id="cec.transmit" />
+```gust
+def transmit(
+    handle: integer,
+    initiator: integer,
+    destination: integer,
+    opcode: integer,
+    operands: list[integer],
+) -> integer
+```
+
+Send a message from logical address `initiator` to `destination` with
+`opcode` and `operands` (each truncated to a byte). Returns 0 when the
+message was acknowledged, non-zero on NACK/error.
+
+**Parameters**
+
+- `handle: integer` — The adapter handle from `open`.
+- `initiator: integer` — Sender logical address (the one from `claim`).
+- `destination: integer` — Target logical address, or `LogicalAddress.broadcast`.
+- `opcode: integer` — Message opcode (an `Opcode` variant or a raw byte).
+- `operands: list[integer]` — Operand bytes following the opcode.
+
+---
+
+<a id="cec.ping" />
+```gust
+def ping(handle: integer, initiator: integer, destination: integer) -> bool
+```
+
+Send a header-only polling message to probe whether `destination` is
+present on the bus. Returns true if the address acknowledged.
+
+**Parameters**
+
+- `handle: integer` — The adapter handle from `open`.
+- `initiator: integer` — Sender logical address.
+- `destination: integer` — Logical address to probe.
+
+---
+
+<a id="cec.receive" />
+```gust
+def receive(handle: integer, timeout_ms: integer) -> list[integer]
+```
+
+Wait up to `timeout_ms` milliseconds for an incoming message and return
+its raw frame (header byte, then opcode and operands). Returns an empty
+list on timeout or error. Pass it to `decode` for the parsed form.
+
+**Parameters**
+
+- `handle: integer` — The adapter handle from `open`.
+- `timeout_ms: integer` — Maximum time to wait, in milliseconds.
+
+---
+
+<a id="cec.decode" />
+```gust
+def decode(frame: list[integer]) -> Msg
+```
+
+Parse a raw CEC `frame` (as returned by `receive`) into a `Msg`. A
+header-only poll frame decodes with `opcode` -1 and no operands.
+
+**Parameters**
+
+- `frame: list[integer]` — Raw frame bytes: header, then optional opcode and operands.

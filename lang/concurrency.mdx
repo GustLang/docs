@@ -1,0 +1,322 @@
+---
+title: Concurrency
+description: Gust's explicit, opt-in concurrency model — the def!/for!/while! markers, spawn, futures, the parallelism safety envelope, and the sync package
+---
+
+Concurrency in Gust is explicit and opt-in. Nothing runs in parallel unless you
+ask for it. You ask with a `!` suffix on `def`, `for`, or `while`, or with the
+`spawn` statement for a single fire-and-forget call. There is no `async` /
+`await` keyword pair — the runtime spawns and joins for you where a parallel
+result is actually needed.
+
+Plain `def`, `for`, and `while` are strictly sequential. Marking a construct
+`!` never changes its result — only whether the work overlaps. Every form
+compiles to the pthread-backed primitives in `runtime/g_future.c`, so a program
+behaves identically with or without the markers; the markers only decide where
+threads are used.
+
+## The four forms
+
+| Form | What it parallelizes | Who joins |
+| --- | --- | --- |
+| `def!` | Runs of independent calls in the body | The compiler, at the first dependent use |
+| `for!` | Each loop iteration | The loop's `end` |
+| `while!` | The whole loop, detached | Nobody — fire and forget |
+| `spawn` | A single call, detached | Nobody — fire and forget |
+
+## `def!` — parallel independent calls
+
+Mark a function or method `def!` and, inside its body, a run of two or more
+consecutive independent calls is spawned as futures. Each is joined before the
+next line that actually depends on its result.
+
+```gust
+def! load() -> Report
+    a := fetch("10.0.0.1")     # spawns
+    b := fetch("10.0.0.2")     # spawns in parallel with a
+    return combine(a, b)       # joins a and b, then runs combine
+end
+```
+
+`fetch("10.0.0.1")` and `fetch("10.0.0.2")` share no reads, so they run
+concurrently; both are joined before `combine` runs. A call that reads a value
+produced by an earlier call in the same batch stays ordered after it, and the
+batch stops there.
+
+The marker works on methods too:
+
+```gust
+def! Cluster.refresh() -> none
+    ...
+end
+```
+
+A plain `def` never spawns — every call in its body runs in sequence.
+
+### What gets batched
+
+A statement joins the batch only when it is a variable declaration whose value
+is a direct call to a user-defined free function — `x := f(...)`. Everything
+else stays sequential in place:
+
+- A single such call on its own does not spawn; batching needs at least two
+  consecutive ones.
+- Method calls (`x := obj.m()`), calls to `main`, built-in calls, and foreign
+  (`def foreign`) calls are not batched — they run where they are written.
+- Named arguments are fine: `slow(name: "a", ms: 200)` batches like any other
+  call. Default parameters are filled in as usual.
+
+A declaration that reads a name bound earlier in the same batch ends the batch
+before it, so ordering with a real dependency is preserved.
+
+### When the batch is joined
+
+Pending futures are forced to complete — a barrier — before any of these:
+
+- a statement that reads or writes one of their result variables;
+- a control-flow construct (`if`, `for`, `while`, `match`, `try`, `with`) or a
+  `return`, `raise`, `break`, or `continue`;
+- a bare method-call statement, because it may mutate state the futures
+  captured (for example `server.close()` while handlers are still in flight);
+- the end of the enclosing block.
+
+A bare free-function or foreign call statement is deliberately not a barrier: a
+top-level call such as `ffi_sleep_ms(150)` touches no user state, so it is
+allowed to overlap the in-flight futures. That overlap is the point of `def!`.
+
+## `for!` — one thread per iteration
+
+```gust
+for! s in servers
+    process(s)             # each iteration on its own thread
+end
+```
+
+Every iteration is spawned; all are joined at the loop's `end` before the next
+statement runs. Locals the body reads are captured by value into a per-iteration
+args struct.
+
+`for!` iterates a range or a list. When the loop shape cannot be parallelized it
+silently falls back to a plain sequential loop (and emits a `/* for! fell back
+... */` note in the generated C). The fallback triggers on:
+
+- a tuple-unpacking loop variable (`for! a, b in pairs`);
+- an iterable that is neither a range nor a list (dict iteration, for example);
+- a body containing `break`, `continue`, `return`, or `raise` (including inside
+  nested `if`/`match`/`try`/`with`/loops);
+- a body that writes to a captured outer local.
+
+The fallback is silent at runtime — the loop still produces the correct result,
+just on one thread. The `parallel_behavior` test relies on exactly this: a
+`for!` whose body contains a `break` runs sequentially, so its wall time is the
+sum of the iterations rather than the max.
+
+## `while!` — fire-and-forget background loop
+
+```gust
+while! running
+    poll_sensors()
+end
+```
+
+`while!` detaches the entire loop as a single background thread via
+`g_async_detach`. The caller does not wait. The locals the loop reads are
+snapshotted by value at spawn time into a heap args struct — the loop sees those
+values for its whole lifetime, even if the caller later changes them. The
+detached thread is killed when the main thread exits.
+
+Because the snapshot makes writes invisible to the caller, writing to a captured
+local inside a `while!` body is rejected at the C-compile stage (a `#error` is
+emitted) rather than silently discarded. If you need state visible on both
+sides, share it through a heap object (see the safety envelope below) or drop
+the `!`.
+
+## `spawn` — fire-and-forget a single call
+
+```gust
+while true
+    conn := listener.accept()
+    spawn handle(conn)        # detach one call on its own thread
+end
+```
+
+`spawn f(args)` detaches a single call on its own thread and returns
+immediately. It accepts three call shapes:
+
+- `spawn f(args)` — a free function.
+- `spawn obj.method(args)` — a method. The receiver is snapshotted by value as
+  the first argument.
+- `spawn pkg.fn(args)` — a package-qualified function. The qualifier is kept and
+  only the arguments are snapshotted.
+
+Arguments (and a value receiver) are always snapshotted by value, so nothing is
+shared by reference through the call itself; `spawn` uses the same heap-args +
+`g_async_detach` machinery as `while!`. The result is discarded. Named or `as`
+arguments are not supported (a `#error` is emitted). An uncaught `raise` in the
+task prints the standard diagnostic and ends only that thread, leaving the
+caller running — one bad task cannot take down the process.
+
+This is what lets a server's accept loop be pure Gust: spawn a handler per
+connection without blocking the loop.
+
+## The parallelism safety envelope
+
+Gust has no mutable module-level state — the only top-level bindings are
+`constant`s. Parallel bodies therefore cannot race on a global by construction;
+there is no shared mutable variable to contend for. Two things are shared across
+threads:
+
+- heap objects — lists, dicts, and structs, whose reference counts are atomic,
+  so passing one around across threads is memory-safe on its own;
+- the filesystem.
+
+Memory safety is not the same as freedom from data races. If you hand the same
+list, dict, or struct to every parallel body and mutate it concurrently, the
+counts stay sound but the contents are a race — the result is undefined. `for!`
+already declines to parallelize a loop whose body writes to a captured outer
+local, but it cannot see a mutation reached through a shared heap object.
+
+Two ways to stay correct:
+
+- Prefer pure parallel bodies. Give each iteration its own locals, return a
+  value, and combine the results after the batch joins. This is the natural
+  shape for `def!` and the fastest for `for!`.
+- When bodies must touch shared state, serialize the critical section with a
+  `sync.Lock`.
+
+The `spawn` and `while!` snapshot-by-value rule is what makes the shared-state
+idiom explicit: a spawned closure copies its receiver, so the only thing several
+copies can see is a reference-typed field they all point at.
+
+```gust
+def SafeCounter
+    _lock: sync.Lock
+    # A one-element list, not a bare integer: spawning `c.bump()` snapshots the
+    # receiver by value, so only this reference-typed field is shared across the
+    # spawned copies. The lock serializes the writes.
+    cell: list[integer]
+end
+
+def new_safe_counter() -> SafeCounter
+    return SafeCounter(_lock: sync.new_lock(), cell: [0])
+end
+
+def SafeCounter.bump() -> none
+    with _lock
+        cell[0] = cell[0] + 1
+    end
+end
+
+def main() -> none
+    c := new_safe_counter()
+    for i in range(1000)
+        spawn c.bump()
+    end
+    ...
+    c._lock.close()
+end
+```
+
+## The sync package
+
+`use sync` provides `Lock`, a mutual-exclusion lock for the critical sections
+the safety envelope leaves to you.
+
+```gust
+use sync
+
+counter := [0]
+lock := sync.new_lock()
+
+with lock
+    counter[0] = counter[0] + 1
+end
+
+lock.close()
+```
+
+Construct a lock with `sync.new_lock()`. The idiomatic use is a `with` block: it
+acquires the lock on entry and releases it however the block is left — falling
+off the end, `return`, `break`/`continue`, or a raise.
+
+`Lock` also exposes the primitives directly for the rare critical section that
+does not fit one lexical block:
+
+| Method | Behavior |
+| --- | --- |
+| `acquire()` | Block until the lock is free, then take it. |
+| `try_acquire() -> bool` | Take the lock and return `true` if it was free; return `false` immediately if held. |
+| `release()` | Release the lock so a waiting thread can take it. Only the holder may call this. |
+| `is_held() -> bool` | Whether the lock is currently held. For tests and diagnostics — a `true` result may be stale the moment it returns. |
+| `close()` | Free the lock's backing cell when the lock is no longer needed. Using the lock after `close` is undefined. |
+
+```gust
+lk := sync.new_lock()
+if lk.try_acquire()
+    # got it without waiting
+    lk.release()
+end
+
+lk.acquire()
+# ... critical section ...
+lk.release()
+
+lk.close()
+```
+
+Pairing `acquire` with `release` by hand is error-prone — prefer `with` whenever
+the section is a single block. Two properties to keep in mind:
+
+- The lock spins while waiting rather than parking the waiting thread, so it
+  suits short critical sections.
+- It is not reentrant. A thread that tries to acquire a lock it already holds
+  spins forever.
+
+## How it compiles
+
+For an async construct, codegen emits an args struct plus a worker thread
+function, then spawns and joins with the runtime's pthread-backed primitives:
+
+- `def!` — each batched call becomes `g_async_call(...)` (returns a `GFuture*`)
+  at the spawn site and `g_future_get(...)` at the join, which copies the
+  worker's result into the destination local.
+- `for!` — a per-iteration worker, a spawn loop that `g_async_call`s it for
+  every element, and a join loop that awaits and frees every future.
+- `while!` and `spawn` — `g_async_detach(...)` on a single worker carrying the
+  snapshotted captures; no future is surfaced.
+
+`g_future_get` joins each worker exactly once (a joinable thread must be reaped
+even if it finished first), and the result pointer it returns is owned by the
+caller. Inspect any of this with `gust emit`:
+
+```c
+GFuture* _fut_a = g_async_call(_async_fetch_fn, _aa_a);
+GFuture* _fut_b = g_async_call(_async_fetch_fn, _aa_b);
+void* _fut_res_a = g_future_get(_fut_a);
+a = *((GStr**)_fut_res_a);
+```
+
+On the wasm target there are no pthreads, so all four forms run synchronously
+inline. The observable result is identical — the runtime already joins before
+any dependent use — only the parallelism is dropped.
+
+## Performance
+
+Thread creation has a real cost. Reach for `for!` only when each iteration does
+enough work to amortize a spawn — network calls, file I/O, heavy compute. For a
+tight loop over cheap arithmetic, a plain `for` is far faster:
+
+```gust
+# Slow — spawns a million threads for almost no work each.
+for! i in range(1_000_000)
+    process(i)
+end
+
+# Fast — one thread.
+for i in range(1_000_000)
+    process(i)
+end
+```
+
+Rule of thumb: if a single iteration takes less than a microsecond, don't mark
+it `!`. The compiler does not estimate this for you.

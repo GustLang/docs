@@ -1,0 +1,20 @@
+---
+title: cryptography
+description: "Cryptographic primitives grouped into focused subpackages — hashing, message authentication, key derivation, random generation, symmetric and public-key encryption, and TLS."
+---
+
+Cryptographic primitives grouped into focused subpackages — hashing, message authentication, key derivation, random generation, symmetric and public-key encryption, and TLS.
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| [`cryptography.sha`](/stdlib/cryptography/sha) | SHA-2 family hashes plus the legacy SHA-1, implemented in pure Gust (no C, no external library) so they build everywhere the language does — including the freestanding Pico target |
+| [`cryptography.hmac`](/stdlib/cryptography/hmac) | HMAC (keyed-hash message authentication code, RFC 2104), implemented in pure Gust on top of `cryptography.sha` |
+| [`cryptography.kdf`](/stdlib/cryptography/kdf) | Key derivation functions, implemented in pure Gust over `cryptography.hmac` (HMAC-SHA-256) |
+| [`cryptography.random`](/stdlib/cryptography/random) | Random number generation, in two flavors that must not be confused: |
+| [`cryptography.aes`](/stdlib/cryptography/aes) | Authenticated AES encryption (AES-GCM), backed by the system OpenSSL (`libcrypto`) |
+| [`cryptography.bcrypt`](/stdlib/cryptography/bcrypt) | bcrypt password hashing, backed by the system libxcrypt (`crypt_rn` / `crypt_gensalt_rn` with the `$2b$` prefix) |
+| [`cryptography.ed25519`](/stdlib/cryptography/ed25519) | Ed25519 digital signatures, backed by the system OpenSSL (`libcrypto`) |
+| [`cryptography.x25519`](/stdlib/cryptography/x25519) | X25519 Elliptic-Curve Diffie-Hellman key exchange, backed by the system OpenSSL (`libcrypto`) |
+| [`cryptography.ssl`](/stdlib/cryptography/ssl) | TLS/SSL for byte-stream sockets, layered over the `socket` package |

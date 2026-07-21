@@ -1,0 +1,200 @@
+---
+title: Variables
+description: Gust's binding forms — inferred, typed, tuple-unpacking, reassignment, and compound assignment — plus scope and shadowing rules
+---
+
+A variable binds a name to a value. Gust gives you three ways to create a binding and two ways to change one after the fact. A name's type is fixed the moment you declare it, so the compiler can check every later use.
+
+## Inferred declaration (`:=`)
+
+The `:=` operator declares a new variable and infers its type from the right-hand side:
+
+```gust
+name := "velance"     # string
+port := 8080          # integer
+pi   := 3.14          # float
+ok   := true          # bool
+xs   := [1, 2, 3]     # list[integer]
+```
+
+Reach for `:=` whenever the right-hand expression makes the type obvious. It is the default binding form in idiomatic Gust.
+
+The left side of `:=` must be a plain variable name. It declares a new name, so a field access, index, or call on the left is rejected:
+
+```gust
+counts["a"] := 1      # error: the left side of ':=' must be a variable name
+```
+
+## Typed declaration (`name: Type = expr`)
+
+An explicit annotation names the type at the binding site. Use it when:
+
+- the expression is ambiguous — an empty collection, or a value the compiler cannot pin to one type
+- you want the type documented where the variable is introduced
+- you are widening the static type to a union or a supertype
+
+```gust
+host: string = "localhost"
+empty: list[integer] = []
+maybe: string | none = none
+```
+
+For empty list and dict literals the annotation is **required** — the compiler cannot infer the element type from `[]` or `{}` alone.
+
+A typed declaration also fixes a static type that is wider than the initial value. Binding a union member to a `string | none` variable keeps the door open for a later `none` reassignment that inference from a bare string would have closed off.
+
+## Reassignment (`=`)
+
+Once a name exists, reassign it with `=`. The new value must match the type the variable was declared with:
+
+```gust
+port := 8080
+port = 9090          # ok
+port = "nine-nine"   # error G0102: cannot assign type string to type integer
+```
+
+The type is locked at declaration. Assigning an unrelated type is a compile error. Where a numeric conversion exists the value is converted to the variable's declared type — assigning a `float` to an `integer` variable stores the truncated integer, not a new float.
+
+## Compound assignment (`+=`, `-=`, `*=`, `/=`, `%=`)
+
+A compound assignment updates a variable in place. The five forms are:
+
+```gust
+n := 10
+n += 3               # n = n + 3   → 13
+n -= 1               # n = n - 1   → 12
+n *= 2               # n = n * 2   → 24
+n /= 4               # n = n / 4   →  6
+n %= 5               # n = n % 5   →  1
+```
+
+`target OP= value` desugars to `target = target OP value`, so the result must still satisfy the variable's type. Because the target is evaluated as both the destination and the left operand, a side-effecting target such as `a[f()] += 1` runs `f()` twice — the same as writing the expanded form by hand.
+
+`+=` also concatenates strings:
+
+```gust
+s := "hel"
+s += "lo"            # "hello"
+```
+
+These five are the only compound operators. There is no `//=`, `**=`, or bitwise compound form — write the full `x = x // 2` for those.
+
+## Tuple-unpacking declaration
+
+A comma-separated name list on the left of `:=` destructures a tuple, binding each element to its own new variable:
+
+```gust
+def divide(a: integer, b: integer) -> tuple[integer, integer]
+    return (a // b, a % b)
+end
+
+q, r := divide(10, 3)     # q = 3, r = 1
+```
+
+The right side may be any tuple — a function's return value or a tuple literal written inline:
+
+```gust
+a, b, c := (1, 2, 3)
+```
+
+Use `_` for a position you want to discard:
+
+```gust
+_, second := (1, 2)       # keep only the second element
+```
+
+The number of names must match the tuple's arity, or the compiler reports it:
+
+```gust
+a, b, c := divide(10, 3)  # error G0901: tuple destructure expects 2 names, got 3
+```
+
+Unpacking is a declaration form only. Reassignment (`=`) does not accept a comma-separated target list, so to swap two existing variables go through a temporary:
+
+```gust
+a := "hi"
+b := "there"
+tmp := a
+a = b
+b = tmp                   # swap
+```
+
+A `for` loop uses the same comma syntax to unpack each element it iterates, which is how you walk a list of pairs or a dictionary's key–value entries:
+
+```gust
+for index, value in [(0, 10), (1, 20)]
+    print(value)
+end
+
+scores := {"a": 1, "b": 2}
+for key, count in scores
+    print(key)
+end
+```
+
+## Scope
+
+Variables are lexically scoped to the enclosing block, and every block closes with `end`. An inner block can read variables from any enclosing block. Assigning with `=` to a name from an outer block updates that outer variable:
+
+```gust
+def main() -> none
+    x := 1
+    if true
+        x = 2       # rebinds the outer x
+        y := 99     # y exists only inside this branch
+    end
+    print(x)        # 2
+end
+```
+
+### No re-declaration, no shadowing
+
+`:=` always introduces a *new* name, so it is an error to `:=` a name that already exists.
+
+Declaring the same name twice in one scope is rejected:
+
+```gust
+x := 1
+x := 2            # error G0601: variable 'x' is already defined in this scope
+```
+
+Re-declaring an outer name inside a nested block — shadowing — is also rejected, so an inner name can never quietly hide an outer one:
+
+```gust
+def main() -> none
+    total := 1
+    if true
+        total := 2    # error G0203: variable 'total' shadows an outer variable
+    end
+end
+```
+
+When you need a fresh binding inside a nested block, pick a new name and declare it with `:=`. To change an existing outer variable, use `=`.
+
+## `:=` is a statement, not an expression
+
+The walrus declaration is a standalone statement — it does not nest inside a larger expression. You cannot declare a variable inside an `if` or `while` condition:
+
+```gust
+while (line := next_line()) != ""   # parse error: ':=' is not allowed here
+```
+
+Declare the variable on its own line first, then test it, updating it inside the loop as needed:
+
+```gust
+line := next_line()
+while line != ""
+    process(line)
+    line = next_line()
+end
+```
+
+## Globals — don't
+
+Gust does not allow mutable globals. The top level of a file is declarative only; a bare `x := 5` there is rejected. When you need a process-wide value, choose one of:
+
+- A `constant[T]` — immutable, checked at compile time. See [Constants](/lang/constants).
+- A struct holding your state, passed explicitly to the code that needs it.
+- An argument to `main` parsed from process arguments.
+
+This is a deliberate design choice: programs are easier to reason about when state flows through arguments and return values instead of ambient mutation.

@@ -1,0 +1,536 @@
+---
+title: autodoc
+description: "A reference documentation generator built entirely on top of the compile-time `inspect` package"
+---
+
+```gust
+use autodoc
+```
+
+A reference documentation generator built entirely on top of the
+compile-time `inspect` package. `inspect.entries(pkg)` hands back a
+`list[DocEntry]` describing every public declaration a package exports;
+`autodoc` turns those records into Markdown. Because the introspection
+is resolved by the compiler, generating docs costs nothing at runtime
+and needs no runtime type metadata.
+
+**Examples**
+
+```gust
+use autodoc
+use inspect
+
+use mymodule
+
+def main() -> none
+    md := autodoc.markdown("mymodule", inspect.entries(mymodule))
+    print(md)
+end
+```
+Or render a single symbol:
+```gust
+print(autodoc.entry(inspect.describe(greet)))
+```
+`autodoc` consumes `DocEntry` values only — it never calls `inspect`
+itself, so any tool can assemble the entry list however it likes (a
+whole-package `entries`, a hand-picked set of `describe` calls, or a
+filtered mix) and hand it here for rendering.
+
+**On this page:** [`DocSections`](#DocSections) · [`title_case`](#autodoc.title_case) · [`is_callable`](#autodoc.is_callable) · [`render_example`](#autodoc.render_example) · [`render_doc_args`](#autodoc.render_doc_args) · [`entry`](#autodoc.entry) · [`markdown`](#autodoc.markdown) · [`mdx_safe`](#autodoc.mdx_safe) · [`strip_copyright`](#autodoc.strip_copyright) · [`first_sentence`](#autodoc.first_sentence) · [`dedent_doc`](#autodoc.dedent_doc) · [`render_prose`](#autodoc.render_prose) · [`parse_sections`](#autodoc.parse_sections) · [`source_link`](#autodoc.source_link) · [`wrap_signature`](#autodoc.wrap_signature) · [`callable_sig`](#autodoc.callable_sig) · [`error_sig`](#autodoc.error_sig) · [`struct_sig`](#autodoc.struct_sig) · [`render_callable`](#autodoc.render_callable) · [`render_method_doc`](#autodoc.render_method_doc) · [`render_struct`](#autodoc.render_struct) · [`render_enum`](#autodoc.render_enum) · [`render_constants`](#autodoc.render_constants) · [`frontmatter`](#autodoc.frontmatter) · [`package_page`](#autodoc.package_page)
+
+## `DocSections`
+
+<a id="DocSections" />
+A docstring fully split into its prose `body` and every recognized section.
+The `*_names`/`*_descs` pairs are parallel `name: description` lists; the
+remaining fields hold free-prose sections (empty when the section is absent).
+
+```gust
+def DocSections
+
+    body: string
+    arg_names: list[string]
+    arg_descs: list[string]
+    field_names: list[string]
+    field_descs: list[string]
+    variant_names: list[string]
+    variant_descs: list[string]
+    raise_names: list[string]
+    raise_descs: list[string]
+    returns: string
+    examples: string
+    note: string
+    warning: string
+    deprecated: string
+    since: string
+
+end
+```
+
+**Fields**
+
+- `body: string` — The docstring prose with all recognized sections lifted out.
+- `arg_names: list[string]` — Parameter names from `Arguments:` / `Args:` / `Parameters:`.
+- `arg_descs: list[string]` — Descriptions parallel to `arg_names`.
+- `field_names: list[string]` — Field names from `Fields:`.
+- `field_descs: list[string]` — Descriptions parallel to `field_names`.
+- `variant_names: list[string]` — Member names from `Variants:` / `Members:`.
+- `variant_descs: list[string]` — Descriptions parallel to `variant_names`.
+- `raise_names: list[string]` — Error type names from `Raises:` / `Throws:`.
+- `raise_descs: list[string]` — The condition each error is raised under.
+- `returns: string` — The `Returns:` prose.
+- `examples: string` — The `Examples:` prose, which may contain fenced code.
+- `note: string` — The `Note:` prose, rendered as a callout.
+- `warning: string` — The `Warning:` prose, rendered as a callout.
+- `deprecated: string` — The `Deprecated:` prose, rendered as a prominent callout.
+- `since: string` — The `Since:` version string.
+
+## Functions
+
+<a id="autodoc.title_case" />
+```gust
+def title_case(word: string) -> string
+```
+
+Capitalize the first letter of an ASCII word. The `kind` of a
+`DocEntry` stringifies to its lowercase tag (`"function"`, `"struct"`,
+…); this turns it into the `Function` / `Struct` heading badge.
+
+**Parameters**
+
+- `word: string` — The ASCII word to capitalize.
+
+---
+
+<a id="autodoc.is_callable" />
+```gust
+def is_callable(e: DocEntry) -> bool
+```
+
+Whether `e` is a function or method, i.e. has a real signature. The
+`entries`/`describe` lowering leaves `return_annotation` empty for every
+non-callable, so a non-empty one marks a callable (a function returning
+nothing still carries `"none"`).
+
+**Parameters**
+
+- `e: DocEntry` — The `DocEntry` to test.
+
+---
+
+<a id="autodoc.render_example" />
+```gust
+def render_example(buf: Buffer, examples: string) -> none
+```
+
+Append an `**Example**` block for the docstring's `Example:` / `Examples:`
+section. The captured body is wrapped in a fenced ```` ```gust ```` block so it
+renders as code, unless it already carries its own fence (in which case it is
+emitted verbatim). No-op when there is no example.
+
+**Parameters**
+
+- `buf: Buffer` — The output buffer to append to.
+- `examples: string` — The parsed `Example:` section body, or "" when absent.
+
+---
+
+<a id="autodoc.render_doc_args" />
+```gust
+def render_doc_args(buf: Buffer, sec: DocSections) -> none
+```
+
+Append an `**Arguments**` list pairing each documented name with its
+description, drawn from the docstring's `Arguments:` section. No-op when the
+section is absent.
+
+**Parameters**
+
+- `buf: Buffer` — The output buffer to append to.
+- `sec: DocSections` — The parsed docstring sections.
+
+---
+
+<a id="autodoc.entry" />
+```gust
+def entry(e: DocEntry, include_private: bool) -> string
+```
+
+Render one `DocEntry` as a Markdown section: an `### name — Kind`
+heading, the docstring prose, and a kind-appropriate body — a code-fenced
+signature for callables, a fields table for structs and errors, a
+method list for structs and interfaces, and a variant list for enums
+and ADTs. The docstring's `Arguments:`, `Returns:`, and `Example:`
+sections are lifted out and rendered as their own blocks. Private methods
+are omitted from the method list unless `include_private` is set.
+
+**Parameters**
+
+- `e: DocEntry` — The `DocEntry` to render as a Markdown section.
+- `include_private: bool` — When true, private methods are listed too; defaults to false, hiding them.
+
+---
+
+<a id="autodoc.markdown" />
+```gust
+def markdown(
+    title: string,
+    entries: list[DocEntry],
+    include_private: bool,
+) -> string
+```
+
+Render a full Markdown page for `entries`: a `# title` heading
+followed by every entry rendered by `entry`, in the order supplied
+(the order `inspect.entries` returns — functions first, then types,
+then constants). Hand it the output of `inspect.entries(pkg)` to
+document a whole package in one call. Private declarations and private
+methods are omitted unless `include_private` is set.
+
+**Parameters**
+
+- `title: string` — The `# title` heading for the page.
+- `entries: list[DocEntry]` — The `DocEntry` records to render, in order.
+- `include_private: bool` — When true, private declarations and private methods are documented; defaults to false, hiding them.
+
+---
+
+<a id="autodoc.mdx_safe" />
+```gust
+def mdx_safe(text: string) -> string
+```
+
+Escape `<`, `{`, `}` that fall outside inline `` `code` `` spans so
+Mintlify's MDX parser doesn't read them as JSX. Docstrings are prose —
+none of these are intentional JSX, but a literal `<` in a sentence would
+otherwise break the page.
+
+**Parameters**
+
+- `text: string` — The prose to escape.
+
+---
+
+<a id="autodoc.strip_copyright" />
+```gust
+def strip_copyright(doc: string) -> string
+```
+
+Strip the boilerplate every stdlib module docstring opens with — the
+`Copyright …` line and an optional `Gust standard library — <pkg>` /
+`Gust prelude — <pkg>` banner — leaving the descriptive body.
+
+**Parameters**
+
+- `doc: string` — The module docstring to strip boilerplate from.
+
+---
+
+<a id="autodoc.first_sentence" />
+```gust
+def first_sentence(text: string, fallback: string) -> string
+```
+
+The first sentence of `text` — the leading paragraph collapsed to one line,
+cut at the first `.`/`!`/`?` boundary (or the whole paragraph when it carries
+none), trailing period trimmed — used for the page `description`. Returns
+`fallback` when `text` is empty.
+
+**Parameters**
+
+- `text: string` — The text to extract the first sentence from.
+- `fallback: string` — The value returned when `text` is empty.
+
+---
+
+<a id="autodoc.dedent_doc" />
+```gust
+def dedent_doc(text: string) -> string
+```
+
+Strip the common leading indentation from a docstring's continuation
+lines (everything after the first). `inspect` returns a docstring with the
+source indentation of its `def` block intact, so a method docstring arrives
+indented four spaces — which would otherwise read as a code block. Relative
+indentation (an indented code example) is preserved.
+
+**Parameters**
+
+- `text: string` — The docstring to dedent.
+
+---
+
+<a id="autodoc.render_prose" />
+```gust
+def render_prose(text: string) -> string
+```
+
+Render a docstring body to MDX. Three line shapes are handled: a literal
+```` ``` ```` fence passes its region through verbatim (tagged `gust` when
+bare); a run of indented lines outside any fence is lifted into a `gust` code
+block, unless it is a Markdown list (`-`/`*`/`+`/`N.`) or a lone wrap line,
+which stay prose; everything else is JSX-escaped prose. Runs of blank lines
+are collapsed.
+
+**Parameters**
+
+- `text: string` — The docstring body to render to MDX.
+
+---
+
+<a id="autodoc.parse_sections" />
+```gust
+def parse_sections(doc: string) -> DocSections
+```
+
+Split a docstring into its prose `body` and every recognized section
+(`Arguments:`, `Fields:`, `Variants:`, `Raises:`, `Returns:`, `Examples:`,
+`Note:`, `Warning:`, `Deprecated:`, `Since:`). List sections parse each
+indented `name: description` line up to the first blank or non-`name:` line;
+prose sections capture every line up to the next header. All recognized
+sections are lifted out of `body`.
+
+**Parameters**
+
+- `doc: string` — The docstring to split.
+
+---
+
+<a id="autodoc.source_link" />
+```gust
+def source_link(e: DocEntry, source_base: string, source_root: string) -> string
+```
+
+A repository URL for `e`'s definition (`<base><relative file>#L<line>`), or
+"" when `source_base` is empty. `source_root`, when it prefixes the absolute
+`file`, is stripped so the link is repo-relative.
+
+**Parameters**
+
+- `e: DocEntry` — The `DocEntry` whose source location to link.
+- `source_base: string` — The URL prefix (e.g. a GitHub `blob/<rev>/` root), or "".
+- `source_root: string` — The filesystem prefix to strip from `e.file`.
+
+---
+
+<a id="autodoc.wrap_signature" />
+```gust
+def wrap_signature(sig: string) -> string
+```
+
+Wrap a rendered signature's declaration line when it runs past 80 columns,
+laying each parameter on its own indented line. Any leading decorator lines
+are left intact; only the final `def …(…) -> …` line is wrapped.
+
+**Parameters**
+
+- `sig: string` — The rendered signature, decorator lines included.
+
+---
+
+<a id="autodoc.callable_sig" />
+```gust
+def callable_sig(e: DocEntry) -> string
+```
+
+Render a callable's declaration as Gust source: `def name(p: t, …) ->
+ret` — exactly how it reads in a `.g` file, so the rendered page can be
+code-highlighted.
+
+**Parameters**
+
+- `e: DocEntry` — The callable `DocEntry` to render.
+
+---
+
+<a id="autodoc.error_sig" />
+```gust
+def error_sig(e: DocEntry) -> string
+```
+
+Render an error type's display signature as `Name(field: type, …)`.
+
+**Parameters**
+
+- `e: DocEntry` — The error `DocEntry` to render.
+
+---
+
+<a id="autodoc.struct_sig" />
+```gust
+def struct_sig(e: DocEntry) -> string
+```
+
+Render a struct's declaration as Gust source: the `def Name` header with
+its `implements` clause, each field on its own indented line, closed by `end`
+— the shape it reads as in a `.g` file, so the rendered page can be
+code-highlighted.
+
+**Parameters**
+
+- `e: DocEntry` — The struct `DocEntry` to render.
+
+---
+
+<a id="autodoc.render_callable" />
+```gust
+def render_callable(
+    buf: Buffer,
+    e: DocEntry,
+    pkg: string,
+    source_base: string,
+    source_root: string,
+) -> none
+```
+
+Append a function/method section: anchor, the signature as a fenced `gust`
+code block (`def name(...) -> ret`), an optional source link, the docstring
+prose, a **Parameters** list (each parameter's type with its `Arguments:`
+description), and the trailing **Returns** / **Raises** / **Examples** /
+callout / **Since** sections the docstring declares.
+
+**Parameters**
+
+- `buf: Buffer` — The output buffer to append the section to.
+- `e: DocEntry` — The callable `DocEntry` to render.
+- `pkg: string` — The package used to qualify the anchor.
+- `source_base: string` — The repository URL prefix for source links, or "" to disable.
+- `source_root: string` — The filesystem prefix stripped from `e.file` for source links.
+
+---
+
+<a id="autodoc.render_method_doc" />
+```gust
+def render_method_doc(buf: Buffer, doc: string, return_type: string) -> none
+```
+
+Render a method's docstring with full section parsing — the same
+treatment `render_callable` gives free functions, so a method's `Example:`,
+`Arguments:`, `Returns:`, and callout sections render structured rather than
+dumped raw. A method `DocEntry` exposes only the signature string (not
+structured params), so the **Parameters** list is built from the docstring's
+own `Arguments:` block.
+
+**Parameters**
+
+- `buf: Buffer` — The output buffer to append to.
+- `doc: string` — The method docstring to render.
+- `return_type: string` — The method's return type, echoed after the **Returns** header; "" or "none" omits it.
+
+---
+
+<a id="autodoc.render_struct" />
+```gust
+def render_struct(
+    buf: Buffer,
+    e: DocEntry,
+    source_base: string,
+    source_root: string,
+    implementors: list[string],
+    include_private: bool,
+) -> none
+```
+
+Append a struct or interface section: `## \`Name\``, an optional source
+link, prose, a relationship line (**Implements** for a struct, **Implemented
+by** for an interface), a Fields list (each field `name: type`, with a
+description when the docstring carries a `Fields:` block), and a Methods
+section rendering each method's full signature and docstring. Private methods
+are omitted unless `include_private` is set.
+
+**Parameters**
+
+- `buf: Buffer` — The output buffer to append the section to.
+- `e: DocEntry` — The struct or interface `DocEntry` to render.
+- `source_base: string` — The repository URL prefix for source links, or "" to disable.
+- `source_root: string` — The filesystem prefix stripped from `e.file` for source links.
+- `implementors: list[string]` — For an interface, the in-package struct names that implement it; ignored for a struct.
+- `include_private: bool` — When true, private methods are rendered too; otherwise they are omitted.
+
+---
+
+<a id="autodoc.render_enum" />
+```gust
+def render_enum(
+    buf: Buffer,
+    e: DocEntry,
+    source_base: string,
+    source_root: string,
+) -> none
+```
+
+Append an enum section: `## \`Name\``, an anchor, a fenced signature
+(`enum`/`auto_enum Name: base`), an optional source link, prose, a Variants
+list, and any trailing **Examples** / callout / **Since** sections. Each
+variant shows its value (`Name = "value"` for string backing, `Name = 3` for
+integer), plus a description when the docstring carries a `Variants:` (or
+`Members:`) block.
+
+**Parameters**
+
+- `buf: Buffer` — The output buffer to append the section to.
+- `e: DocEntry` — The enum `DocEntry` to render.
+- `source_base: string` — The repository URL prefix for source links, or "" to disable.
+- `source_root: string` — The filesystem prefix stripped from `e.file` for source links.
+
+---
+
+<a id="autodoc.render_constants" />
+```gust
+def render_constants(buf: Buffer, consts: list[DocEntry]) -> none
+```
+
+Append a `## Constants` table — Name / Type / Value, plus a Description
+column when any constant is documented. A `|` in a value is escaped and an
+over-long value is truncated to a preview.
+
+**Parameters**
+
+- `buf: Buffer` — The output buffer to append the table to.
+- `consts: list[DocEntry]` — The constant `DocEntry` records to tabulate.
+
+---
+
+<a id="autodoc.frontmatter" />
+```gust
+def frontmatter(title: string, description: string) -> string
+```
+
+The YAML frontmatter block: `title` and a quoted `description` (inner
+double-quotes downgraded to single so the YAML stays valid).
+
+**Parameters**
+
+- `title: string` — The page title.
+- `description: string` — The page description (omitted when empty).
+
+---
+
+<a id="autodoc.package_page" />
+```gust
+def package_page(
+    pkg: string,
+    module_doc: string,
+    entries: list[DocEntry],
+    source_base: string,
+    source_root: string,
+    include_private: bool,
+) -> string
+```
+
+Render a complete Mintlify reference page for a package: frontmatter
+(description drawn from the module docstring), a `use <pkg>` block, the module
+prose, an `On this page` index, then constants, enums, structs, free
+functions, and errors — each in source order within its group, matching
+`inspect.entries`. Interface sections list their in-package implementors, and
+every declaration carries a source link when `source_base` is set. Private
+declarations and private methods are omitted unless `include_private` is set.
+
+**Parameters**
+
+- `pkg: string` — The package name.
+- `module_doc: string` — The package module docstring (its first sentence becomes the page description).
+- `entries: list[DocEntry]` — The package's `DocEntry` records, in `inspect.entries` order.
+- `source_base: string` — The repository URL prefix for source links, or "" to disable.
+- `source_root: string` — The filesystem prefix stripped from each `file` for links.
+- `include_private: bool` — When true, private declarations and private methods are documented; defaults to false, hiding them.

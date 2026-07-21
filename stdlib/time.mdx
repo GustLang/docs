@@ -1,0 +1,386 @@
+---
+title: time
+description: "DateTime values: a calendar date and time of day paired with a Unix millisecond timestamp and a timezone label"
+---
+
+```gust
+use time
+```
+
+DateTime values: a calendar date and time of day paired with a Unix
+millisecond timestamp and a timezone label. Provides construction from a
+timestamp in a given timezone, conversion between timezones, string and
+dict rendering, and elapsed/difference durations.
+
+**Examples**
+
+```gust
+use time
+
+def main() -> none
+    dt := time.now()
+    tokyo := dt.to("Asia/Tokyo")
+    print(tokyo.timezone)           # Asia/Tokyo
+    print(dt.since(tokyo))          # 0ms — same instant, different label
+end
+```
+
+**On this page:** [`DateTime`](#DateTime) · [`Duration`](#Duration) · [`sleep`](#time.sleep) · [`now_ms`](#time.now_ms) · [`to_timezone`](#time.to_timezone) · [`make_duration`](#time.make_duration) · [`days_from_civil`](#time.days_from_civil) · [`to_epoch_ms`](#time.to_epoch_ms) · [`from_fields`](#time.from_fields) · [`parse`](#time.parse) · [`parse_iso`](#time.parse_iso) · [`now`](#time.now)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `BYTE_PERCENT` | `integer` | `37` |
+| `BYTE_SPACE` | `integer` | `32` |
+| `BYTE_TAB` | `integer` | `9` |
+| `BYTE_MINUS` | `integer` | `45` |
+| `BYTE_PLUS` | `integer` | `43` |
+| `BYTE_COLON` | `integer` | `58` |
+| `BYTE_DOT` | `integer` | `46` |
+| `BYTE_UPPER_Z` | `integer` | `90` |
+| `BYTE_LOWER_Z` | `integer` | `122` |
+| `EST` | `string` | `"America/New_York"` |
+| `CST` | `string` | `"America/Chicago"` |
+| `MST` | `string` | `"America/Denver"` |
+| `PST` | `string` | `"America/Los_Angeles"` |
+| `AKST` | `string` | `"America/Anchorage"` |
+| `HST` | `string` | `"Pacific/Honolulu"` |
+| `GMT` | `string` | `"Europe/London"` |
+| `CET` | `string` | `"Europe/Paris"` |
+| `EET` | `string` | `"Europe/Helsinki"` |
+| `JST` | `string` | `"Asia/Tokyo"` |
+| `CST_CHINA` | `string` | `"Asia/Shanghai"` |
+| `IST` | `string` | `"Asia/Kolkata"` |
+| `KST` | `string` | `"Asia/Seoul"` |
+| `SGT` | `string` | `"Asia/Singapore"` |
+| `AEST` | `string` | `"Australia/Sydney"` |
+| `NZST` | `string` | `"Pacific/Auckland"` |
+| `BRT` | `string` | `"America/Sao_Paulo"` |
+| `SAST` | `string` | `"Africa/Johannesburg"` |
+| `GST_GULF` | `string` | `"Asia/Dubai"` |
+
+## `DateTime`
+
+<a id="DateTime" />
+A point in time, broken down into calendar fields plus a Unix
+millisecond timestamp and a timezone label. Construct one with
+`time.now()` or `time.to_timezone(ms, tz)`.
+
+```gust
+def DateTime
+
+    year: integer
+    month: integer
+    day: integer
+    hour: integer
+    minute: integer
+    second: integer
+    ms: integer
+    timezone: string
+
+end
+```
+
+**Fields**
+
+- `year: integer` — Calendar year.
+- `month: integer` — Calendar month (1-12).
+- `day: integer` — Day of the month.
+- `hour: integer` — Hour of the day (0-23).
+- `minute: integer` — Minute of the hour (0-59).
+- `second: integer` — Second of the minute (0-59).
+- `ms: integer` — Unix timestamp in milliseconds.
+- `timezone: string` — Timezone label (e.g. 'UTC').
+
+**Methods**
+
+<a id="DateTime.to" />
+```gust
+def DateTime.to(tz: string) -> DateTime
+```
+
+Converts this DateTime to a different timezone.
+
+**Parameters**
+
+- `tz` — Target timezone label.
+
+---
+
+<a id="DateTime.timestamp" />
+```gust
+def DateTime.__dict() -> dict[string, string]
+```
+
+Triggered by `dt as dict[string, string]`. Returns the date/time fields
+as zero-padded strings.
+
+---
+
+<a id="DateTime.elapsed" />
+```gust
+def DateTime.timestamp() -> integer
+```
+
+Returns the Unix timestamp in milliseconds.
+
+---
+
+<a id="DateTime.since" />
+```gust
+def DateTime.elapsed() -> Duration
+```
+
+Returns the duration elapsed since this DateTime.
+
+---
+
+<a id="DateTime.weekday" />
+```gust
+def DateTime._fields() -> dict[string, string]
+```
+
+The date/time components as zero-padded strings, keyed by name —
+the shared source for `__string` and `__dict`.
+
+---
+
+<a id="DateTime.day_of_year" />
+```gust
+def DateTime.weekday() -> integer
+```
+
+Day of the week, 0=Sunday through 6=Saturday.
+
+---
+
+<a id="DateTime.format" />
+```gust
+def DateTime.day_of_year() -> integer
+```
+
+Ordinal day within the year, 1 for January 1st.
+
+---
+
+<a id="DateTime.iso" />
+```gust
+def DateTime.format(fmt: string) -> string
+```
+
+Render this DateTime with strftime-style `%`-directives.
+
+Supported directives:
+
+```gust
+%Y full year      %y 2-digit year    %m month (01-12)
+%d day (01-31)    %H hour (00-23)    %I hour (01-12)
+%M minute         %S second          %p AM/PM
+%j day-of-year    %B month name      %b month abbr
+%A weekday name   %a weekday abbr    %Z timezone label
+%z ±HHMM offset   %% a literal %
+```
+
+Any other `%X` sequence is emitted unchanged.
+
+**Parameters**
+
+- `fmt` — The format string.
+
+## `Duration`
+
+<a id="Duration" />
+Represents a span of time.
+
+```gust
+def Duration
+
+    ms: integer
+    seconds: integer
+    minutes: integer
+    hours: integer
+    days: integer
+    years: integer
+
+end
+```
+
+**Fields**
+
+- `ms: integer` — The span in milliseconds.
+- `seconds: integer` — The span in whole seconds.
+- `minutes: integer` — The span in whole minutes.
+- `hours: integer` — The span in whole hours.
+- `days: integer` — The span in whole days.
+- `years: integer` — The span in whole years.
+
+## Functions
+
+<a id="time.sleep" />
+```gust
+def foreign sleep(ms: integer) -> none
+```
+
+Pauses execution for the given number of milliseconds.
+
+**Parameters**
+
+- `ms: integer` — Number of milliseconds to sleep.
+
+---
+
+<a id="time.now_ms" />
+```gust
+def foreign now_ms() -> integer
+```
+
+Returns the current Unix timestamp in milliseconds.
+
+---
+
+<a id="time.to_timezone" />
+```gust
+def to_timezone(ms: integer, tz: string) -> DateTime
+```
+
+Converts a Unix timestamp (ms) to a DateTime in the given timezone.
+
+**Parameters**
+
+- `ms: integer` — Unix timestamp in milliseconds.
+- `tz: string` — Target timezone label.
+
+---
+
+<a id="time.make_duration" />
+```gust
+def make_duration(ms: integer) -> Duration
+```
+
+Breaks down milliseconds into all duration fields.
+
+**Parameters**
+
+- `ms: integer` — The span in milliseconds.
+
+---
+
+<a id="time.days_from_civil" />
+```gust
+def days_from_civil(year: integer, month: integer, day: integer) -> integer
+```
+
+Days since the Unix epoch (1970-01-01) for a proleptic Gregorian date.
+Negative for dates before the epoch. Hinnant's `days_from_civil`.
+
+**Parameters**
+
+- `year: integer` — Calendar year.
+- `month: integer` — Calendar month (1-12).
+- `day: integer` — Day of the month (1-31).
+
+---
+
+<a id="time.to_epoch_ms" />
+```gust
+def to_epoch_ms(
+    year: integer,
+    month: integer,
+    day: integer,
+    hour: integer,
+    minute: integer,
+    second: integer,
+) -> integer
+```
+
+Unix millisecond timestamp for the given UTC calendar fields. Inverse of
+the calendar breakdown produced by `to_timezone(ms, "UTC")`.
+
+**Parameters**
+
+- `year: integer` — Calendar year.
+- `month: integer` — Calendar month (1-12).
+- `day: integer` — Day of the month.
+- `hour: integer` — Hour of the day (0-23).
+- `minute: integer` — Minute of the hour (0-59).
+- `second: integer` — Second of the minute (0-59).
+
+---
+
+<a id="time.from_fields" />
+```gust
+def from_fields(
+    year: integer,
+    month: integer,
+    day: integer,
+    hour: integer,
+    minute: integer,
+    second: integer,
+) -> DateTime
+```
+
+Build a UTC `DateTime` from calendar fields. Out-of-range components are
+normalized (e.g. minute 90 rolls into the next hour).
+
+**Parameters**
+
+- `year: integer` — Calendar year.
+- `month: integer` — Calendar month (1-12).
+- `day: integer` — Day of the month.
+- `hour: integer` — Hour of the day (0-23).
+- `minute: integer` — Minute of the hour (0-59).
+- `second: integer` — Second of the minute (0-59).
+
+---
+
+<a id="time.parse" />
+```gust
+def parse(s: string, fmt: string) -> DateTime
+```
+
+Parse `s` according to strftime-style `fmt`, returning a UTC `DateTime`.
+
+Recognizes the same directives as `DateTime.format`. Unspecified fields
+default to 1970-01-01 00:00:00. Whitespace in `fmt` matches any run of
+whitespace in the input; a literal character in `fmt` must match the input
+exactly.
+
+**Parameters**
+
+- `s: string` — The text to parse.
+- `fmt: string` — The strftime-style format describing `s`.
+
+**Raises**
+
+- `ValueError` — when the input does not match `fmt` (a literal mismatch or an expected month name that is absent).
+
+---
+
+<a id="time.parse_iso" />
+```gust
+def parse_iso(s: string) -> DateTime
+```
+
+Parse an ISO 8601 / RFC 3339 timestamp into a UTC `DateTime`.
+
+Accepts date-only (`2026-06-23`), date-time with a `T` or space separator
+(`2026-06-23T14:30:45`), optional fractional seconds (`.123`), and an
+optional trailing `Z` or `±HH:MM` offset. The result is normalized to UTC.
+
+**Parameters**
+
+- `s: string` — The ISO 8601 string to parse.
+
+**Raises**
+
+- `ValueError` — when `s` is shorter than a bare `YYYY-MM-DD` date.
+
+---
+
+<a id="time.now" />
+```gust
+def now() -> DateTime
+```
+
+Returns the current time as a `DateTime` in UTC.

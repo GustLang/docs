@@ -1,0 +1,141 @@
+---
+title: hashmap
+description: "`IntMap`: an integer-keyed hash map with integer values"
+---
+
+```gust
+use hashmap
+```
+
+`IntMap`: an integer-keyed hash map with integer values. Use it when you need
+`int -> int` lookups (for example, mapping expression IDs to type tags in a
+compiler). Construct one with `new_intmap()`, then `set`, `get_or`, test
+membership with `in`, `delete`, `clear`, and read its `length`.
+
+**Examples**
+
+```gust
+use hashmap
+
+def main() -> none
+    counts := hashmap.new_intmap()
+    counts.set(42, counts.get_or(42, 0) + 1)
+    counts.set(42, counts.get_or(42, 0) + 1)
+    print(counts.get_or(42, 0))   # 2
+    print(42 in counts)           # true
+    print(counts.length)          # 1
+end
+```
+
+**On this page:** [`IntMap`](#IntMap) · [`new_intmap`](#hashmap.new_intmap)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `INITIAL_CAPACITY` | `integer` | `16` |
+| `OFF_KEYS` | `integer` | `0` |
+| `OFF_VALS` | `integer` | `8` |
+| `OFF_STATE` | `integer` | `16` |
+| `OFF_CAPACITY` | `integer` | `24` |
+| `OFF_COUNT` | `integer` | `32` |
+| `OFF_USED_SLOTS` | `integer` | `40` |
+| `HEADER_SIZE` | `integer` | `48` |
+| `SLOT_EMPTY` | `integer` | `0` |
+| `SLOT_FULL` | `integer` | `1` |
+| `SLOT_TOMBSTONE` | `integer` | `2` |
+
+## `IntMap`
+
+<a id="IntMap" />
+An integer-keyed hash map with integer values, open-addressing with
+linear probing. Construct with `new_intmap()`. `_handle` is the address
+of the map's header block — don't touch it directly.
+
+```gust
+def IntMap
+
+    _handle: integer
+
+end
+```
+
+**Fields**
+
+- `_handle: integer` — Address of the unmanaged header block holding the map state.
+
+**Methods**
+
+<a id="IntMap.set" />
+```gust
+def IntMap.set(key: integer, value: integer) -> none
+```
+
+Insert or overwrite the entry for `key`.
+
+**Parameters**
+
+- `key` — The integer key to insert or update.
+- `value` — The integer value to associate with `key`.
+
+---
+
+<a id="IntMap.get_or" />
+```gust
+def IntMap.get_or(key: integer, fallback: integer) -> integer
+```
+
+Return the value stored for `key`, or `fallback` if absent.
+
+**Parameters**
+
+- `key` — The integer key to look up.
+- `fallback` — The value to return when `key` is not present.
+
+---
+
+<a id="IntMap.delete" />
+```gust
+def IntMap.delete(key: integer) -> bool
+```
+
+Remove the entry for `key` and return `true` if it was present; `false`
+if the key was missing (no-op). Mirrors `dict.delete`.
+
+**Parameters**
+
+- `key` — The integer key whose entry should be removed.
+
+---
+
+<a id="IntMap.clear" />
+```gust
+def IntMap.clear() -> none
+```
+
+Remove every entry. Capacity is retained.
+
+---
+
+<a id="IntMap.close" />
+```gust
+def IntMap.close() -> none
+```
+
+Release the map's backing tables.
+
+<Warning>
+The backing tables are not reclaimed automatically. Call this when
+done with a map whose lifetime isn't the whole program — one created
+inside a loop or a request handler. Using the map after `close` is
+undefined.
+</Warning>
+
+## Functions
+
+<a id="hashmap.new_intmap" />
+```gust
+def new_intmap() -> IntMap
+```
+
+Create a new empty integer hash map.

@@ -1,0 +1,199 @@
+---
+title: Formatter
+description: Format Gust source with the built-in opinionated gust format tool
+---
+
+Gust ships with a built-in formatter. Run it with `gust format`. It reshapes layout only — never meaning — so a formatted file always compiles to the same program.
+
+## Running the formatter
+
+Point `gust format` at a file or a directory:
+
+```bash
+gust format app.g                 # a single file
+gust format src/                  # recurse into every .g / .gml file under src/
+gust format .                     # recurse in the current directory
+```
+
+The formatter handles both `.g` source and `.gml` markup files. A directory run walks the tree, collects every `.g` and `.gml` file, and formats them in parallel across your CPUs. Formatting is done in place, so back up or commit before the first run on a codebase you haven't touched in a while.
+
+When a run finishes it prints one line per rewritten file and a summary:
+
+```text
+formatted: src/app.g
+1 of 12 file(s) reformatted
+```
+
+A single file that is already formatted prints `app.g already formatted`.
+
+### Safety gates
+
+Two checks keep the formatter from ever destroying content:
+
+- A `.g` file is lexed and parsed first. If it does not parse, the formatter reports the syntax error and leaves the file untouched rather than reshaping invalid source. (`.gml` markup is not Gust syntax and passes through this gate unchecked.)
+- A file containing a NUL byte is refused. The read would stop at the first NUL, so rewriting it would silently discard everything after it; the formatter prints an error and skips the file instead.
+
+Pointing `gust format` at a single file whose name does not end in `.g` or `.gml` is a usage error (exit code 2), as is a path that does not exist or a directory with no source files.
+
+## Configuration
+
+Two settings come from the `[format]` table of your `gust.toml`:
+
+```toml
+[format]
+indent = 4
+line_width = 90
+```
+
+`indent` is the number of spaces per indent level (default 4). `line_width` is the soft line-length limit (default 90) that drives long-line splitting and the `F018` line-length warning. With no manifest present, the formatter uses those defaults.
+
+Two flags override the manifest for a single run:
+
+```bash
+gust format --indent 2 app.g
+gust format --line-width 100 src/
+```
+
+The `[lint].ignore` list in `gust.toml` suppresses formatter warnings by code, so `ignore = ["F018"]` turns off the line-length warning.
+
+## What the formatter does
+
+The formatter runs an ordered pipeline of passes over the source. Each is described below.
+
+### Operator and bracket spacing
+
+String, f-string, and triple-quoted literals are masked first, so nothing inside a literal is ever touched. On the surrounding code the formatter then normalizes spacing to one space on each side of every binary operator:
+
+`:=`, `=`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `->`, `+`, `-`, `*`, `/`, `//`, `%`, and `|`.
+
+Unary minus and index expressions such as `list[-1]` are left alone: a `-` is spaced only when a word character sits on both sides. The `<` and `>` comparisons are spaced only when the operands look value-like, so generic and bracketed uses are preserved. A `:` and a `,` get one space after and none before. Padding immediately inside `(`, `[`, `{` (and before their closers) is removed, and runs of two or more inner spaces collapse to one.
+
+```gust
+def main() -> none
+    total := (a + b) * 2 - 1
+    first := row[0]
+    last := row[-1]
+    labels := {"x": 1, "y": 2}
+end
+```
+
+### Indentation
+
+Every line is reindented from scratch by tracking block openers, their matching `end`, and bracket continuations. Block openers each add one level: `def`, `def!`, `if`, `for`, `for!`, `while`, `while!`, `with`, `match`, `else`, `catch`, `case`, `try`, `blocking`, `interface`, `enum`, and `auto_enum`. A `match` body and a sum-type `enum` body indent two levels so their `case` arms nest inside the body rather than sitting level with the opener. An open `(`, `[`, or `{` that continues an expression across lines adds a continuation level restored by its closer, and a block-form lambda (`def(...) -> T` opening a body on the following lines) indents its body like any other block.
+
+Bare interface method signatures stay flat, while a default method with a body indents that body and closes it with its own `end`. Comments and multi-line docstrings are emitted at the current indent without affecting the tracking.
+
+### Blank lines
+
+- Two blank lines separate top-level declarations. Consecutive `use` imports stay tight against each other, and a declaration directly beneath a decorator (`@...`) stays attached to it with no blank in between.
+- Runs of consecutive blank lines collapse to a single blank (blank lines inside a multi-line docstring are prose and kept verbatim).
+- Struct bodies (`def PascalName`) and sum-type `enum` bodies get one blank line after the opener, no blanks between fields or variants, and exactly one blank before the closing `end`. A docstring directly under the opener is preserved.
+- Backed `enum`/`auto_enum` bodies (those with a `: backing` clause) get exactly one blank line before their closing `end`.
+- Interface bodies get one blank between members and before `end`; an interface-level docstring sits directly under the opener, and a method's trailing docstring nests one level under its signature.
+
+```gust
+def Point
+
+    x: integer
+    y: integer
+
+end
+
+
+def origin() -> Point
+    return Point(x: 0, y: 0)
+end
+```
+
+### Collapsing and splitting expressions
+
+The formatter keeps every bracketed group as compact as the line width allows, then breaks anything that overflows.
+
+- **Collapse:** a multi-line bracketed expression whose joined form fits within `line_width` is folded back onto one line — provided its inner lines have no blanks, comments, multi-line strings, nested openers, or a magic trailing comma. Collapsing repeats until nothing more folds, so nested groups collapse outward.
+- **Magic trailing comma:** a comma after the *last* item suppresses the collapse. This lets you pin a call, list, or dict to the multi-line form on purpose. The split pass adds this comma for exactly this reason.
+- **Split:** a line longer than `line_width` breaks at a bracketed group — a `def` signature's parameter list, a call's argument list, or a list/dict/set literal — placing one item per line, each with a trailing comma, and the closing bracket back at the opener's indent. Splitting sweeps until every line fits or nothing further can be split, so an item that is itself still too long is split again at its own group on a later sweep. Grouping parens and tuples are never given a synthesized comma, so a paren that follows a keyword (`return (...)`, `if (...)`) is left intact.
+
+```gust
+def render(
+    document: string,
+    width: integer,
+    height: integer,
+    theme: string,
+) -> string
+    return layout(document, width, height, theme)
+end
+```
+
+### Trailing commas
+
+Any remaining multi-line list or dict literal gets a trailing comma on its last item, unless that item already ends in a comma or sits directly after the opener.
+
+### Docstrings
+
+The closing `"""` of a multi-line docstring is moved onto its own line, aligned with the opening quotes. Triple-quoted string literals in expression position are left alone, since moving their quotes would change the string's value.
+
+### Import sorting
+
+Each contiguous run of `use` lines is reorganized:
+
+- Standard library packages are listed first, then project packages, separated by a single blank line.
+- Both sections are sorted case-insensitively. Within a section, `PascalCase` names sort before `snake_case`.
+- The names in a single `use A, C, B from pkg` line are sorted the same way into `use A, B, C from pkg`.
+- Multiple `use ... from pkg` lines that share the same source package are merged onto one line, with duplicate names removed.
+- A `use (A, B) from pkg` written on one line collapses to `use A, B from pkg`; a multi-line parenthesized block collapses to a single logical line so it can merge and sort with its siblings.
+- An import line that overflows `line_width` is expanded to the parenthesized multi-line form, one name per line with a trailing comma:
+
+  ```gust
+  use (
+      first_helper,
+      second_helper,
+      third_helper,
+  ) from some_package
+  ```
+
+Module imports (`use pkg` and `use pkg as alias`) have no `from` clause and never merge.
+
+### Markup formatting
+
+Inside `.gml` files, each markup region is parsed and pretty-printed. An element renders on one line when the author wrote it on one line, and one element per line when the author spread its children across lines — authored line breaks are preserved rather than reflowed by width. Attribute spacing is normalized, self-closing tags render as `<tag />`, event bindings keep their `@` prefix (`@click={handler}`), and `<>` fragments are supported. Expression holes — `{expr}`, `{@ expr}`, and `{* expr}` — are preserved, and markup nested inside a hole is cleaned up too.
+
+### Whitespace and newlines
+
+Trailing whitespace is stripped from every line, trailing blank lines at end of file are removed, and the file ends with exactly one newline.
+
+### Line-length warning
+
+After formatting, any line still longer than `line_width` produces an `F018` warning (rendered `warning[F018]: …`, mirroring `gust check`). This is a warning, not a rewrite — the formatter never force-breaks a line mid-expression. Suppress it with `ignore = ["F018"]` under `[lint]`.
+
+## What the formatter does not do
+
+- Inline or extract functions, or otherwise rewrite logic.
+- Sort struct fields.
+- Break lines mid-expression. Long lines split only at bracketed groups; a line that is still too long after splitting (a long string literal, say) earns an `F018` warning rather than a forced break.
+
+This is on purpose. The formatter changes layout, not meaning, so you stay in control of the logic.
+
+## Checking without writing
+
+Use `--check` to report what would change without rewriting anything. It exits `1` when any file needs formatting (or has errors) and `0` otherwise:
+
+```bash
+gust format --check .
+```
+
+In `--check` mode the formatter also runs the analyzer over each file and reports its diagnostics — the `G`/`W` codes you would see from `gust check`, plus the formatter's own `F`-coded warnings — and prints `<file> needs formatting` for any file whose layout would change. This makes a single `gust format --check` a useful gate for both style and correctness.
+
+Alternatively, format in place and let your version control catch the diff:
+
+```bash
+gust format .
+git diff --exit-code
+```
+
+## Editor integration
+
+The VS Code extension exposes formatting through the language server: format manually with `Alt+Shift+F`, or enable VS Code's `editor.formatOnSave` for `[g]` files to format on save. For other editors, wire `gust format` as your project's formatter (or use the LSP's formatting capability); most editors have a format-on-save hook that accepts an arbitrary command.
+
+## Design note
+
+Gust's formatter is deliberately opinionated. Beyond indent width and the soft line-length limit (`[format].indent` and `[format].line_width`), there are no style knobs. When everyone's code looks the same, reading other people's code is painless, and code review can focus on logic rather than layout. The cost is low — if you dislike a formatting choice, you can always bypass the tool — but the payoff compounds across a team.

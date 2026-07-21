@@ -1,0 +1,232 @@
+---
+title: uuid
+description: "Universally Unique Identifiers (RFC 4122 / RFC 9562)"
+---
+
+```gust
+use uuid
+```
+
+Universally Unique Identifiers (RFC 4122 / RFC 9562).
+
+A `UUID` is 16 bytes stored in network (big-endian) order. Generate one with
+`uuid.v4()` (random) or `uuid.v7()` (time-ordered, sortable); parse a string
+with `uuid.parse(s)`; render with `print(u)` or `u.hex()` / `u.urn()`.
+
+Randomness comes from the `random` package, which auto-seeds from the system
+clock on first use. For reproducible streams call `random.seed(n)` yourself
+before generating; for security-sensitive tokens prefer a dedicated CSPRNG.
+
+**Examples**
+
+```gust
+use uuid
+
+def main() -> none
+    id := uuid.v4()
+    print(id)                 # e.g. 1b4e28ba-2fa1-4d3f-a3f5-92c6b3f0a1de
+    print(id.version())       # 4
+
+    parsed := uuid.parse("{1B4E28BA-2FA1-11D2-883F-0016D3CCA427}")
+    print(parsed.is_nil())    # false
+end
+```
+
+**On this page:** [`UUIDVariant`](#UUIDVariant) · [`UUID`](#UUID) · [`nil`](#uuid.nil) · [`v4`](#uuid.v4) · [`v7`](#uuid.v7) · [`from_bytes`](#uuid.from_bytes) · [`parse`](#uuid.parse) · [`is_valid`](#uuid.is_valid)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `VERSION_NIBBLE_MASK` | `integer` | `15` |
+| `VERSION_4_MARKER` | `integer` | `64` |
+| `VERSION_7_MARKER` | `integer` | `112` |
+| `VARIANT_CLEAR_MASK` | `integer` | `63` |
+| `VARIANT_RFC_MARKER` | `integer` | `128` |
+| `VARIANT_MICROSOFT_BIT` | `integer` | `64` |
+| `VARIANT_FUTURE_BIT` | `integer` | `32` |
+| `TIMESTAMP_48_MASK` | `integer` | `281474976710655` |
+
+## `UUIDVariant`
+
+<a id="UUIDVariant" />
+```gust
+auto_enum UUIDVariant: string
+```
+
+The variant field of a UUID, decoded from the top bits of byte 8.
+
+**Variants**
+
+- `ncs = "ncs"` — NCS backward-compatibility variant (reserved, legacy).
+- `rfc = "rfc"` — RFC 4122 / RFC 9562 variant (the usual one).
+- `microsoft = "microsoft"` — Microsoft GUID variant (reserved).
+- `reserved = "reserved"` — Reserved for future definition.
+
+## `UUID`
+
+<a id="UUID" />
+A 128-bit UUID held as 16 bytes in big-endian (network) order.
+
+Construct one through `uuid.v4()`, `uuid.v7()`, `uuid.nil()`,
+`uuid.parse(s)`, or `uuid.from_bytes(bytes)` rather than building the
+struct directly. `print(u)` and f-string interpolation render the
+canonical lowercase `8-4-4-4-12` form via `__string`.
+
+The `b` field is the storage layout, not the public API — read it through
+`bytes()` so code keeps working if the representation changes.
+
+```gust
+def UUID
+
+    b: list[integer]
+
+end
+```
+
+**Fields**
+
+- `b: list[integer]` — The 16 raw bytes in big-endian (network) order.
+
+**Methods**
+
+<a id="UUID.hex" />
+```gust
+def UUID.hex() -> string
+```
+
+The 32 hex digits with no hyphens (e.g. `1b4e28ba2fa14d3fa3f592c6b3f0a1de`).
+
+---
+
+<a id="UUID.urn" />
+```gust
+def UUID.urn() -> string
+```
+
+The RFC 4122 URN form: `urn:uuid:` followed by the canonical string.
+
+---
+
+<a id="UUID.bytes" />
+```gust
+def UUID.bytes() -> list[integer]
+```
+
+A copy of the 16 raw bytes in big-endian order.
+
+---
+
+<a id="UUID.version" />
+```gust
+def UUID.version() -> integer
+```
+
+The version number (1-7), taken from the high nibble of byte 6. The nil
+UUID reports 0.
+
+---
+
+<a id="UUID.variant" />
+```gust
+def UUID.variant() -> UUIDVariant
+```
+
+The variant field decoded from byte 8:
+`0` = NCS (reserved, legacy), `1` = RFC 4122 (the usual one),
+`2` = Microsoft (reserved), `3` = reserved for future use.
+
+---
+
+<a id="UUID.is_nil" />
+```gust
+def UUID.is_nil() -> bool
+```
+
+True if every byte is zero (the nil UUID).
+
+## Functions
+
+<a id="uuid.nil" />
+```gust
+def nil() -> UUID
+```
+
+The nil UUID — all 16 bytes zero (00000000-0000-0000-0000-000000000000).
+
+---
+
+<a id="uuid.v4" />
+```gust
+def v4() -> UUID
+```
+
+Generate a random (version 4) UUID. 122 of the 128 bits are random; the
+rest encode the version and the RFC 4122 variant.
+
+<Warning>
+Randomness comes from the `random` package, which is not a
+cryptographically secure generator. For security-sensitive tokens
+prefer a dedicated CSPRNG.
+</Warning>
+
+---
+
+<a id="uuid.v7" />
+```gust
+def v7() -> UUID
+```
+
+Generate a time-ordered (version 7) UUID. The first 48 bits are the
+current Unix time in milliseconds, so v7 values sort by creation time;
+the remaining bits are random. Great for database keys.
+
+---
+
+<a id="uuid.from_bytes" />
+```gust
+def from_bytes(bytes: list[integer]) -> UUID
+```
+
+Build a UUID from exactly 16 bytes (big-endian order). Each value is
+masked to 0-255.
+
+**Parameters**
+
+- `bytes: list[integer]` — Exactly 16 byte values in big-endian order.
+
+**Raises**
+
+- `ValueError` — If `bytes` does not contain exactly 16 values.
+
+---
+
+<a id="uuid.parse" />
+```gust
+def parse(s: string) -> UUID
+```
+
+Parse a UUID string. Accepts the canonical `8-4-4-4-12` form in any
+case, with or without hyphens, optionally wrapped in `{...}` braces or
+prefixed with `urn:uuid:`.
+
+**Parameters**
+
+- `s: string` — The UUID string to parse.
+
+**Raises**
+
+- `ValueError` — If `s` is not a well-formed UUID string.
+
+---
+
+<a id="uuid.is_valid" />
+```gust
+def is_valid(s: string) -> bool
+```
+
+True if `s` parses as a UUID (same rules as `parse`), without raising.
+
+**Parameters**
+
+- `s: string` — The candidate UUID string to validate.

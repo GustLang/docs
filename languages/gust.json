@@ -1,0 +1,739 @@
+{
+  "name": "gust",
+  "scopeName": "source.g",
+  "fileTypes": [
+    "g"
+  ],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#fstrings-multiline"
+    },
+    {
+      "include": "#multiline-strings"
+    },
+    {
+      "include": "#fstrings"
+    },
+    {
+      "include": "#bytestrings"
+    },
+    {
+      "include": "#rawstrings"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#async-function-def"
+    },
+    {
+      "include": "#async-keyword"
+    },
+    {
+      "include": "#decorators"
+    },
+    {
+      "include": "#method-def"
+    },
+    {
+      "include": "#function-def"
+    },
+    {
+      "include": "#struct-def"
+    },
+    {
+      "include": "#variable-walrus"
+    },
+    {
+      "include": "#variable-typed"
+    },
+    {
+      "include": "#param-or-field"
+    },
+    {
+      "include": "#use-stmt"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#storage"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#variable-reassign"
+    },
+    {
+      "include": "#function-call"
+    },
+    {
+      "include": "#struct-init"
+    },
+    {
+      "include": "#method-call"
+    },
+    {
+      "include": "#member-access"
+    },
+    {
+      "include": "#identifiers"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.g"
+    },
+    "strings": {
+      "name": "string.quoted.double.g",
+      "begin": "(?<![fbr])\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.g",
+          "match": "\\\\[nrt\\\\\"{}]"
+        }
+      ]
+    },
+    "fstrings-multiline": {
+      "comment": "triple-quoted f-string: f\"\"\"...\"\"\" spanning multiple lines, with {..} interpolation. Must be matched before #fstrings and #multiline-strings.",
+      "name": "string.interpolated.g",
+      "begin": "(f)(\"\"\")",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.other.fstring-prefix.g"
+        },
+        "2": {
+          "name": "punctuation.definition.string.begin.g"
+        }
+      },
+      "end": "\"\"\"",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.g"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#fstring-body"
+        }
+      ]
+    },
+    "fstrings": {
+      "name": "string.interpolated.g",
+      "begin": "(f)(\")",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.other.fstring-prefix.g"
+        },
+        "2": {
+          "name": "punctuation.definition.string.begin.g"
+        }
+      },
+      "end": "\"",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.g"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#fstring-body"
+        }
+      ]
+    },
+    "fstring-body": {
+      "comment": "shared body for single- and triple-quoted f-strings: escapes plus {..} interpolation.",
+      "patterns": [
+        {
+          "name": "constant.character.escape.g",
+          "match": "\\\\[nrt\\\\\"{}]"
+        },
+        {
+          "name": "meta.interpolation.g",
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": {
+            "0": {
+              "name": "keyword.other.fstring-prefix.g"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "keyword.other.fstring-prefix.g"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#constants"
+            },
+            {
+              "include": "#function-call"
+            },
+            {
+              "include": "#member-access"
+            },
+            {
+              "include": "#variable-ref"
+            },
+            {
+              "include": "#operators"
+            }
+          ]
+        }
+      ]
+    },
+    "bytestrings": {
+      "name": "string.quoted.double.g",
+      "begin": "(?<!\\w)(b)(\")",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.other.fstring-prefix.g"
+        },
+        "2": {
+          "name": "punctuation.definition.string.begin.g"
+        }
+      },
+      "end": "\"",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.g"
+        }
+      },
+      "patterns": [
+        {
+          "name": "constant.character.escape.g",
+          "match": "\\\\[nrt\\\\\"{}]"
+        }
+      ]
+    },
+    "rawstrings": {
+      "comment": "r\"...\" — Python-style raw string. Backslashes are literal; pattern is highlighted as regex.",
+      "name": "string.regexp.g",
+      "begin": "(?<!\\w)(r)(\")",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.type.string.g"
+        },
+        "2": {
+          "name": "punctuation.definition.string.begin.g"
+        }
+      },
+      "end": "\"",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.g"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#regex-body"
+        }
+      ]
+    },
+    "regex-body": {
+      "patterns": [
+        {
+          "comment": "character-class shorthand: \\d \\D \\w \\W \\s \\S \\b \\B \\A \\Z",
+          "name": "constant.other.character-class.regexp",
+          "match": "\\\\[dDwWsSbBAZ]"
+        },
+        {
+          "comment": "any other escaped char inside the regex",
+          "name": "constant.character.escape.regexp",
+          "match": "\\\\."
+        },
+        {
+          "name": "keyword.control.anchor.regexp",
+          "match": "[\\^\\$]"
+        },
+        {
+          "name": "keyword.operator.quantifier.regexp",
+          "match": "[*+?]\\??"
+        },
+        {
+          "name": "keyword.operator.quantifier.regexp",
+          "match": "\\{\\d+(,\\d*)?\\}"
+        },
+        {
+          "name": "keyword.operator.alternation.regexp",
+          "match": "\\|"
+        },
+        {
+          "name": "constant.other.character-class.set.regexp",
+          "begin": "\\[",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.character-class.regexp"
+            }
+          },
+          "end": "\\]",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.character-class.regexp"
+            }
+          },
+          "patterns": [
+            {
+              "name": "constant.other.character-class.regexp",
+              "match": "\\\\[dDwWsSbB]"
+            },
+            {
+              "name": "constant.character.escape.regexp",
+              "match": "\\\\."
+            },
+            {
+              "name": "constant.other.character-class.range.regexp",
+              "match": "[^\\]\\\\]-[^\\]\\\\]"
+            }
+          ]
+        },
+        {
+          "name": "punctuation.definition.group.regexp",
+          "match": "[()]"
+        }
+      ]
+    },
+    "multiline-strings": {
+      "name": "string.quoted.triple.g",
+      "begin": "\"\"\"",
+      "end": "\"\"\""
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.g",
+          "match": "\\b0[xX][0-9a-fA-F](?:_?[0-9a-fA-F])*\\b"
+        },
+        {
+          "name": "constant.numeric.binary.g",
+          "match": "\\b0[bB][01](?:_?[01])*\\b"
+        },
+        {
+          "name": "constant.numeric.octal.g",
+          "match": "\\b0[oO][0-7](?:_?[0-7])*\\b"
+        },
+        {
+          "name": "constant.numeric.float.g",
+          "match": "\\b\\d(?:_?\\d)*\\.\\d(?:_?\\d)*\\b"
+        },
+        {
+          "name": "constant.numeric.integer.g",
+          "match": "\\b\\d(?:_?\\d)*\\b"
+        }
+      ]
+    },
+    "variable-walrus": {
+      "comment": "name := value",
+      "match": "\\b([a-z_]\\w*)\\s*(:=)",
+      "captures": {
+        "1": {
+          "name": "variable.other.g"
+        },
+        "2": {
+          "name": "keyword.operator.assignment.walrus.g"
+        }
+      }
+    },
+    "variable-typed": {
+      "comment": "name: type = value",
+      "match": "\\b([a-z_]\\w*)\\s*(:)\\s*(?=\\[?\\]?(?:string|integer|float|bool|Any|dict|list)\\b|\\[?\\]?[A-Z]\\w*)",
+      "captures": {
+        "1": {
+          "name": "variable.other.g"
+        },
+        "2": {
+          "name": "punctuation.separator.annotation.g"
+        }
+      }
+    },
+    "param-or-field": {
+      "comment": "param: type in signatures, fields in structs, named args",
+      "match": "\\b([a-z_]\\w*)\\s*(:)\\s*(?=[a-z\\[\"']|\\d)",
+      "captures": {
+        "1": {
+          "name": "variable.parameter.g"
+        },
+        "2": {
+          "name": "punctuation.separator.annotation.g"
+        }
+      }
+    },
+    "variable-reassign": {
+      "comment": "name = value (reassignment)",
+      "match": "\\b([a-z_]\\w*)\\s*(?==(?!=))",
+      "captures": {
+        "1": {
+          "name": "variable.other.g"
+        }
+      }
+    },
+    "variable-ref": {
+      "comment": "bare variable reference (inside f-string interpolation, etc.)",
+      "match": "\\b([a-z_]\\w*)\\b",
+      "name": "variable.other.g"
+    },
+    "method-call": {
+      "comment": "obj.method( — color the method name like a function call (yellow), leaving plain field access to #member-access. Must precede #member-access since both anchor on the receiver.",
+      "match": "\\b([a-z_]\\w*)\\.([a-z_]\\w*)(?=\\s*\\()",
+      "captures": {
+        "1": {
+          "name": "variable.other.g"
+        },
+        "2": {
+          "name": "entity.name.function.call.g"
+        }
+      }
+    },
+    "member-access": {
+      "comment": "obj.field (no trailing call paren)",
+      "match": "\\b([a-z_]\\w*)\\.([a-z_]\\w*)",
+      "captures": {
+        "1": {
+          "name": "variable.other.g"
+        },
+        "2": {
+          "name": "variable.other.member.g"
+        }
+      }
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "variable.language.self.g",
+          "match": "\\bself\\b"
+        },
+        {
+          "name": "keyword.control.g",
+          "match": "\\b(if|else|for|pass|while|in|return|try|catch|raise|end|blocking|implements|is|continue|break|match|case|spawn)\\b"
+        },
+        {
+          "name": "keyword.other.g",
+          "match": "\\b(as|and|or|not|from)\\b"
+        },
+        {
+          "name": "keyword.other.error.g",
+          "match": "\\berror\\b"
+        }
+      ]
+    },
+    "storage": {
+      "patterns": [
+        {
+          "name": "storage.type.function.g",
+          "match": "\\b(def|interface|type)\\b"
+        },
+        {
+          "name": "storage.modifier.g",
+          "match": "\\b(private|foreign)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.g",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.g",
+          "match": "\\bnone\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.g",
+          "match": "\\b(string|integer|float|bool|Any|none|bytes)\\b"
+        },
+        {
+          "name": "storage.type.collection.g",
+          "match": "\\b(dict|list|tuple|ref|constant)\\b"
+        },
+        {
+          "name": "storage.type.enum.g",
+          "match": "\\b(enum|auto_enum)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "comment": "Multi-character operators must precede their single-character prefixes so the longer token wins at a shared position (e.g. -> before -, << before <, // before /, += before =).",
+      "patterns": [
+        {
+          "name": "keyword.operator.arrow.g",
+          "match": "->"
+        },
+        {
+          "name": "keyword.operator.assignment.g",
+          "match": "\\+=|-=|\\*=|/=|%=|:="
+        },
+        {
+          "name": "keyword.operator.comparison.g",
+          "match": "==|!=|<=|>="
+        },
+        {
+          "name": "keyword.operator.bitwise.g",
+          "match": "<<|>>"
+        },
+        {
+          "name": "keyword.operator.assignment.g",
+          "match": "(?<![=<>!+\\-*/%])=(?!=)"
+        },
+        {
+          "name": "keyword.operator.comparison.g",
+          "match": "<|>"
+        },
+        {
+          "name": "keyword.operator.arithmetic.g",
+          "match": "//|\\+|-|\\*|/|%"
+        },
+        {
+          "name": "keyword.operator.bitwise.g",
+          "match": "&|\\^|~"
+        },
+        {
+          "name": "keyword.operator.pipe.g",
+          "match": "\\|"
+        }
+      ]
+    },
+    "decorators": {
+      "comment": "@name or @name(args) applied to a def — e.g. @trace_method, @scale(10).",
+      "match": "(@)([a-z_]\\w*)",
+      "captures": {
+        "1": {
+          "name": "punctuation.decorator.g"
+        },
+        "2": {
+          "name": "entity.name.function.decorator.g"
+        }
+      }
+    },
+    "function-def": {
+      "match": "\\b(def)\\s+([a-z_]\\w*)\\s*\\(",
+      "captures": {
+        "1": {
+          "name": "storage.type.function.g"
+        },
+        "2": {
+          "name": "entity.name.function.g"
+        }
+      }
+    },
+    "async-function-def": {
+      "comment": "def! name(...) — the ! marks the function async",
+      "match": "\\b(def)(!)\\s+([a-z_]\\w*)\\s*\\(",
+      "captures": {
+        "1": {
+          "name": "storage.type.function.g"
+        },
+        "2": {
+          "name": "keyword.control.async.bang.g"
+        },
+        "3": {
+          "name": "entity.name.function.g"
+        }
+      }
+    },
+    "async-keyword": {
+      "comment": "for! / while! — the ! makes the loop async",
+      "match": "\\b(for|while)(!)(?=\\s)",
+      "captures": {
+        "1": {
+          "name": "keyword.control.g"
+        },
+        "2": {
+          "name": "keyword.control.async.bang.g"
+        }
+      }
+    },
+    "use-stmt": {
+      "comment": "Match Python's import coloring: use/from/as = keyword.control.import (purple), package names = entity.name.namespace (green), imported names = entity.name.function (yellow) for lowercase or entity.name.type for capitalized.",
+      "patterns": [
+        {
+          "comment": "Parenthesized list form `use (a, b, ...) from pkg`. Spans multiple lines because the list sits between `(` and `)`.",
+          "begin": "\\b(use)\\s*(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.import.g"
+            },
+            "2": {
+              "name": "punctuation.section.import.g"
+            }
+          },
+          "end": "(\\))\\s+(from)\\s+(?:([\\w.]+)|(\"[^\"]*\"))",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.import.g"
+            },
+            "2": {
+              "name": "keyword.control.import.g"
+            },
+            "3": {
+              "name": "entity.name.namespace.g"
+            },
+            "4": {
+              "name": "entity.name.namespace.g"
+            }
+          },
+          "patterns": [
+            {
+              "match": ",",
+              "name": "punctuation.separator.import.g"
+            },
+            {
+              "match": "\\b[A-Z]\\w*\\b",
+              "name": "entity.name.type.g"
+            },
+            {
+              "match": "\\b[a-z_]\\w*\\b",
+              "name": "entity.name.function.g"
+            }
+          ]
+        },
+        {
+          "comment": "Inline bare-name form `use a, b, c from pkg` — no parens, single line.",
+          "begin": "\\b(use)\\s+(?=\\w+(?:\\s*,\\s*\\w+)*\\s+from\\b)",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.import.g"
+            }
+          },
+          "end": "\\b(from)\\s+(?:([\\w.]+)|(\"[^\"]*\"))",
+          "endCaptures": {
+            "1": {
+              "name": "keyword.control.import.g"
+            },
+            "2": {
+              "name": "entity.name.namespace.g"
+            },
+            "3": {
+              "name": "entity.name.namespace.g"
+            }
+          },
+          "patterns": [
+            {
+              "match": ",",
+              "name": "punctuation.separator.import.g"
+            },
+            {
+              "match": "\\b[A-Z]\\w*\\b",
+              "name": "entity.name.type.g"
+            },
+            {
+              "match": "\\b[a-z_]\\w*\\b",
+              "name": "entity.name.function.g"
+            }
+          ]
+        },
+        {
+          "comment": "Whole-module path import `use \"../foo\" [as alias]` — the package is a quoted relative/absolute path rather than a dotted name.",
+          "match": "\\b(use)\\s+(\"[^\"]*\")(?:\\s+(as)\\s+(\\w+))?",
+          "captures": {
+            "1": {
+              "name": "keyword.control.import.g"
+            },
+            "2": {
+              "name": "entity.name.namespace.g"
+            },
+            "3": {
+              "name": "keyword.control.import.g"
+            },
+            "4": {
+              "name": "entity.name.namespace.g"
+            }
+          }
+        },
+        {
+          "comment": "Qualified form `use pkg[.sub] [as alias]`.",
+          "match": "\\b(use)\\s+([\\w.]+)(?:\\s+(as)\\s+(\\w+))?",
+          "captures": {
+            "1": {
+              "name": "keyword.control.import.g"
+            },
+            "2": {
+              "name": "entity.name.namespace.g"
+            },
+            "3": {
+              "name": "keyword.control.import.g"
+            },
+            "4": {
+              "name": "entity.name.namespace.g"
+            }
+          }
+        }
+      ]
+    },
+    "struct-def": {
+      "match": "\\b(def)\\s+([A-Z]\\w*)\\s*$",
+      "captures": {
+        "1": {
+          "name": "storage.type.struct.g"
+        },
+        "2": {
+          "name": "entity.name.type.g"
+        }
+      }
+    },
+    "method-def": {
+      "match": "\\b(def)\\s+([A-Z]\\w*)\\.([a-z_]\\w*)\\s*\\(",
+      "captures": {
+        "1": {
+          "name": "storage.type.function.g"
+        },
+        "2": {
+          "name": "entity.name.type.g"
+        },
+        "3": {
+          "name": "entity.name.function.g"
+        }
+      }
+    },
+    "function-call": {
+      "match": "\\b([a-z_]\\w*)\\s*\\(",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.call.g"
+        }
+      }
+    },
+    "struct-init": {
+      "match": "\\b([A-Z]\\w*)\\s*\\(",
+      "captures": {
+        "1": {
+          "name": "entity.name.type.g"
+        }
+      }
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "entity.name.type.g",
+          "match": "\\b[A-Z]\\w*\\b"
+        },
+        {
+          "name": "variable.other.g",
+          "match": "\\b[a-z_]\\w*\\b"
+        }
+      ]
+    }
+  }
+}

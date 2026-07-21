@@ -1,0 +1,506 @@
+---
+title: cli.app
+description: "Command-line argument parsing and command dispatch"
+---
+
+```gust
+use cli.app
+```
+
+Command-line argument parsing and command dispatch. Interactive terminal
+prompts and rendering live in the sibling `cli.ui` package.
+
+A flat parser is one `CLIApp` (`app(...)` + `.add_argument(...)`), parsed with
+`parse_args`. A multi-command tool has two equivalent styles:
+
+- Builder subcommands: register each with `.command(sub)` and parse with
+  `dispatch`, which selects the subcommand, parses its args, and serves
+  auto-generated top-level help.
+- Class-based commands: subclass `Subcommand`, override `configure`/`handle`,
+  register them with `.add_commands([...])`, and drive the tool with `.run`.
+
+Either way the command list never drifts from a hand-written usage string.
+
+Every argument — positional, flag, or value-taking option — is declared with the
+single `.add_argument(...)` method: the `--` prefix marks a named argument, the
+default's type fixes the expected type (a `bool` default makes a flag), and an
+argument with no default is required.
+
+The package is organized by concern:
+
+```gust
+cli.g      - parser structs (CLIApp, Parsed, Dispatch) and builder methods
+parse.g    - argv parsing, subcommand dispatch, and value accessors
+help.g     - per-command and top-level help rendering
+command.g  - the class-based `Subcommand` base and its `handle` contract
+```
+
+**On this page:** [`Spec`](#Spec) · [`CLIApp`](#CLIApp) · [`Dispatch`](#Dispatch) · [`Parsed`](#Parsed) · [`Subcommand`](#Subcommand) · [`app`](#cli.app.app) · [`help_text`](#cli.app.help_text) · [`top_level_help`](#cli.app.top_level_help) · [`parse_args`](#cli.app.parse_args) · [`find_command`](#cli.app.find_command) · [`dispatch`](#cli.app.dispatch)
+
+## `Spec`
+
+<a id="Spec" />
+One declared argument - positional, flag, or option.
+
+```gust
+def Spec
+
+    name: string
+    short_name: string
+    help: string
+    kind: string
+    type_name: string
+    required: bool
+    default_value: string
+
+end
+```
+
+**Fields**
+
+- `name: string` — Canonical name (with any leading `--` stripped); callers look the value up under this key.
+- `short_name: string` — Optional short alias (with any leading `-` stripped), used as `-x`; empty string means no short form.
+- `help: string` — One-line description shown by `help_text`.
+- `kind: string` — `"positional"`, `"option"` (value-taking, named), or `"flag"` (boolean, named).
+- `type_name: string` — The value's type — `"string"`, `"integer"`, `"float"`, or `"bool"` — used to coerce the parsed value and to validate input.
+- `required: bool` — True when the argument must be supplied; false for flags and for any argument carrying a default.
+- `default_value: string` — The default rendered as a string (coerced to `type_name` when the argument is absent); empty for a required argument.
+
+## `CLIApp`
+
+<a id="CLIApp" />
+A CLI argument parser. Construct with `app(name, description)`, then
+chain `.add_argument(...)` to declare arguments. `parse_args(p, argv)`
+produces a `Parsed` result.
+
+```gust
+def CLIApp
+
+    name: string
+    description: string
+    positionals: list[Spec]
+    flags: list[Spec]
+    options: list[Spec]
+    subcommands: list[CLIApp]
+    color_mode: string
+    category: string
+    category_order: list[string]
+    registered_commands: list[Subcommand]
+
+end
+```
+
+**Fields**
+
+- `name: string` — Program name shown in usage and help.
+- `description: string` — One-line program description shown in help.
+- `positionals: list[Spec]` — Declared positional argument specs, in order.
+- `flags: list[Spec]` — Declared boolean flag specs.
+- `options: list[Spec]` — Declared value-taking option specs.
+- `subcommands: list[CLIApp]` — Registered subcommand parsers, populated by `.command(...)` and `.add_commands(...)`.
+- `color_mode: string` — Help colorization mode (`"auto"`, `"always"`, `"never"`), set with `.color(...)`.
+- `category: string` — Help-section label used when this parser is registered as a subcommand, set with `.section(...)`.
+- `category_order: list[string]` — Display order of category headers for grouped help, set with `.sections(...)`.
+- `registered_commands: list[Subcommand]` — Class-based command instances registered via `.add_commands(...)`, retained so `.run(...)` can invoke each one's `handle`.
+
+**Methods**
+
+<a id="CLIApp.add_argument" />
+```gust
+def CLIApp.add_argument(
+    name: string,
+    short: string,
+    default: integer | string | bool | float | none,
+    help: string,
+    value_type: string,
+) -> CLIApp
+```
+
+Declare one command-line argument. A single method covers all three kinds:
+
+- A `name` without a leading `--` is a positional argument, filled in
+  declaration order.
+- A `name` with a leading `--` is a named argument. A `bool` default (or
+  `value_type: "bool"`) makes it a boolean flag; any other type makes it a
+  value-taking option.
+
+The default's type fixes the argument's expected type, so the parsed value
+comes back already typed (`integer`, `float`, `bool`, or `string`). Pass
+`value_type` to set that type explicitly when there is no default. An
+argument with no default is required (flags are never required — an absent
+flag is `false`).
+
+**Parameters**
+
+- `name` — The argument name; a leading `--` marks it as named.
+- `short` — Optional short alias for a named argument (e.g. `"-j"`); ignored for positionals.
+- `default` — The default value, whose type fixes the expected type. Omit for a required argument.
+- `help` — One-line description shown in help.
+- `value_type` — Explicit expected type (`"string"`, `"integer"`, `"float"`, `"bool"`) used to validate input when there is no default.
+
+---
+
+<a id="CLIApp.color" />
+```gust
+def CLIApp.color(mode: string) -> CLIApp
+```
+
+Set how help text is colorized: `"auto"` (the default — color when
+stdout is a TTY and `NO_COLOR` is unset), `"always"`, or `"never"`.
+
+**Parameters**
+
+- `mode` — One of `"auto"`, `"always"`, `"never"`; other values behave as `"auto"`.
+
+---
+
+<a id="CLIApp.section" />
+```gust
+def CLIApp.section(name: string) -> CLIApp
+```
+
+Tag this command into a help category. `top_level_help` groups the
+registered subcommands under their category headers; untagged commands fall
+into a default `Commands` bucket. Set this on a subcommand before
+registering it with `.command(...)`.
+
+**Parameters**
+
+- `name` — The category label shown as a help section header.
+
+---
+
+<a id="CLIApp.sections" />
+```gust
+def CLIApp.sections(order: list[string]) -> CLIApp
+```
+
+Declare the category display order for this command group's grouped help.
+Categories present on subcommands but absent from `order` render after these,
+in first-seen registration order.
+
+**Parameters**
+
+- `order` — Category labels in the order their sections should appear.
+
+---
+
+<a id="CLIApp.command" />
+```gust
+def CLIApp.command(sub: CLIApp) -> CLIApp
+```
+
+Register a subcommand on this command group, returning the group so
+registrations chain. `sub` is a full parser built with `app(name, desc)`
+whose `name` is the bare command token (e.g. `app("build", "...")`); its
+own `.add_argument(...)` declarations define that command's arguments.
+Dispatch and help-listing read the registered set via `dispatch` /
+`top_level_help`.
+
+**Parameters**
+
+- `sub` — The subcommand parser to register; its `name` is the token matched on the command line.
+
+---
+
+<a id="CLIApp.add_commands" />
+```gust
+def CLIApp.add_commands(cmds: list[Subcommand]) -> CLIApp
+```
+
+Register class-based subcommands, returning the group so registrations
+chain. For each command, a parser named by `command.name()` is built and
+handed to `command.configure(...)` to declare its arguments, then projected
+into `subcommands` so `dispatch` and `top_level_help` treat it like any
+other subcommand. The instance is retained so `run(...)` can invoke its
+`handle(...)` after dispatch.
+
+**Parameters**
+
+- `cmds` — The command instances to register; each supplies its own token, help, argument declarations, and `handle`.
+
+---
+
+<a id="CLIApp.run" />
+```gust
+def CLIApp.run(argv: list[string]) -> integer
+```
+
+Dispatch `argv` against the registered commands and run the selected one,
+returning its process exit code. This owns the whole top-level surface, so a
+program's entry point is just `exit(app.run(os.args()))`:
+
+- a bare invocation or top-level `--help`/`-h` prints the auto-generated
+  help and exits `0`;
+- `<command> --help` prints that command's help and exits `0`;
+- an unknown command prints the error followed by the command list, and a
+  per-command parse error prints just that error — both exit `2` (a usage
+  error), the conventional code for a misused command line;
+- otherwise the matched command's `handle` runs and its exit code is
+  returned.
+
+Pass the raw argument vector (`os.args()`); `argv[0]` is the program name
+and `argv[1]` selects the command.
+
+**Parameters**
+
+- `argv` — The raw argument vector.
+
+**Examples**
+
+```gust
+p := cli.app("greet", "Say hello")
+    .add_argument("name", help: "who to greet")
+    .add_argument("--shout", default: false, help: "uppercase output")
+parsed := cli.parse_args(p, os.args())
+```
+
+## `Dispatch`
+
+<a id="Dispatch" />
+Result of `dispatch` — a subcommand-aware parse of a command group.
+
+The caller checks `help_requested` (top-level help, or `<cmd> --help`) and
+`error_message` (unknown command, or a sub-parse failure) before acting on
+`command` + `parsed`.
+
+```gust
+def Dispatch
+
+    command: string
+    parsed: Parsed
+    help_requested: bool
+    help_text: string
+    error_message: string
+
+end
+```
+
+**Fields**
+
+- `command: string` — The chosen subcommand's name, or `""` when help was requested, no subcommand was given, or the command was unknown.
+- `parsed: Parsed` — The matched subcommand's parse result; meaningful only when `command != ""` and `error_message == ""`.
+- `help_requested: bool` — True for bare invocation, top-level `--help`/`-h`, or a per-command `--help`. When true, print `help_text` and stop.
+- `help_text: string` — The help to print when `help_requested` — the auto-generated top-level help, or the chosen command's own help.
+- `error_message: string` — `""` on success; otherwise an unknown-command or sub-parse error suitable for printing.
+
+## `Parsed`
+
+<a id="Parsed" />
+Result of `parse_args`. `error_message` is `""` on success; a non-empty
+string signals a parse failure and `values` may be partial. Callers should
+check `help_requested` and `error_message` before consuming `values`.
+
+```gust
+def Parsed
+
+    help_requested: bool
+    error_message: string
+    values: dict[string, Any]
+    given: dict[string, bool]
+    extras: list[string]
+
+end
+```
+
+**Fields**
+
+- `help_requested: bool` — True when `--help` was seen.
+- `error_message: string` — `""` on success; a parse-failure message otherwise.
+- `values: dict[string, Any]` — Every declared argument keyed by its name, holding the parsed value already coerced to the argument's type (a `string`, `integer`, `float`, or `bool`) — or the declared default when absent. This is the dict handed to a command's `handle`.
+- `given: dict[string, bool]` — The names of the arguments actually supplied on the command line, keyed by name. `name in given` distinguishes a value the user passed from one that fell back to its default — the answer to "was this flag passed?" that `values` alone can't give.
+- `extras: list[string]` — Tokens beyond the declared positionals.
+
+## `Subcommand`
+
+<a id="Subcommand" />
+Base class for a subcommand. Subclass it and override `name`, `help`,
+`configure`, and `handle`. Declare additional fields on the subclass to
+carry shared state into `handle` (set them at construction).
+
+```gust
+def Subcommand
+
+    verbose: bool
+
+end
+```
+
+**Fields**
+
+- `verbose: bool` — Shared per-command verbosity slot, defaulted off.
+
+**Methods**
+
+<a id="Subcommand.name" />
+```gust
+def Subcommand.name() -> string
+```
+
+Return the command token matched on the command line (e.g. `"build"`).
+Override on every command.
+
+---
+
+<a id="Subcommand.help" />
+```gust
+def Subcommand.help() -> string
+```
+
+Return the one-line description shown in help. Override on every command.
+
+---
+
+<a id="Subcommand.category" />
+```gust
+def Subcommand.category() -> string
+```
+
+Return the help-section label this command groups under in the top-level
+help, or `""` (the default) to land in the uncategorized `Commands` bucket.
+Override to categorize the command; `.add_commands` reads it and the section
+order is set on the group with `.sections(...)`.
+
+---
+
+<a id="Subcommand.configure" />
+```gust
+def Subcommand.configure(_app: CLIApp) -> none
+```
+
+Declare this command's arguments on `_app` with `.add_argument(...)`.
+Override when the command takes arguments; the default declares none.
+
+**Parameters**
+
+- `_app` — This command's own parser to declare arguments on.
+
+---
+
+<a id="Subcommand.handle" />
+```gust
+def Subcommand.handle(
+    _args: dict[string, Any],
+    _given: dict[string, bool],
+) -> integer
+```
+
+Run the command and return its process exit code. Override on every
+command. Read parsed arguments straight from `_args` by name, casting to the
+declared type — `_args["file"] as string`, `_args["jobs"] as integer`,
+`_args["verbose"] as bool` — and shared state from the command's own fields.
+Every declared argument is present, holding its parsed value or its default.
+
+`_given` names the arguments the user actually passed on the command line, so
+`"flag" in _given` distinguishes an explicit value from a defaulted one when
+that difference matters (a bare flag being `true` already implies it).
+
+**Parameters**
+
+- `_args` — The parsed argument values for this invocation, keyed by name.
+- `_given` — The names of the arguments actually supplied on the command line.
+
+## Functions
+
+<a id="cli.app.app" />
+```gust
+def app(name: string, description: string) -> CLIApp
+```
+
+Create an empty parser with no declared arguments.
+
+**Parameters**
+
+- `name: string` — Program name shown in usage and help.
+- `description: string` — One-line program description shown in help.
+
+---
+
+<a id="cli.app.help_text" />
+```gust
+def help_text(p: CLIApp) -> string
+```
+
+Render a single command's help: the title line, usage, and aligned
+Positional/Options/Flags sections. Columns are padded for alignment within
+each section. ANSI color is applied per `p.color_mode` (see `_should_color`).
+
+**Parameters**
+
+- `p: CLIApp` — The parser whose name, description, and specs are rendered.
+
+---
+
+<a id="cli.app.top_level_help" />
+```gust
+def top_level_help(app: CLIApp) -> string
+```
+
+Render the top-level help for a command group: the program name and
+description, a `Usage:` line, and the registered subcommands with their
+one-line descriptions. When any subcommand is tagged via `.section(...)`,
+commands are grouped under category headers (ordered by `.sections(...)`,
+then first-seen); otherwise a single flat `Commands:` section is rendered.
+The single source of truth for the command list — generated from
+`app.subcommands`, so it never drifts the way a hand-written string would.
+
+**Parameters**
+
+- `app: CLIApp` — The command group whose name, description, and subcommands render.
+
+---
+
+<a id="cli.app.parse_args" />
+```gust
+def parse_args(p: CLIApp, argv: list[string]) -> Parsed
+```
+
+Parse `argv` against the parser `p`. The first element of `argv` is
+treated as the program name and skipped (matching `os.args()`). Every
+declared argument is seeded with its default, then overwritten by any value
+on the command line; each value comes back coerced to its declared type.
+Never raises — errors surface via `parsed.error_message`.
+
+**Parameters**
+
+- `p: CLIApp` — The CLI app defining flags, options, and positionals to parse against.
+- `argv: list[string]` — The raw argument vector; its first element is skipped as the program name.
+
+---
+
+<a id="cli.app.find_command" />
+```gust
+def find_command(group: CLIApp, name: string) -> CLIApp
+```
+
+Return the registered subcommand whose name equals `name`, or a sentinel
+parser with an empty `name` when none matches (so callers test
+`result.name == ""`).
+
+**Parameters**
+
+- `group: CLIApp` — The command group to search.
+- `name: string` — The subcommand token to look up.
+
+---
+
+<a id="cli.app.dispatch" />
+```gust
+def dispatch(group: CLIApp, argv: list[string]) -> Dispatch
+```
+
+Parse `argv` against a command group: select the subcommand named by
+`argv[1]`, then parse the remaining tokens against it. Handles the whole
+multi-command surface so callers don't reinvent it — bare invocation and
+top-level `--help`/`-h` yield the auto-generated top-level help; an
+unrecognized command yields an `unknown command` error; a per-command
+`--help` yields that command's help; otherwise the subcommand's `Parsed`
+is returned under `command`.
+
+`argv` is the raw vector (`argv[0]` is the program name, `argv[1]` the
+subcommand), so pass `os.args()` straight through.
+
+**Parameters**
+
+- `group: CLIApp` — The command group whose subcommands are dispatched.
+- `argv: list[string]` — The raw argument vector.

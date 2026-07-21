@@ -1,0 +1,1084 @@
+---
+title: http.server
+description: "The request dispatcher: the pure-Gust routing engine"
+---
+
+```gust
+use http.server
+```
+
+The request dispatcher: the pure-Gust routing engine. Once `transport.g` has
+parsed a connection into a `Request`, it calls `server._dispatch(request)`,
+which runs the outermost-first middleware chain: a `Next` link is threaded
+through each registered middleware outermost-first, and when the chain is
+exhausted `_route` does path-pattern matching with `{name}` capture,
+static-file resolution, and 404/405 — all here in Gust. The whole package is
+Gust over the `socket` byte stream (request parsing, response writing, and the
+`spawn`-per-connection accept loop); only the raw socket syscalls beneath
+`socket` are C. Part of the `http.server` package.
+
+**On this page:** [`Next`](#Next) · [`Group`](#Group) · [`Middleware`](#Middleware) · [`Request`](#Request) · [`Response`](#Response) · [`Route`](#Route) · [`WsRoute`](#WsRoute) · [`StaticMount`](#StaticMount) · [`Server`](#Server) · [`status_response`](#http.server.status_response) · [`ok`](#http.server.ok) · [`text`](#http.server.text) · [`html`](#http.server.html) · [`json_response`](#http.server.json_response) · [`created`](#http.server.created) · [`no_content`](#http.server.no_content) · [`redirect`](#http.server.redirect) · [`redirect_permanent`](#http.server.redirect_permanent) · [`bad_request`](#http.server.bad_request) · [`unauthorized`](#http.server.unauthorized) · [`forbidden`](#http.server.forbidden) · [`not_found`](#http.server.not_found) · [`server_error`](#http.server.server_error)
+
+## `Next`
+
+<a id="Next" />
+One link in the middleware chain. Holds the server (whose middleware
+list and routes drive dispatch) and the index of the next middleware to
+run. A middleware calls `next.call(req)` to advance to the following
+layer — or, once the middleware is exhausted, to routing. Reifying the
+"next handler" as data is how the onion model is expressed without
+closures: each `call` builds a fresh `Next` advanced by one.
+
+```gust
+def Next
+
+    server: Server
+    index: integer
+
+end
+```
+
+**Fields**
+
+- `server: Server` — The server whose middleware list and routes back this chain.
+- `index: integer` — Index into `server.middlewares` of the next layer to run.
+
+**Methods**
+
+<a id="Next.call" />
+```gust
+def Next.call(req: Request) -> Response
+```
+
+Invoke the next middleware layer with a `Next` advanced past it, or —
+when every middleware has run — hand off to `server._route` for path
+matching, static files, and 404/405.
+
+**Parameters**
+
+- `req` — The request flowing down the chain.
+
+## `Group`
+
+<a id="Group" />
+A route group that prefixes every path it registers. Create with
+`server.group("/api")`; then `grp.get("/users", handler)` registers
+the route at `/api/users` on the parent server.
+
+```gust
+def Group
+
+    routes: list[Route]
+    prefix: string
+
+end
+```
+
+**Fields**
+
+- `routes: list[Route]` — The parent server's route list, appended to in place.
+- `prefix: string` — Path prefix prepended to every route registered here.
+
+**Methods**
+
+<a id="Group.route" />
+```gust
+def Group.route(
+    method: string,
+    path: string,
+    handler: Function(Request)[Response],
+) -> none
+```
+
+Register a route with this group's prefix prepended, into the parent
+server's route table. See `Server.route`.
+
+**Parameters**
+
+- `method` — HTTP method to match.
+- `path` — Path pattern, joined onto the group prefix.
+- `handler` — Function invoked with the Request, returning a Response.
+
+---
+
+<a id="Group.get" />
+```gust
+def Group.get(
+    handler: Function(Request)[Response],
+    path: string,
+) -> Function(Request)[Response]
+```
+
+Register a prefixed `GET` route. See `Group.route`.
+
+**Parameters**
+
+- `path` — Path pattern, joined onto the group prefix.
+- `handler` — Function invoked with the Request, returning a Response.
+
+**Returns** `Function(Request)[Response]`
+
+`handler` unchanged, so the method also serves as a `@grp.get(path)`
+decorator.
+
+---
+
+<a id="Group.post" />
+```gust
+def Group.post(
+    handler: Function(Request)[Response],
+    path: string,
+) -> Function(Request)[Response]
+```
+
+Register a prefixed `POST` route. See `Group.route`.
+
+**Parameters**
+
+- `path` — Path pattern, joined onto the group prefix.
+- `handler` — Function invoked with the Request, returning a Response.
+
+**Returns** `Function(Request)[Response]`
+
+`handler` unchanged, so the method also serves as a `@grp.post(path)`
+decorator.
+
+---
+
+<a id="Group.put" />
+```gust
+def Group.put(
+    handler: Function(Request)[Response],
+    path: string,
+) -> Function(Request)[Response]
+```
+
+Register a prefixed `PUT` route. See `Group.route`.
+
+**Parameters**
+
+- `path` — Path pattern, joined onto the group prefix.
+- `handler` — Function invoked with the Request, returning a Response.
+
+**Returns** `Function(Request)[Response]`
+
+`handler` unchanged, so the method also serves as a `@grp.put(path)`
+decorator.
+
+---
+
+<a id="Group.patch" />
+```gust
+def Group.patch(
+    handler: Function(Request)[Response],
+    path: string,
+) -> Function(Request)[Response]
+```
+
+Register a prefixed `PATCH` route. See `Group.route`.
+
+**Parameters**
+
+- `path` — Path pattern, joined onto the group prefix.
+- `handler` — Function invoked with the Request, returning a Response.
+
+**Returns** `Function(Request)[Response]`
+
+`handler` unchanged, so the method also serves as a `@grp.patch(path)`
+decorator.
+
+---
+
+<a id="Group.delete" />
+```gust
+def Group.delete(
+    handler: Function(Request)[Response],
+    path: string,
+) -> Function(Request)[Response]
+```
+
+Register a prefixed `DELETE` route. See `Group.route`.
+
+**Parameters**
+
+- `path` — Path pattern, joined onto the group prefix.
+- `handler` — Function invoked with the Request, returning a Response.
+
+**Returns** `Function(Request)[Response]`
+
+`handler` unchanged, so the method also serves as a `@grp.delete(path)`
+decorator.
+
+## `Middleware`
+
+<a id="Middleware" />
+Base class for class-based middleware. Extend it and override `handle`
+to wrap every request: read or rewrite the Request on the way in, call
+`next.call(request)` to invoke the rest of the chain, then read or rewrite
+the Response on the way out — or return a Response without calling `next`
+to short-circuit (e.g. an early `unauthorized()`). Whatever state the
+middleware needs — configuration, dependencies — lives in its own fields.
+
+Register an instance with `server.use(MyMiddleware(...))`. Middleware run
+outermost-first in registration order: the first registered wraps every
+one registered after it, and routing sits at the core.
+
+**Methods**
+
+<a id="Middleware.handle" />
+```gust
+def Middleware.handle(request: Request, next: Next) -> Response
+```
+
+Process one request and return the Response to send. The default passes
+the request straight through to the rest of the chain unchanged; override
+it to do work before and/or after the downstream handler.
+
+**Parameters**
+
+- `request` — The request flowing down the chain.
+- `next` — The next link in the chain; call `next.call(request)` to invoke the remaining middleware and then routing.
+
+**Examples**
+
+```gust
+def AuthMiddleware extends http.Middleware
+    header: string
+end
+
+def AuthMiddleware.handle(request: http.Request, next: http.Next) -> http.Response
+    if request.headers.get(header) == ""
+        return http.unauthorized("missing token")
+    end
+    return next.call(request)
+end
+
+app.use(AuthMiddleware(header: "Authorization"))
+```
+
+## `Request`
+
+<a id="Request" />
+An incoming HTTP request, passed to every route handler. Read its
+method, path, headers, captured path params, query params, and body;
+parse a JSON body with `json`.
+
+```gust
+def Request
+
+    method: string
+    path: string
+    headers: Headers
+    body: string
+    remote_ip: string
+    version: string
+    query_params: dict[string, string]
+    path_params: dict[string, string]
+
+end
+```
+
+**Fields**
+
+- `method: string` — HTTP method (e.g. "GET", "POST"), uppercased.
+- `path: string` — Request path with the query string stripped, e.g. "/users".
+- `headers: Headers` — Request headers as a `Headers` view. Use `headers.get(name)` or `headers[name]` (case-insensitive, "" if absent).
+- `body: string` — Raw request body.
+- `remote_ip: string` — Client IP address as text (empty if unavailable).
+- `version: string` — HTTP version token, e.g. "HTTP/1.1".
+- `query_params: dict[string, string]` — Parsed query-string parameters. Use `query_param(name)`.
+- `path_params: dict[string, string]` — Captured `{name}` route segments. Use `path_param(name)`.
+
+**Methods**
+
+<a id="Request.path_param" />
+```gust
+def Request.path_param(name: string) -> string
+```
+
+Look up a captured `{name}` route segment, or "" if absent.
+
+**Parameters**
+
+- `name` — Path-parameter name (the `{name}` in the route pattern).
+
+---
+
+<a id="Request.query_param" />
+```gust
+def Request.query_param(name: string) -> string
+```
+
+Look up a query-string parameter, or "" if absent.
+
+**Parameters**
+
+- `name` — Query-parameter name.
+
+---
+
+<a id="Request.cookie" />
+```gust
+def Request.cookie(name: string) -> string
+```
+
+Look up a cookie value from the `Cookie` header, or "" if absent.
+
+**Parameters**
+
+- `name` — Cookie name.
+
+---
+
+<a id="Request.is_json" />
+```gust
+def Request.is_json() -> bool
+```
+
+True when the request's Content-Type announces JSON.
+
+---
+
+<a id="Request.json" />
+```gust
+def Request.json() -> Any
+```
+
+Parse the request body as JSON into native Gust values: an object
+becomes a `dict[string, Any]`, an array a `list[Any]`, and scalars their
+matching primitive.
+
+**Raises**
+
+- `ValueError` — the request body is not valid JSON.
+
+**Examples**
+
+```gust
+def show_user(req: http.Request) -> http.Response
+    id := req.path_param("id")
+    page := req.query_param("page")
+    return http.ok(f"user {id}, page {page}")
+end
+```
+
+## `Response`
+
+<a id="Response" />
+An HTTP response. Returned from a handler. Prefer the constructors
+(`ok`, `text`, `html`, `json_response`, `redirect`, `not_found`, ...)
+over building one by hand. Chain `with_header`/`with_cookie` to add
+response headers.
+
+```gust
+def Response
+
+    status: integer
+    body: string
+    content_type: string
+    headers: dict[string, string]
+    _file: string
+
+end
+```
+
+**Fields**
+
+- `status: integer` — HTTP status code (e.g. 200, 404). A status of 0 is the internal "no match" signal from static-file resolution.
+- `body: string` — Response body.
+- `content_type: string` — The value for the Content-Type header.
+- `headers: dict[string, string]` — Extra response headers (e.g. Set-Cookie). Reserved headers (Content-Type/Length, Connection) are ignored here.
+- `_file: string` — Internal — when non-empty, the framework streams this file's raw bytes as the body (binary-safe), ignoring `body`. Set via `with_file`; used by static-file serving.
+
+**Methods**
+
+<a id="Response.with_header" />
+```gust
+def Response.with_header(name: string, value: string) -> Response
+```
+
+Set a response header and return this same Response so calls chain.
+Reserved headers (Content-Type/Content-Length/Connection) are managed
+by the framework and any set here are ignored when the response is sent.
+
+**Parameters**
+
+- `name` — Header name.
+- `value` — Header value.
+
+---
+
+<a id="Response.with_cookie" />
+```gust
+def Response.with_cookie(name: string, value: string) -> Response
+```
+
+Add a `Set-Cookie: name=value; Path=/` header and return this
+Response so calls chain.
+
+**Parameters**
+
+- `name` — Cookie name.
+- `value` — Cookie value (not percent-encoded — keep it token-safe).
+
+---
+
+<a id="Response.with_file" />
+```gust
+def Response.with_file(path: string) -> Response
+```
+
+Stream the raw bytes of the file at `path` as the body (binary-safe),
+ignoring the `body` field. Returns this same Response so calls chain.
+Used by static-file serving; the Content-Length is computed by the
+framework when the response is sent.
+
+**Parameters**
+
+- `path` — Filesystem path of the file to stream.
+
+**Examples**
+
+```gust
+def create(req: http.Request) -> http.Response
+    return http.json_response({"id": 1}, 201).with_header("X-Api", "v1")
+end
+```
+
+## `Route`
+
+<a id="Route" />
+One registered route: an HTTP method, a path pattern (which may
+contain `{name}` capture segments), and the handler to invoke.
+
+```gust
+def Route
+
+    method: string
+    pattern: string
+    segments: list[string]
+    handler: Function(Request)[Response]
+
+end
+```
+
+**Fields**
+
+- `method: string` — HTTP method to match (e.g. "GET").
+- `pattern: string` — Path pattern, e.g. "/users/&#123;id&#125;".
+- `segments: list[string]` — `pattern` pre-split into non-empty path segments, computed once at registration so matching a request needs no re-split.
+- `handler: Function(Request)[Response]` — Function invoked with the Request, returning a Response.
+
+## `WsRoute`
+
+<a id="WsRoute" />
+One registered WebSocket route: a path pattern (which may contain
+`{name}` capture segments) and the handler to run once a matching
+connection has been upgraded from HTTP.
+
+```gust
+def WsRoute
+
+    pattern: string
+    segments: list[string]
+    handler: Function(Request, Connection)[none]
+
+end
+```
+
+**Fields**
+
+- `pattern: string` — Path pattern, e.g. "/ws/&#123;room&#125;".
+- `segments: list[string]` — `pattern` pre-split into non-empty path segments, computed once at registration so matching a request needs no re-split.
+- `handler: Function(Request, Connection)[none]` — Function invoked with the upgraded Request and the open WebSocket Connection.
+
+## `StaticMount`
+
+<a id="StaticMount" />
+A static-file mount: requests whose path starts with `prefix` are
+served from files under `root`.
+
+```gust
+def StaticMount
+
+    prefix: string
+    root: Path
+
+end
+```
+
+**Fields**
+
+- `prefix: string` — URL path prefix to match, e.g. "/assets".
+- `root: Path` — Filesystem directory to serve files from.
+
+## `Server`
+
+<a id="Server" />
+A routed HTTP/1.1 server built on the `socket` package — the whole
+request lifecycle is pure Gust (parse, match, middleware, respond); only
+the accept loop touches C. Registration is just data: `get`/`post`/...,
+`middleware`, and `static` append to in-memory lists, so the socket stays
+unbound until the first `run`/`next` lazily binds it (a bind failure
+surfaces there as an `IOError` — or eagerly, if you built it with
+`serve(port)`).
+
+Wire handlers up imperatively or with a registration decorator — both
+register the same route.
+On each request the server runs before-middleware outermost-first, matches
+the first route whose method and `{name}`-pattern fit (else a static mount,
+else `404`; a path match with the wrong method is `405`), runs
+after-middleware, and sends the `Response`. A handler that raises becomes
+`500`. `run` returns once another thread calls `close`.
+
+```gust
+def Server
+
+    port: integer
+    routes: list[Route]
+    middlewares: list[Middleware]
+    statics: list[StaticMount]
+    websocket_routes: list[WsRoute]
+    _handle: integer
+
+end
+```
+
+**Fields**
+
+- `port: integer` — TCP port to listen on.
+- `routes: list[Route]` — Registered routes, matched in order.
+- `middlewares: list[Middleware]` — Middleware layers, applied outermost-first around routing; each `handle`s the Request with a `Next` chain link. Class-based middleware register via `use`, functions via `middleware`.
+- `statics: list[StaticMount]` — Static-file mounts, checked after dynamic routes miss.
+- `websocket_routes: list[WsRoute]` — WebSocket routes, matched on a request that carries a WebSocket `Upgrade` header before normal HTTP dispatch.
+- `_handle: integer`
+
+**Methods**
+
+<a id="Server.route" />
+```gust
+def Server.route(
+    method: string,
+    path: string,
+    handler: Function(Request)[Response],
+) -> none
+```
+
+Register a handler for an HTTP method + path pattern. Patterns may
+contain `{name}` segments that match one path segment and are exposed
+via `req.path_param(name)`. Routes are matched in registration order.
+
+**Parameters**
+
+- `method` — HTTP method to match (e.g. "GET").
+- `path` — Path pattern, e.g. "/users/&#123;id&#125;".
+- `handler` — Function invoked with the Request, returning a Response.
+
+---
+
+<a id="Server.get" />
+```gust
+def Server.get(
+    handler: Function(Request)[Response],
+    path: string,
+) -> Function(Request)[Response]
+```
+
+Register a `GET` route. See `route`.
+
+**Parameters**
+
+- `path` — Path pattern to match.
+- `handler` — Function invoked with the Request, returning a Response.
+
+**Returns** `Function(Request)[Response]`
+
+`handler` unchanged, so the method also serves as an `@app.get(path)`
+decorator.
+
+---
+
+<a id="Server.post" />
+```gust
+def Server.post(
+    handler: Function(Request)[Response],
+    path: string,
+) -> Function(Request)[Response]
+```
+
+Register a `POST` route. See `route`.
+
+**Parameters**
+
+- `path` — Path pattern to match.
+- `handler` — Function invoked with the Request, returning a Response.
+
+**Returns** `Function(Request)[Response]`
+
+`handler` unchanged, so the method also serves as an `@app.post(path)`
+decorator.
+
+---
+
+<a id="Server.put" />
+```gust
+def Server.put(
+    handler: Function(Request)[Response],
+    path: string,
+) -> Function(Request)[Response]
+```
+
+Register a `PUT` route. See `route`.
+
+**Parameters**
+
+- `path` — Path pattern to match.
+- `handler` — Function invoked with the Request, returning a Response.
+
+**Returns** `Function(Request)[Response]`
+
+`handler` unchanged, so the method also serves as an `@app.put(path)`
+decorator.
+
+---
+
+<a id="Server.patch" />
+```gust
+def Server.patch(
+    handler: Function(Request)[Response],
+    path: string,
+) -> Function(Request)[Response]
+```
+
+Register a `PATCH` route. See `route`.
+
+**Parameters**
+
+- `path` — Path pattern to match.
+- `handler` — Function invoked with the Request, returning a Response.
+
+**Returns** `Function(Request)[Response]`
+
+`handler` unchanged, so the method also serves as an `@app.patch(path)`
+decorator.
+
+---
+
+<a id="Server.delete" />
+```gust
+def Server.delete(
+    handler: Function(Request)[Response],
+    path: string,
+) -> Function(Request)[Response]
+```
+
+Register a `DELETE` route. See `route`.
+
+**Parameters**
+
+- `path` — Path pattern to match.
+- `handler` — Function invoked with the Request, returning a Response.
+
+**Returns** `Function(Request)[Response]`
+
+`handler` unchanged, so the method also serves as an `@app.delete(path)`
+decorator.
+
+---
+
+<a id="Server.head" />
+```gust
+def Server.head(
+    handler: Function(Request)[Response],
+    path: string,
+) -> Function(Request)[Response]
+```
+
+Register a `HEAD` route. See `route`.
+
+**Parameters**
+
+- `path` — Path pattern to match.
+- `handler` — Function invoked with the Request, returning a Response.
+
+**Returns** `Function(Request)[Response]`
+
+`handler` unchanged, so the method also serves as an `@app.head(path)`
+decorator.
+
+---
+
+<a id="Server.options" />
+```gust
+def Server.options(
+    handler: Function(Request)[Response],
+    path: string,
+) -> Function(Request)[Response]
+```
+
+Register an `OPTIONS` route. See `route`.
+
+**Parameters**
+
+- `path` — Path pattern to match.
+- `handler` — Function invoked with the Request, returning a Response.
+
+**Returns** `Function(Request)[Response]`
+
+`handler` unchanged, so the method also serves as an
+`@app.options(path)` decorator.
+
+---
+
+<a id="Server.websocket" />
+```gust
+def Server.websocket(
+    handler: Function(Request, Connection)[none],
+    path: string,
+) -> Function(Request, Connection)[none]
+```
+
+Register a WebSocket handler served on the same port as the HTTP routes.
+When a request arrives carrying a WebSocket `Upgrade` header and a path
+matching `path`, the server completes the opening handshake and invokes
+`handler` with the Request (carrying any captured `{name}` path params) and
+the open `websockets.Connection`; the connection is closed once the handler
+returns. Patterns may contain `{name}` capture segments, matched exactly as
+HTTP routes are. WebSocket routes are checked before HTTP dispatch, so a
+non-upgrade request to the same path still flows to the HTTP routes.
+
+Register imperatively or with a decorator — both register the same route.
+
+**Parameters**
+
+- `handler` — Function invoked with the Request and the upgraded Connection.
+- `path` — Path pattern to match, e.g. "/ws" or "/ws/&#123;room&#125;".
+
+**Returns** `Function(Request, Connection)[none]`
+
+`handler` unchanged, so the method also serves as an
+`@app.websocket(path)` decorator.
+
+**Examples**
+
+```gust
+app.websocket(chat, "/ws/{room}")   # or register by hand
+
+@app.websocket("/ws/{room}")
+def chat(req: http.Request, conn: websockets.Connection) -> none
+    conn.send(f"joined {req.path_param("room")}")
+end
+```
+
+---
+
+<a id="Server.group" />
+```gust
+def Server.group(prefix: string) -> Group
+```
+
+Create a route group whose paths are all prefixed with `prefix`.
+`server.group("/api").get("/users", h)` registers `/api/users`. The
+group appends into this server's own route table.
+
+**Parameters**
+
+- `prefix` — Path prefix prepended to every route registered on the group.
+
+---
+
+<a id="Server.use" />
+```gust
+def Server.use(mw: Middleware) -> none
+```
+
+Register a class-based middleware wrapping every request. Extend the
+`Middleware` base class and override `handle`; then register an instance
+here. Its `handle` does work, then either calls `next.call(req)` to invoke
+the rest of the chain (the remaining middleware, then routing) or returns a
+Response directly to short-circuit. Wrap `next.call(req)` to read/rewrite
+the response (add headers, log); skip it to bail out early (e.g.
+`unauthorized()`). Middleware run outermost-first in registration order:
+the first registered is the outermost layer, wrapping all those registered
+after — `use` and `middleware` share one chain in a single order.
+
+**Parameters**
+
+- `mw` — The middleware instance whose `handle` runs on every request.
+
+---
+
+<a id="Server.middleware" />
+```gust
+def Server.middleware(handler: Function(Request, Next)[Response]) -> Function(Request, Next)[Response]
+```
+
+Register a function as middleware wrapping every request. A middleware
+receives the Request and a `Next` chain link; it does work, then either
+calls `next.call(req)` to invoke the rest of the chain (the remaining
+middleware, then routing) or returns a Response directly to short-circuit.
+Wrap the `next.call(req)` to read/rewrite the response (add headers, log);
+skip it to bail out early (e.g. `unauthorized()`). Middleware run
+outermost-first in registration order: the first registered is the
+outermost layer, wrapping all those registered after. For middleware that
+carries state, extend the `Middleware` base class and register with `use`.
+
+**Parameters**
+
+- `handler` — Function invoked with the Request and the Next chain link, returning the Response to send.
+
+**Returns** `Function(Request, Next)[Response]`
+
+`handler` unchanged, so the method also serves as an `@app.middleware`
+decorator.
+
+---
+
+<a id="Server.static" />
+```gust
+def Server.static(url_prefix: string, fs_root: Path) -> none
+```
+
+Serve files under `fs_root` for request paths beginning with
+`url_prefix`. Checked only after dynamic routes miss. `..` segments
+are rejected to prevent path traversal. Content-Type is guessed from
+the file extension, and bytes are streamed verbatim (binary-safe).
+
+**Parameters**
+
+- `url_prefix` — URL path prefix to match, e.g. "/assets".
+- `fs_root` — Filesystem directory (an `fs.Path`) to serve files from.
+
+---
+
+<a id="Server.run" />
+```gust
+def Server.run() -> none
+```
+
+Block forever, spawning a detached thread per accepted connection.
+Each thread parses the request and hands it to the Gust dispatcher, which
+runs before-middleware, matches a route (or a static mount), runs
+after-middleware, and returns the Response the thread then sends.
+Unmatched paths get `404 Not Found`; a path that matches but not its
+method gets `405 Method Not Allowed`. A handler that raises becomes
+`500 Internal Server Error`. Returns when the listening socket is closed
+(e.g. another thread calls `server.close()`).
+
+**Raises**
+
+- `IOError` — the listening socket cannot be bound on first use (for example, the port is already in use).
+
+---
+
+<a id="Server.close" />
+```gust
+def Server.close() -> none
+```
+
+Stop accepting new connections. Causes a concurrent `run()`
+call to return. A no-op on a server that never bound.
+
+**Examples**
+
+```gust
+app := http.Server(port: 8080)
+
+@app.get("/users/{id}")
+def show_user(req: http.Request) -> http.Response
+    return http.ok(f"user {req.path_param("id")}")
+end
+
+app.get(home, "/")          # or register by hand
+app.run()                   # blocks; a thread per connection
+```
+
+## Functions
+
+<a id="http.server.status_response" />
+```gust
+def status_response(status: integer, body: string) -> Response
+```
+
+An arbitrary status code with a `text/plain` body.
+
+**Parameters**
+
+- `status: integer` — HTTP status code.
+- `body: string` — Response body text.
+
+---
+
+<a id="http.server.ok" />
+```gust
+def ok(body: string, status_code: integer) -> Response
+```
+
+A `text/plain` body, `200 OK` by default.
+
+**Parameters**
+
+- `body: string` — Response body text.
+- `status_code: integer` — HTTP status code to send.
+
+---
+
+<a id="http.server.text" />
+```gust
+def text(body: string, status_code: integer) -> Response
+```
+
+A `text/plain` body, `200 OK` by default. Alias for `ok`.
+
+**Parameters**
+
+- `body: string` — Response body text.
+- `status_code: integer` — HTTP status code to send.
+
+---
+
+<a id="http.server.html" />
+```gust
+def html(body: string, status_code: integer) -> Response
+```
+
+A `text/html` body, `200 OK` by default.
+
+**Parameters**
+
+- `body: string` — HTML response body.
+- `status_code: integer` — HTTP status code to send.
+
+---
+
+<a id="http.server.json_response" />
+```gust
+def json_response(body: Any, status_code: integer) -> Response
+```
+
+An `application/json` body, `200 OK` by default, serializing `body` to
+compact JSON. `body` may be any value — a primitive, list, dict, or struct (a
+struct serializes through its `__dict` conversion).
+
+**Parameters**
+
+- `body: Any` — The response object to serialize and send.
+- `status_code: integer` — HTTP status code to send.
+
+---
+
+<a id="http.server.created" />
+```gust
+def created(body: string, status_code: integer) -> Response
+```
+
+A `text/plain` body, `201 Created`.
+
+**Parameters**
+
+- `body: string` — Response body text.
+- `status_code: integer` — HTTP status code to send.
+
+---
+
+<a id="http.server.no_content" />
+```gust
+def no_content(status_code: integer) -> Response
+```
+
+An empty body, `204 No Content` by default.
+
+**Parameters**
+
+- `status_code: integer` — HTTP status code to send.
+
+---
+
+<a id="http.server.redirect" />
+```gust
+def redirect(location: string) -> Response
+```
+
+A redirect to `location`, `302 Found` (temporary).
+
+**Parameters**
+
+- `location: string` — URL to redirect the client to.
+
+---
+
+<a id="http.server.redirect_permanent" />
+```gust
+def redirect_permanent(location: string) -> Response
+```
+
+A redirect to `location`, `301 Moved Permanently`.
+
+**Parameters**
+
+- `location: string` — URL to redirect the client to.
+
+---
+
+<a id="http.server.bad_request" />
+```gust
+def bad_request(body: string) -> Response
+```
+
+A `400 Bad Request` `text/plain` response.
+
+**Parameters**
+
+- `body: string` — Body text; defaults to the reason phrase.
+
+---
+
+<a id="http.server.unauthorized" />
+```gust
+def unauthorized(body: string) -> Response
+```
+
+A `401 Unauthorized` `text/plain` response.
+
+**Parameters**
+
+- `body: string` — Body text; defaults to the reason phrase.
+
+---
+
+<a id="http.server.forbidden" />
+```gust
+def forbidden(body: string) -> Response
+```
+
+A `403 Forbidden` `text/plain` response.
+
+**Parameters**
+
+- `body: string` — Body text; defaults to the reason phrase.
+
+---
+
+<a id="http.server.not_found" />
+```gust
+def not_found(body: string) -> Response
+```
+
+A `404 Not Found` `text/plain` response.
+
+**Parameters**
+
+- `body: string` — Body text; defaults to the reason phrase.
+
+---
+
+<a id="http.server.server_error" />
+```gust
+def server_error(body: string) -> Response
+```
+
+A `500 Internal Server Error` `text/plain` response.
+
+**Parameters**
+
+- `body: string` — Body text; defaults to the reason phrase.

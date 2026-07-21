@@ -1,0 +1,108 @@
+---
+title: FAQ
+description: Common questions about Gust's design, status, and trade-offs
+---
+
+### Is Gust production-ready?
+
+No — it's pre-1.0. The language, stdlib, and tooling are stable enough for side projects and teaching, but the surface area will change as we learn where it's rough. If you're evaluating Gust for serious work, stay close to `main` and expect to adapt to breaking changes between versions.
+
+### Why compile through C instead of LLVM?
+
+Three reasons:
+
+1. **Simplicity.** The compiler stays small because the hard backend work is the C compiler's job — it just emits C.
+2. **Portability.** Any platform with a C toolchain can build Gust (`zig cc` when available, otherwise the system `cc`).
+3. **Escape hatch.** `gust emit` prints the generated C. When something surprises you, you can read exactly what ran.
+
+LLVM is a reasonable future direction, but today's trade-off wins on engineering cost.
+
+### Why `end` instead of braces or indentation?
+
+Explicit block delimiters survive refactoring. `{`/`}` make diffs noisy; significant whitespace makes copy-paste risky. A bare `end` is both readable and easy to move around.
+
+### Why no mutable globals?
+
+Three reasons converging on the same answer:
+
+1. Concurrency is safe when functions don't share mutable state. Globals break that.
+2. Signatures tell you what a function depends on. Globals hide dependencies.
+3. Every real need for a "global" is cleaner when the state is constructed in `main` and passed in.
+
+See [Constants](/lang/constants) for the only top-level data form.
+
+### Why `def` for everything — functions, methods, structs?
+
+`def` means "I'm declaring a named thing." The shape following it (parameter list? field list? dotted receiver?) tells you what kind. Having one keyword cuts down on the surface area and keeps imports / exports uniform.
+
+### What about generics?
+
+Gust has user-defined generics: `def name[T, U](...)` for functions and `def Box[T] ... end` for structs. Type parameters are inferred from call and construction sites and monomorphized at codegen time. Built-ins (`list[T]`, `dict[K, V]`) are parameterized the same way.
+
+### What about async / await?
+
+Gust's concurrency is explicit and opt-in: you mark a `def`, `for`, or `while` with a `!` suffix to run it on threads, and the runtime spawns and joins for you — there is no separate `await` keyword. Nothing runs in parallel unless you ask for it. See [Concurrency](/lang/concurrency). If you specifically want cooperative async (a single-threaded event loop), Gust is not that language.
+
+### Does Gust have closures / first-class functions?
+
+Yes. Functions are values (typed `Function(Arg)[Return]`), and you can write inline block lambdas: `adder := def(x: integer) -> integer return x + 1 end`. Lambdas capture their environment by value; a captured local that the lambda reassigns is boxed so the change is shared. Decorators (`@name`) are built on the same machinery.
+
+### Does Gust have classes / inheritance?
+
+Yes. `def Sub extends Parent` declares a subclass: instances are refcounted reference types, overridden methods dispatch through a vtable, `super` reaches the parent implementation, and `is` / `as` narrow a `Parent` value back to a `Sub`. For contracts without a base type, use interfaces (`def T implements Iface`) — interface methods can carry default bodies that implementers inherit. See [Structs](/lang/structs) and [Interfaces](/lang/interfaces).
+
+### How is memory managed?
+
+Reference counting, not a tracing garbage collector. Every heap value — strings, lists, dicts, closures, struct instances — carries a refcount; the compiler inserts the retains and releases, and a struct owns its managed fields, so dropping it releases everything it holds. Frees are deterministic and there are no collector pauses. The trade-off is reference cycles: a cycle keeps itself alive until you break it.
+
+### What platforms can Gust target?
+
+The native host by default. `gustc` also cross-compiles to other triples via `zig cc` (`--target x86_64-linux-musl`, `--static`, …), emits WebAssembly through Emscripten (`--target wasm`, producing a `.js`/`.wasm` bundle you can serve in a browser), and builds bare-metal `.uf2` images for the Raspberry Pi Pico 2 / RP2350. See [Compiler internals → Targets](/compiler/internals#targets).
+
+### Can I write Gust without knowing C?
+
+Yes, 99% of the time. The compiler handles the C↔Gust boundary. You'd only touch C when you're adding a new standard-library package.
+
+### How does Gust compare to Go?
+
+Close in spirit — readable, compiled, batteries-included, with built-in concurrency. Where they differ:
+
+- Gust has f-strings, enums whose variants carry data, and `match` with destructuring.
+- Go has goroutines + channels as primitives; Gust uses a `!` suffix on `def`/`for`/`while` to run work on threads.
+- Go is production-hardened with a huge ecosystem; Gust is not.
+
+If Go fits, use Go. If you like Go but want the ergonomics of Python for everyday scripting, Gust is worth a look.
+
+### How does Gust compare to Python?
+
+Gust is typed and compiled. You give up the Python ecosystem (huge) in exchange for native binaries (fast), compile-time errors (safe), and opt-in parallelism. The *syntax* feels Python-ish — explicit `end` keywords instead of indentation — which is a conscious choice to make Python users productive quickly.
+
+### How do I test my code?
+
+Mark a function with `@test` — `@test def parses(t: testing.T)` — and assert with `testing.assert_eq` and friends. `gust test <path>` discovers every `test_*.g` / `*_test.g` under the path, synthesizes the harness, and runs the files in parallel. See [testing](/stdlib/testing).
+
+### What editor support is there?
+
+`gust lsp` is a full language server — diagnostics, hover, completion, go-to-definition, references, semantic tokens — and the [VS Code extension](/tooling/vscode) wires it up for you. A [REPL](/tooling/repl) (`gust repl`) and [formatter](/tooling/formatter) (`gust format`) round out the tooling.
+
+### How do I debug a crash?
+
+1. If it's a compile error or unhandled Gust error, the message already includes a source line. Start there.
+2. If the binary segfaults, rebuild with `gust build --debug` (unoptimized, with symbols) and step through with `gdb`. `gust build --asan` adds AddressSanitizer + LeakSanitizer for memory bugs.
+3. If you suspect the compiler is wrong, `gust emit file.g` prints the generated C. Open the issue with the minimal `.g` reproduction and that output.
+
+### Can I call C from Gust?
+
+Yes. Drop a `foreign """..."""` block at the top level to emit C verbatim into the generated translation unit, and bind it with bodyless `def foreign` declarations on the Gust side. A sibling `<name>.c` file next to your `<name>.g` is also auto-linked. The standard library uses the same pattern at scale — a `.g` declaration file plus a `.c` implementation under `stdlib/<pkg>/`.
+
+### Is there a package manager?
+
+Yes. Declare GitHub dependencies in the `[dependencies]` table of `gust.toml` (or add one with `gust add owner/repo`), and `gust build`/`run`/`test` install them before compiling. `gust install`/`update`/`remove` manage the set, and resolved revisions are pinned in `gust.lock`. See [Packages & dependencies](/tooling/packages).
+
+### How do I report a bug?
+
+Open an issue at [github.com/GustLang/gust](https://github.com/GustLang/gust/issues) with a minimal `.g` reproduction. The smaller the example, the faster the fix.
+
+### Where does the name come from?
+
+A *gust* of wind — quick and forceful. Gust programs compile fast, run fast, and don't linger.

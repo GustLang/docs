@@ -1,0 +1,183 @@
+---
+title: compression
+description: "DEFLATE-family compression backed by the system zlib"
+---
+
+```gust
+use compression
+```
+
+DEFLATE-family compression backed by the system zlib. Three container formats
+are exposed, each as a compress/decompress pair operating on raw `bytes`:
+
+- gzip   (RFC 1952) — `gzip_compress` / `gzip_decompress`, the `.gz` wrapper
+          with a header and CRC32; what HTTP `Content-Encoding: gzip` uses.
+- zlib   (RFC 1950) — `zlib_compress` / `zlib_decompress`, a compact wrapper
+          with an Adler-32 check; what `Content-Encoding: deflate` should be.
+- raw    (RFC 1951) — `deflate_compress` / `deflate_decompress`, headerless
+          DEFLATE with no checksum.
+
+The compress functions take a `level` from 0 (store) to 9 (smallest); pass
+`DEFAULT` for zlib's default, or the `BEST_SPEED` / `BEST_SIZE` constants. The
+default-level convenience wrappers `gzip` / `zlib` / `deflate` cover the common
+case. Decompression raises `RuntimeError` on malformed or truncated input.
+
+**Examples**
+
+```gust
+use compression
+
+def main() -> none
+    packed := compression.gzip("hello, hello, hello" as bytes)
+    text := compression.gzip_decompress(packed) as string
+    print(text)                # hello, hello, hello
+end
+```
+
+**On this page:** [`gzip_compress`](#compression.gzip_compress) · [`gzip_decompress`](#compression.gzip_decompress) · [`zlib_compress`](#compression.zlib_compress) · [`zlib_decompress`](#compression.zlib_decompress) · [`deflate_compress`](#compression.deflate_compress) · [`deflate_decompress`](#compression.deflate_decompress) · [`gzip`](#compression.gzip) · [`zlib`](#compression.zlib) · [`deflate`](#compression.deflate)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `DEFAULT` | `integer` | `-1` |
+| `BEST_SPEED` | `integer` | `1` |
+| `BEST_SIZE` | `integer` | `9` |
+| `WBITS_GZIP` | `integer` | `31` |
+| `WBITS_ZLIB` | `integer` | `15` |
+| `WBITS_RAW` | `integer` | `-15` |
+
+## Functions
+
+<a id="compression.gzip_compress" />
+```gust
+def gzip_compress(data: bytes, level: integer) -> bytes
+```
+
+Compress `data` to the gzip (`.gz`) format at the given level.
+
+**Parameters**
+
+- `data: bytes` — The bytes to compress.
+- `level: integer` — 0-9 (0 = store, 9 = smallest), or `DEFAULT` for zlib's default.
+
+---
+
+<a id="compression.gzip_decompress" />
+```gust
+def gzip_decompress(data: bytes) -> bytes
+```
+
+Decompress gzip-framed `data`.
+
+**Parameters**
+
+- `data: bytes` — The gzip-framed bytes to decompress.
+
+**Raises**
+
+- `RuntimeError` — when the input is not valid gzip or is truncated.
+
+---
+
+<a id="compression.zlib_compress" />
+```gust
+def zlib_compress(data: bytes, level: integer) -> bytes
+```
+
+Compress `data` to the zlib format at the given level.
+
+**Parameters**
+
+- `data: bytes` — The bytes to compress.
+- `level: integer` — 0-9, or `DEFAULT` for zlib's default.
+
+---
+
+<a id="compression.zlib_decompress" />
+```gust
+def zlib_decompress(data: bytes) -> bytes
+```
+
+Decompress zlib-framed `data`.
+
+**Parameters**
+
+- `data: bytes` — The zlib-framed bytes to decompress.
+
+**Raises**
+
+- `RuntimeError` — when the input is malformed or truncated.
+
+---
+
+<a id="compression.deflate_compress" />
+```gust
+def deflate_compress(data: bytes, level: integer) -> bytes
+```
+
+Compress `data` to a raw, headerless DEFLATE stream at the given level.
+
+**Parameters**
+
+- `data: bytes` — The bytes to compress.
+- `level: integer` — 0-9, or `DEFAULT` for zlib's default.
+
+---
+
+<a id="compression.deflate_decompress" />
+```gust
+def deflate_decompress(data: bytes) -> bytes
+```
+
+Decompress a raw DEFLATE stream.
+
+**Parameters**
+
+- `data: bytes` — The raw DEFLATE bytes to decompress.
+
+**Raises**
+
+- `RuntimeError` — when the input is malformed or truncated.
+
+---
+
+<a id="compression.gzip" />
+```gust
+def gzip(data: bytes) -> bytes
+```
+
+Compress `data` to gzip at the default level. Shorthand for
+`gzip_compress(data, DEFAULT)`.
+
+**Parameters**
+
+- `data: bytes` — The bytes to compress.
+
+---
+
+<a id="compression.zlib" />
+```gust
+def zlib(data: bytes) -> bytes
+```
+
+Compress `data` to the zlib format at the default level. Shorthand for
+`zlib_compress(data, DEFAULT)`.
+
+**Parameters**
+
+- `data: bytes` — The bytes to compress.
+
+---
+
+<a id="compression.deflate" />
+```gust
+def deflate(data: bytes) -> bytes
+```
+
+Compress `data` to a raw DEFLATE stream at the default level. Shorthand
+for `deflate_compress(data, DEFAULT)`.
+
+**Parameters**
+
+- `data: bytes` — The bytes to compress.

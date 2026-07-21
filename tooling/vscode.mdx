@@ -1,0 +1,139 @@
+---
+title: VS Code extension
+description: Install and use the Gust VS Code extension for the full editor experience
+---
+
+The Gust VS Code extension gives you the full editor experience: syntax highlighting, a language server, a notebook-style REPL, and one-key run.
+
+## Install
+
+<Tabs>
+  <Tab title="From the marketplace">
+
+  Open the Extensions view (`Ctrl+Shift+X`), search for **Gust**, and click Install.
+
+  </Tab>
+  <Tab title="From source">
+
+  ```bash
+  cd gust-extension/
+  npm install
+  npm run package   # produces gust-<version>.vsix
+  code --install-extension gust-0.0.6.vsix
+  ```
+
+  `npm run package` bundles the extension with esbuild and writes `gust-<version>.vsix`; substitute the version printed by the build. Use `npm run watch` while hacking on the extension to rebuild on save.
+
+  </Tab>
+</Tabs>
+
+The extension activates when a workspace contains a `gust.toml` (`workspaceContains:**/gust.toml`). It registers three file types:
+
+- `.g` — Gust source (aliases: `G`, `Gust`)
+- `.gml` — Gust Markup (aliases: `GML`, `Gust Markup`)
+- `gust.toml` — the project manifest, highlighted as TOML
+
+All three carry the Gust logo as their file icon.
+
+## Requirements
+
+The extension is a thin client. It needs a `gustc` binary to power the language server and the run commands. Point the [`gust.interpreterPath`](#settings) setting at your binary, or leave it as `gustc` and keep the binary on your `PATH`. See [Install Gust](/start/install) for how to build or download `gustc`.
+
+## Features
+
+### Language server
+
+The extension spawns `gustc lsp` — the self-hosted language server — over stdio and drives every semantic feature through it:
+
+- **Hover** — the type and docstring of the symbol under the cursor.
+- **Completion** — keywords, primitive and collection types, built-ins, local variables, struct and enum members, and imported package members.
+- **Signature help** — parameter hints as you fill in a call.
+- **Go-to-definition** — `F12`, or `Ctrl`-click any identifier.
+- **Diagnostics** — errors and warnings underline in real time with full source context. `gust.toml` manifests are validated too, since the manifest is part of the language server's document selector.
+- **Code actions** — quick fixes surfaced from the analyzer: apply an autofix, add a missing import, or insert a `#gust-ignore` directive for the diagnostic on the current line.
+- **Formatting** — the formatter runs through the language server. Format manually with `Alt+Shift+F`, or turn on VS Code's `editor.formatOnSave` to format on every save.
+
+When the language server starts it derives `$GUST_ROOT` by walking up from the `gustc` binary's location (up to eight levels) until it finds a sibling `runtime/` directory, then passes that root in the server's environment. If the binary cannot be found, the extension shows an error with a **Select Interpreter** button that runs the [interpreter picker](#commands). See [LSP](/tooling/lsp) for protocol details.
+
+### Syntax highlighting
+
+TextMate grammars ship for `.g`, `.gml`, and `gust.toml`, so highlighting works even before the language server has loaded. The `.g` grammar scopes keywords, control flow, `use` imports and decorators, primitive and collection types, struct/interface/enum declarations, operators (arithmetic, comparison, bitwise, assignment, the walrus `:=`, the pipe, and the `->` return arrow), numeric literals in every base (decimal, hex, octal, binary, and float), booleans and `none`, escape sequences, and regex literals. String highlighting covers plain `"..."` and triple-quoted `"""..."""` strings, and it highlights the interpolated expressions inside `{...}` in f-strings as real code rather than plain text.
+
+The `!` concurrency suffix on `def!`/`for!`/`while!` gets its own scope, styled bold red so parallel code stands out at a glance. That color is applied through a bundled `editor.tokenColorCustomizations` rule.
+
+### Editor defaults
+
+For `.g` files the extension sets sensible defaults you can still override: four-space indentation with spaces (not tabs) and a ruler at column 90.
+
+The language configuration also provides:
+
+- **Comments** — `#` for line comments and `"""..."""` for block comments, so toggle-comment works.
+- **Bracket matching and auto-closing pairs** — `()`, `[]`, `{}`, plain and triple-quoted strings, and the `f"`, `r"`, and `b"` string prefixes each auto-close their quote.
+- **Surrounding pairs** — select text and type a bracket or quote to wrap it.
+- **Code folding** — blocks opened by `def`, `if`, `for`, `for!`, `while`, `while!`, `with`, `try`, and `interface` fold to their matching `end`.
+- **Auto-indentation** — new lines indent after a block opener (including `else` and `catch`) and outdent on `end`, `else`, `catch`, and closing brackets.
+
+### Snippets
+
+Typing a prefix in a `.g` or `.gml` file expands a full block with tab stops:
+
+| Prefix | Expands to |
+|--------|------------|
+| `def` | function definition |
+| `def!` | concurrent (parallel) function definition |
+| `defm` | method (`def Struct.method`) |
+| `defs` | associated function (`@static def Struct.new`) |
+| `struct` | struct definition |
+| `interface` | interface definition |
+| `enum` | enum definition |
+| `auto_enum` | auto-numbered enum definition |
+| `if` / `ifelse` / `elif` / `else` | conditional forms |
+| `match` / `case` | match statement and case clause |
+| `for` / `for!` | sequential and parallel for loops |
+| `while` / `while!` | sequential and background while loops |
+| `try` / `catch` | try block and catch clause |
+| `var` | walrus declaration (`name := value`) |
+| `const` | top-level constant declaration |
+| `error` | error type definition |
+
+### New-file template
+
+Creating an empty `.g` or `.gml` file scaffolds a runnable stub:
+
+```gust
+def main() -> none
+    # Your code here
+end
+```
+
+The template is inserted only when the new file is empty, so it never overwrites pasted or generated content.
+
+### REPL (interactive window)
+
+**Gust: Open REPL** opens a notebook-style interactive window beside the editor. Each cell accepts `g` or `gml` code, compiles and runs against a live session, and streams the result back into the cell output. Cells share state within a window and are numbered in execution order. Every REPL window gets its own session, and closing the window tears the session down. **Gust: Reset REPL Session** clears the active window's state without closing it.
+
+## Settings
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `gust.interpreterPath` | `"gustc"` | Path to the `gustc` binary — an absolute path or a name on your `PATH`. Powers the language server (`gustc lsp`) and the run commands. Changing it restarts the language server automatically. Scoped `machine-overridable`, so a machine or remote setting can override the workspace value. |
+
+## Commands
+
+The extension contributes these commands (Command Palette → "Gust:"):
+
+- **Gust: Run File in Terminal** — runs `gustc run` on the active `.g`/`.gml` file in a reused "Gust" integrated terminal, saving the file first if it is dirty. Also available from the editor title bar's run button, the editor context menu, and the explorer context menu.
+- **Gust: Open REPL** — opens the interactive window described above. Also available from the editor title bar on `.g` files.
+- **Gust: Reset REPL Session** — clears the active REPL session's state. Shown in the Command Palette only while a notebook editor is active.
+- **Gust: Restart Language Server** — stops and respawns `gustc lsp`.
+- **Gust: Select Interpreter** — pick the `gustc` binary through a file dialog; updates `gust.interpreterPath` and restarts the language server.
+
+## Typical workflow
+
+1. Create `hello.g` — the empty-file template drops in a `def main()` stub — and start typing.
+2. Watch types appear on hover and completions fill in.
+3. Errors underline immediately; hover or click to read a full explanation, and take a quick fix when one is offered.
+4. Save → the formatter runs (with `editor.formatOnSave` on), leaving no trailing whitespace.
+5. Hit the run button in the title bar, or `Ctrl+\`` to open the terminal and run the file directly.
+
+That loop is fast enough that the REPL is not always the right tool — the editor plus terminal is often snappier for anything larger than a scratch expression.

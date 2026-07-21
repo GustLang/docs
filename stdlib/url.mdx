@@ -1,0 +1,129 @@
+---
+title: url
+description: "URL percent-encoding, percent-decoding, and parsing"
+---
+
+```gust
+use url
+```
+
+URL percent-encoding, percent-decoding, and parsing. Encode and decode
+individual URL components, and split a full URL into a `URL` struct
+(scheme, host, port, path, query, fragment) that round-trips back to text.
+
+**On this page:** [`URL`](#URL) · [`encode`](#url.encode) · [`decode`](#url.decode) · [`parse`](#url.parse) · [`parse_headers`](#url.parse_headers)
+
+## `URL`
+
+<a id="URL" />
+A parsed URL. Fields are always strings, empty for missing parts.
+
+Build one with `url.parse(s)`; reassemble with `.to_string()` or by
+printing (which routes through `__string`).
+
+```gust
+def URL
+
+    scheme: string
+    host: string
+    port: string
+    path: string
+    query: string
+    fragment: string
+
+end
+```
+
+**Fields**
+
+- `scheme: string` — URL scheme (e.g. "https"), empty if absent.
+- `host: string` — Host name or IP, empty if absent.
+- `port: string` — Port as a string, empty if absent.
+- `path: string` — Path component including the leading "/", empty if absent.
+- `query: string` — Query string after "?", empty if absent.
+- `fragment: string` — Fragment after "#", empty if absent.
+
+## Functions
+
+<a id="url.encode" />
+```gust
+def encode(s: string) -> string
+```
+
+Percent-encode `s` for safe use in a URL component.
+Letters, digits, `-`, `_`, `.`, and `~` pass through unchanged; everything
+else becomes `%XX` with uppercase hex.
+
+**Parameters**
+
+- `s: string` — String to percent-encode.
+
+<Note>
+`+` is not treated specially in the output; callers who need
+query-string form encoding must map spaces to `+` themselves.
+</Note>
+
+---
+
+<a id="url.decode" />
+```gust
+def decode(s: string) -> string
+```
+
+Decode a percent-encoded string. Invalid `%XX` sequences pass through
+verbatim.
+
+**Parameters**
+
+- `s: string` — Percent-encoded string to decode.
+
+<Note>
+`+` is decoded as a space, following the form URL-decoding convention.
+</Note>
+
+---
+
+<a id="url.parse" />
+```gust
+def parse(s: string) -> URL
+```
+
+Split `s` into a `URL` struct. Missing parts become empty strings.
+
+**Parameters**
+
+- `s: string` — URL string to split into a `URL` struct.
+
+**Examples**
+
+```gust
+u := url.parse("https://api.example.com:8443/v1/users?limit=10#top")
+print(u.scheme)     # "https"
+print(u.host)       # "api.example.com"
+print(u.port)       # "8443"
+print(u.path)       # "/v1/users"
+print(u.query)      # "limit=10"
+print(u.fragment)   # "top"
+print(u)            # round-trips back to the original string
+```
+
+<Note>
+Parsing is permissive: no validation, no normalization. Use it on
+URLs you produced yourself or received from a trusted source.
+</Note>
+
+---
+
+<a id="url.parse_headers" />
+```gust
+def parse_headers(block: string) -> dict[string, string]
+```
+
+Parse a CRLF-delimited HTTP header block into a dict keyed by the
+lowercased header name, with each value trimmed. Lines without a `:`
+(e.g. a leading request or status line) are skipped, and on a duplicate
+header the last value wins. Shared by `http` and `websockets`.
+
+**Parameters**
+
+- `block: string` — The raw header block (request/status line optional).

@@ -1,0 +1,239 @@
+---
+title: database.sqlite
+description: "SQLite driver for the `database` package — an embedded, file-backed SQL engine"
+---
+
+```gust
+use database.sqlite
+```
+
+SQLite driver for the `database` package — an embedded, file-backed SQL engine.
+
+Connect to a database file (or `":memory:"` for an ephemeral one) and you get a
+`database.Connection` like any other driver:
+
+Placeholders are `?` (SQLite's native form), bound left-to-right from the
+`params` list. Column values come back typed from SQLite's own storage class:
+INTEGER/REAL/TEXT/BLOB/NULL map to the matching `database.Value` kinds. (SQLite
+has no native boolean — store bools as `database.int_(...)` 0/1.)
+
+Requires the SQLite development headers (`libsqlite3-dev`) at build time and
+links `-lsqlite3` automatically whenever a program uses this package.
+
+**Examples**
+
+```gust
+use database
+
+use database.sqlite
+
+def main() -> none
+    conn := sqlite.connect("app.db")
+    conn.execute("create table if not exists note(id integer primary key, body text)", [])
+    r := conn.execute("insert into note(body) values (?)", [database.text("hello")])
+    print("inserted row " + (r.last_insert_id as string))
+    for row in database.query_all(conn, "select id, body from note", [])
+        print((row.get("id").as_integer() as string) + ": " + row.get("body").as_text())
+    end
+    conn.close()
+end
+```
+
+**On this page:** [`SqliteConnection`](#SqliteConnection) · [`SqliteCursor`](#SqliteCursor) · [`connect`](#database.sqlite.connect)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `SQLITE_C_INTEGER` | `integer` | `1` |
+| `SQLITE_C_FLOAT` | `integer` | `2` |
+| `SQLITE_C_TEXT` | `integer` | `3` |
+| `SQLITE_C_BLOB` | `integer` | `4` |
+| `SQLITE_C_NULL` | `integer` | `5` |
+
+## `SqliteConnection`
+
+<a id="SqliteConnection" />
+An open SQLite database session. Obtain one from `connect(...)`.
+
+**Implements:** [`Connection`](#Connection)
+
+```gust
+def SqliteConnection implements Connection
+
+    _db: integer
+    _open: bool
+
+end
+```
+
+**Fields**
+
+- `_db: integer` — Opaque handle to the underlying `sqlite3*`.
+- `_open: bool` — False once `close()` has been called.
+
+**Methods**
+
+<a id="SqliteConnection.execute" />
+```gust
+def SqliteConnection.execute(sql: string, params: list[Value]) -> ExecResult
+```
+
+Run a non-`SELECT` statement (INSERT/UPDATE/DELETE/DDL) and report rows
+affected plus the new `rowid`. Bind `?` placeholders from `params`.
+
+**Parameters**
+
+- `sql` — The statement, with `?` placeholders.
+- `params` — One `database.Value` per placeholder, in order.
+
+**Raises**
+
+- `QueryError` — If the statement cannot be compiled or fails to run.
+
+---
+
+<a id="SqliteConnection.query" />
+```gust
+def SqliteConnection.query(sql: string, params: list[Value]) -> Cursor
+```
+
+Run a `SELECT` and return a `database.Cursor` streaming the rows. Bind
+`?` placeholders from `params`. Drain the cursor (or `close()` it) so the
+underlying statement is released.
+
+**Parameters**
+
+- `sql` — The query, with `?` placeholders.
+- `params` — One `database.Value` per placeholder, in order.
+
+**Raises**
+
+- `QueryError` — If the query cannot be compiled or fails to run.
+
+---
+
+<a id="SqliteConnection.begin" />
+```gust
+def SqliteConnection.begin() -> none
+```
+
+Begin a transaction. Pair with `commit()` or `rollback()`.
+
+---
+
+<a id="SqliteConnection.commit" />
+```gust
+def SqliteConnection.commit() -> none
+```
+
+Commit the current transaction.
+
+---
+
+<a id="SqliteConnection.rollback" />
+```gust
+def SqliteConnection.rollback() -> none
+```
+
+Roll back the current transaction.
+
+---
+
+<a id="SqliteConnection.close" />
+```gust
+def SqliteConnection.close() -> none
+```
+
+Close the connection and release the database. Idempotent.
+
+---
+
+<a id="SqliteConnection.is_open" />
+```gust
+def SqliteConnection.is_open() -> bool
+```
+
+True while the connection has not been closed.
+
+## `SqliteCursor`
+
+<a id="SqliteCursor" />
+A forward-only stream of rows from a SQLite query.
+
+**Implements:** [`Cursor`](#Cursor)
+
+```gust
+def SqliteCursor implements Cursor
+
+    _db: integer
+    _stmt: integer
+    _cols: list[string]
+    _open: bool
+
+end
+```
+
+**Fields**
+
+- `_db: integer` — The owning connection's `sqlite3*` handle (for error text).
+- `_stmt: integer` — Handle to the prepared `sqlite3_stmt*` being stepped.
+- `_cols: list[string]` — Column names, captured once at query time.
+- `_open: bool` — False once the statement has been finalized.
+
+**Methods**
+
+<a id="SqliteCursor.next" />
+```gust
+def SqliteCursor.next() -> bool
+```
+
+Advance to the next row. Returns false (and finalizes the statement) at
+end of the result set.
+
+---
+
+<a id="SqliteCursor.row" />
+```gust
+def SqliteCursor.row() -> Row
+```
+
+The current row — call only after `next()` returned true. Each column is
+boxed into a `database.Value` according to SQLite's reported storage class.
+
+---
+
+<a id="SqliteCursor.columns" />
+```gust
+def SqliteCursor.columns() -> list[string]
+```
+
+The column names of the result set, in selection order.
+
+---
+
+<a id="SqliteCursor.close" />
+```gust
+def SqliteCursor.close() -> none
+```
+
+Finalize the underlying statement. Idempotent.
+
+## Functions
+
+<a id="database.sqlite.connect" />
+```gust
+def connect(path: string) -> SqliteConnection
+```
+
+Open (creating if absent) the SQLite database at `path` and return a
+connection. Pass `":memory:"` for a private in-memory database that vanishes
+when the connection closes.
+
+**Parameters**
+
+- `path: string` — Filesystem path to the database file, or `":memory:"`.
+
+**Raises**
+
+- `ConnectionError` — If the database file cannot be opened.

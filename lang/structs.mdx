@@ -1,0 +1,492 @@
+---
+title: Structs
+description: Declaring Gust structs — fields, constructors, methods, ownership, subclassing, dunders, and struct/dict casting
+---
+
+Gust structs are named records — data plus methods. Same keyword (`def`) as functions, just with a body of typed fields instead of statements.
+
+## Declaring a struct
+
+```gust
+def Server
+    name:   string
+    ip:     string
+    port:   integer
+    online: bool
+end
+```
+
+- One field per line: `name: Type`.
+- A field may declare a **default** with `= value` (`port: integer = 8080`); fields with a default can be omitted at construction.
+- Prefix a field with `private` to make it package-internal: `private secret: string`.
+- Struct names are conventionally `PascalCase`. The compiler uses the uppercase-first-letter rule to parse call sites as struct initialization.
+
+```gust
+def Server
+    name:   string
+    ip:     string
+    port:   integer = 8080      # default — may be omitted at construction
+    online: bool
+end
+```
+
+## Constructing a value
+
+Named arguments are the idiomatic form — they keep call sites stable when fields are added or reordered, and any field with a default can be left out:
+
+```gust
+s := Server(
+    name:   "web-1",
+    ip:     "10.0.0.1",
+    online: true,        # `port` omitted — uses its default of 8080
+)
+```
+
+Trailing commas are allowed (and preferred by the formatter for multi-line calls).
+
+**Positional** construction also works — arguments fill the fields in declaration order:
+
+```gust
+s := Server("web-1", "10.0.0.1", 8080, true)   # name, ip, port, online
+```
+
+With positional args, any field at or after the last one supplied must carry a
+default (otherwise it's a missing-field error). Mixing styles is also accepted:
+leading positional args followed by named args for the rest. Prefer the all-named
+form for anything beyond two or three fields — it reads far better.
+
+### Post-construction hook (`@post_init`)
+
+To run logic after every construction — deriving a computed field, normalizing
+inputs, or validating the result — mark an instance method with `@post_init`.
+The compiler calls it at the end of every constructor, once the fields are set,
+for all construction forms alike (named, positional, and `dict as Struct`). It
+appends to construction rather than replacing it, so field initialization always
+runs first. See [Decorators → `@post_init`](/lang/decorators#post-init) for the
+full treatment.
+
+## Methods
+
+Methods live outside the struct and are bound with a dotted name:
+
+```gust
+def Server.status() -> string
+    return "online" if online else "offline"
+end
+
+def Server.display() -> string
+    return f"{name} ({ip}:{port}) - {status()}"
+end
+```
+
+Inside a method, the struct's fields are in scope directly — you write `online`, not `self.online`. Another method on the same struct is callable bare — you write `status()`, not `self.status()`.
+
+## Associated functions (`@static`)
+
+Prefix a method with `@static` to make it an **associated function** — a function namespaced under the type, with **no** `self` receiver. You call it on the type itself, `Type.fn(...)`, the way Rust spells `User::new` or Swift spells a `static func`. It's the idiomatic place for constructors and factories:
+
+```gust
+def Server
+    name: string
+    online: bool
+end
+
+@static
+def Server.online_one(name: string) -> Server
+    return Server(name: name, online: true)
+end
+
+def main() -> none
+    s := Server.online_one("web-1")   # called on the type, no instance
+    print(s.status())
+end
+```
+
+A `@static` function has no implicit `self`, so it **cannot** read the struct's fields — it builds and returns values instead. Instance methods and associated functions coexist on the same type.
+
+<Note>
+`new` is the natural name for a constructor (`@static def User.new(...)`), and it works: the compiler's own generated constructor uses the reserved `Type__new` symbol, so your `Type.new(...)` never collides with it.
+</Note>
+
+## Generic structs
+
+A struct can take type parameters in a `[...]` list after its name; fields and
+methods may then refer to those type variables. The concrete type is inferred
+from the construction site and the compiler monomorphizes a specialized copy
+per instantiation:
+
+```gust
+def Box[T]
+    value: T
+end
+
+def Box.get() -> T
+    return value
+end
+
+b := Box(value: 42)        # Box[integer], inferred from the argument
+print(b.get())             # 42
+```
+
+## Field access and update
+
+```gust
+s := Server(name: "web-1", ip: "10.0.0.1", port: 80, online: true)
+print(s.name)
+print(s.display())
+
+s.online = false           # fields are mutable
+print(s.status())          # "offline"
+```
+
+Field reads, assignments, and method calls use the same `.` syntax. A struct-valued variable can be reassigned to a different value of the same struct type, or have its fields individually updated.
+
+## Structs in collections
+
+```gust
+servers: list[Server] = [
+    Server(name: "s1", ip: "10.0.0.1", port: 8080, online: true),
+    Server(name: "s2", ip: "10.0.0.2", port: 8081, online: false),
+]
+
+for s in servers
+    print(s.display())
+end
+```
+
+Structs nest freely — a field may be another struct, and a struct may hold a `list`, `dict`, or `bytes` of any element type.
+
+## Value semantics
+
+A plain struct is a **value type**. Assigning it, passing it to a function, or storing it in a collection makes an independent copy — a write through one binding never reaches another:
+
+```gust
+def Holder
+    name: string
+end
+
+a := Holder(name: "original")
+b := a
+b.name = "changed"
+print(a.name)     # "original" — the copy is independent
+print(b.name)     # "changed"
+```
+
+Reassigning a whole struct variable replaces its value; updating a single field mutates only that binding's copy.
+
+A struct **owns** its managed fields — `string`, `list`, `dict`, `bytes`, and nested managed structs. Copying the struct deep-retains those fields, and the struct is torn down (its fields released) when it goes out of scope. You never manage this by hand; the compiler synthesizes the retain/drop logic.
+
+### Passing by reference with `inout`
+
+Because parameters copy by default, a function cannot mutate the caller's struct just by writing to its parameter. Prefix a parameter with `inout` to pass by reference — writes inside the callee reach the caller's variable, and you must pass the argument with `inout` at the call site too:
+
+```gust
+def Counter
+    val: integer
+end
+
+def bump(inout c: Counter) -> none
+    c.val = c.val + 1
+end
+
+def main() -> none
+    x := Counter(val: 10)
+    bump(inout x)
+    bump(inout x)
+    print(x.val)      # 12 — the caller's value was mutated
+end
+```
+
+`inout` works on any type, including primitives (`def reset(inout n: integer)`), and on method parameters (which are then a second reference target, distinct from the receiver). It does not break value semantics: a plain assignment still copies, so only the argument you explicitly mark `inout` is aliased.
+
+## Equality
+
+Structs are **not** comparable with `==` by default. To enable it, define an
+`__eq` method that takes another value of the same type and returns a `bool` —
+the compiler routes `==` through it:
+
+```gust
+def Server.__eq(other: Server) -> bool
+    return name == other.name and ip == other.ip and port == other.port and online == other.online
+end
+
+a := Server(name: "x", ip: "1", port: 1, online: true)
+b := Server(name: "x", ip: "1", port: 1, online: true)
+print(a == b)     # true
+```
+
+Without `__eq`, `a == b` is a compile error (`G0402`).
+
+## Subclassing
+
+A struct can extend another struct with `extends Parent`. The subclass inherits the parent's fields and methods, and may add its own:
+
+```gust
+def Animal
+    name: string
+    age: integer
+end
+
+def Animal.speak() -> string
+    return f"{name} makes a sound"
+end
+
+def Dog extends Animal
+    breed: string
+end
+
+def Dog.speak() -> string
+    return f"{name} barks"
+end
+
+def Dog.fetch() -> string
+    return f"{name} fetches"
+end
+```
+
+A struct in a hierarchy is a **reference type**, not a value type: assigning it, passing it, or storing it shares one underlying object rather than copying. Two bindings to the same object see each other's mutations.
+
+### Constructing a subclass
+
+Inherited fields come **first**, in the parent's declaration order, followed by the subclass's own fields:
+
+```gust
+d := Dog(name: "Rex", age: 5, breed: "Lab")   # name, age (inherited), then breed
+```
+
+Inherited fields are readable and writable on the subclass exactly like its own fields.
+
+### Overriding and virtual dispatch
+
+A subclass overrides an inherited method by declaring a method of the same name. Method calls dispatch on the object's **runtime class**, even through a parent-typed binding or a parent-typed collection element, and even from inside an inherited method body:
+
+```gust
+a := Animal(name: "Generic", age: 3)
+d := Dog(name: "Rex", age: 5, breed: "Lab")
+
+print(a.speak())    # "Generic makes a sound"
+print(d.speak())    # "Rex barks" — the override runs
+
+p: Animal = d       # upcast to the parent type
+print(p.speak())    # "Rex barks" — still dispatches to Dog
+
+animals: list[Animal] = [a, d]
+print(animals[1].speak())   # "Rex barks"
+```
+
+### Calling the parent with `super`
+
+Inside an overriding method, `super.method(...)` invokes the parent's version. This composes cleanly across multi-level chains:
+
+```gust
+def Base
+    label: string
+end
+
+def Base.greet() -> string
+    return f"base:{label}"
+end
+
+def Mid extends Base
+    extra: string
+end
+
+def Mid.greet() -> string
+    return f"mid({super.greet()})"
+end
+
+def Leaf extends Mid
+end
+
+def Leaf.greet() -> string
+    return f"leaf({super.greet()})"
+end
+
+leaf := Leaf(label: "L", extra: "x")
+print(leaf.greet())    # "leaf(mid(base:L))"
+```
+
+A subclass may add no fields of its own — `def Leaf extends Mid` with an empty body is valid, and so is a fieldless base struct.
+
+### Narrowing with `is` and `as`
+
+Test the runtime class of a parent-typed value with `is` (and `is not`). A true `is` branch narrows the value, so subclass-only fields and methods become callable inside it:
+
+```gust
+p: Animal = d
+if p is Dog
+    print(p.fetch())    # narrowed — Dog.fetch is in scope
+end
+if p is not Dog
+    print("not a dog")
+end
+```
+
+The `as` operator performs a **checked downcast**. It returns the value at the subclass type on success and raises `ValueError` if the object is not actually that class, so you can guard it with `try`/`catch`:
+
+```gust
+d2 := p as Dog          # succeeds — p holds a Dog
+print(d2.breed)
+
+try
+    bad := a as Dog     # a is a plain Animal → raises ValueError
+    print(bad.breed)
+catch ValueError
+    print("not a Dog")
+end
+```
+
+### Combining with interfaces
+
+A struct may both extend a parent and implement one or more interfaces in the same header — `extends` comes first, then `implements` with a comma-separated list. Interface conformance is inherited: a subclass of a conforming parent conforms too, and boxing either a subclass value or a parent-typed value into the interface dispatches virtually to the runtime class.
+
+```gust
+interface Greeter
+    def greet() -> string
+end
+
+def Base implements Greeter
+    label: string
+end
+
+def Base.greet() -> string
+    return f"base:{label}"
+end
+
+def Mid extends Base implements Greeter
+    extra: string
+end
+```
+
+Only structs participate in a hierarchy; see [interfaces](/lang/interfaces) for the shape-based alternative. Generic and `@raw` structs cannot take part in a hierarchy.
+
+## Dunders
+
+`__eq` is one of a family of **dunder** (double-underscore) methods the compiler
+recognizes by name and routes operators and builtins through. Define them as
+ordinary methods on your struct; there's no `self` — the struct's fields are in
+scope directly. Each is opt-in: if you don't define it, the corresponding
+operator is simply a compile error for that type.
+
+### Operators and builtins
+
+| Dunder | Enables | Signature |
+|--------|---------|-----------|
+| `__eq` | `==`, `!=` | `def T.__eq(other: T) -> bool` |
+| `__lt` | `<` | `def T.__lt(other: T) -> bool` |
+| `__lte` | `<=` | `def T.__lte(other: T) -> bool` |
+| `__gt` | `>` | `def T.__gt(other: T) -> bool` |
+| `__gte` | `>=` | `def T.__gte(other: T) -> bool` |
+| `__get` | index read `t[k]` | `def T.__get(key: K) -> V` |
+| `__set` | index write `t[k] = v` | `def T.__set(key: K, value: V) -> none` |
+| `__contains` | `x in t`, `x not in t` | `def T.__contains(item: X) -> bool` |
+| `__iter` | `for x in t` | `def T.__iter() -> list[X]` (or `dict[K, V]`) |
+| `__length` | `.length` property | `def T.__length() -> integer` |
+| `__string` | `f"{t}"`, `print(t)`, `t as string` | `def T.__string() -> string` |
+
+```gust
+def Grid
+    cells: dict[string, integer]
+end
+
+def Grid.__get(key: string) -> integer
+    return cells[key]
+end
+
+def Grid.__set(key: string, value: integer) -> none
+    cells[key] = value
+end
+
+def Grid.__length() -> integer
+    return cells.length
+end
+
+def Grid.__string() -> string
+    return f"Grid({cells.length} cells)"
+end
+
+g := Grid(cells: {})
+g["a"] = 1            # __set
+print(g["a"])         # __get  -> 1
+print(g.length)       # __length -> 1
+print(f"{g}")         # __string -> "Grid(1 cells)"
+```
+
+`__iter` returns a concrete collection; `for x in t` iterates the list (or dict)
+it hands back, binding `x` to that collection's element type.
+
+### Conversions
+
+The `as` cast routes through a matching dunder, letting a struct convert to a
+builtin type:
+
+| Cast | Dunder | Signature |
+|------|--------|-----------|
+| `t as integer` | `__integer` | `def T.__integer() -> integer` |
+| `t as float` | `__float` | `def T.__float() -> float` |
+| `t as bool` | `__bool` | `def T.__bool() -> bool` |
+| `t as string` | `__string` | `def T.__string() -> string` |
+| `t as list[X]` | `__list` | `def T.__list() -> list[X]` |
+| `t as dict[K, V]` | `__dict` | `def T.__dict() -> dict[K, V]` |
+
+## Struct and dict casting
+
+You can convert between a struct and a `dict` in both directions without defining any dunder — the compiler synthesizes the mapping from the struct's fields.
+
+**A dict casts *to* a struct** (`<dict> as StructName`). Each struct field is filled from the dict entry under its own name; the value is coerced to the field's declared type. The source may be a `dict[string, Any]` (values are unboxed per field) or a concrete `dict[string, T]`. Extra dict keys are ignored; a **missing key raises `KeyError`** at runtime:
+
+```gust
+def Point
+    x: integer
+    y: integer
+end
+
+data: dict[string, Any] = {"x": 3, "y": 4}
+p := data as Point       # Point(x: 3, y: 4)
+```
+
+**A struct casts *back to* a dict** (`<struct> as dict[string, Any]`). The result maps each field name to that field's value, boxed as `Any`. The target must be `dict[string, Any]`:
+
+```gust
+back := p as dict[string, Any]
+print(back["x"])         # 3
+```
+
+This round-trip is the bridge between typed structs and dynamic `dict[string, Any]` data such as parsed JSON.
+
+## Foreign methods
+
+A method with no Gust body can be backed by a C implementation. Write `def foreign Struct.method(...)` with a signature but no body; the compiler emits only a forward declaration and links to the C symbol `Struct_method(Struct* self, ...)`, which reads the struct's fields directly across the boundary:
+
+```gust
+def foreign Path.exists() -> bool
+```
+
+Foreign methods are how parts of the standard library reach the operating system. Application code rarely needs them; reach for one only when binding to existing C.
+
+## Advanced: opting out of memory management
+
+Two decorators disable the automatic ownership machinery. They are only permitted inside the standard library or a file that has its own `use unsafe`, because misusing them causes leaks or use-after-free (`G0608`).
+
+- `@raw` on a struct suppresses all synthesized retain/drop logic — the struct is treated as plain data with no owned fields. Use it only for structs whose fields are genuinely unmanaged (raw machine words, POD).
+- `@manual` on a function or method suppresses the automatic refcounting within that body. It is required for functions that bracket an arena reset, where scope-exit drops would touch freed memory.
+
+```gust
+use unsafe
+
+@raw
+def RawSlot
+    base: integer      # a raw byte address is spelled `integer`
+    len: integer
+end
+```
+
+Neither is needed for ordinary code — the default ownership model handles it.
+
+## When to reach for a struct
+
+- You're passing a clump of related values around as one thing.
+- You want method syntax (`s.display()`) for better readability.
+- You're implementing an [interface](/lang/interfaces) — only structs can.
+
+For truly ephemeral "bag of values," a tuple return type (`-> tuple[string, integer]`) is fine. Promote to a struct the moment the tuple appears in more than one place, or the moment you want to add a method.

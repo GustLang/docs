@@ -1,0 +1,302 @@
+---
+title: Enums
+description: Gust's enum and auto_enum declarations, variant usage, matching, introspection, backing types, and coercion
+---
+
+The `enum` keyword declares one of two things, and the **backing-type clause** is
+what selects between them:
+
+- `enum Name: integer` / `enum Name: string` — a **backed enum**: a fixed set of
+  named constants that share one backing type. This is the subject of this page.
+- `enum Name` (no colon) — a **sum-type enum** whose variants each carry their
+  own fields. See [Tagged unions](/lang/unions) for the full treatment; the
+  [overview below](#sum-type-enums) explains how the colon tells the two apart.
+
+`auto_enum` is a third spelling for a backed enum whose values the compiler
+assigns for you.
+
+## Why the colon disambiguates
+
+The two forms are structurally different declarations, and the presence or
+absence of `: integer` / `: string` is the single deciding token:
+
+- With a backing clause, the body is a list of bare `Member [= value]` lines.
+  Writing a `case` variant there is rejected — the compiler tells you to drop the
+  backing clause to declare a sum type.
+- Without a backing clause, the body is a list of `case Name(fields)` variants.
+  Writing `= value` on a variant is rejected — backing values are only allowed on
+  a backed enum.
+
+So the two forms are mutually exclusive: you can never accidentally get a hybrid
+that both carries a backing value and holds payload fields. Pick the shape you
+want by writing the colon or leaving it off.
+
+## `auto_enum` — compiler-assigned values
+
+Variants are assigned values automatically. For an integer-backed enum the
+counter starts at `1` and increments; for a string-backed enum each variant's
+value is its own name as a string.
+
+```gust
+auto_enum Status: integer
+    online          # 1
+    offline         # 2
+    maintenance     # 3
+end
+
+auto_enum Color: string
+    red             # "red"
+    green           # "green"
+    blue            # "blue"
+end
+```
+
+## `enum` — explicit values
+
+Use `enum` when the value itself matters — stable wire formats, protocol codes,
+priority orderings — and assign each member with `= value`:
+
+```gust
+enum Priority: integer
+    low    = 10
+    medium = 20
+    high   = 30
+end
+
+enum HttpMethod: string
+    get  = "GET"
+    post = "POST"
+    put  = "PUT"
+end
+```
+
+Each value must match the declared backing type: `= 10` for `: integer`,
+`= "GET"` for `: string`.
+
+### Mixing explicit and omitted values
+
+You do not have to give every member a value. The rule depends on the backing
+type:
+
+- **Integer backing** — an explicit `= n` sets the counter, and any following
+  member without `=` continues incrementing from there. After `high = 30`, a bare
+  member is `31`.
+- **String backing** — a member without `= "..."` defaults to its own name as the
+  value, exactly as under `auto_enum`.
+
+```gust
+enum Level: integer
+    a = 10
+    b          # 11
+    c = 30
+    d          # 31
+end
+```
+
+## Private enums
+
+Prefix the name with `private` to keep the enum from being imported by other
+packages, the same modifier form used on functions and structs:
+
+```gust
+enum private Secret: integer
+    token = 1
+end
+```
+
+## Using a variant
+
+Reference a variant as `EnumName.variant`. The value's static type is the enum:
+
+```gust
+p: Priority = Priority.high
+m := HttpMethod.post          # type is HttpMethod
+
+if p == Priority.high
+    print("urgent")
+end
+```
+
+Two enum values compare with `==` and `!=` when they are the same enum type:
+
+```gust
+print(Status.online == Status.online)   # true
+print(HttpMethod.get == HttpMethod.put)  # false
+```
+
+## Coercion to the backing type
+
+A backed enum value is accepted anywhere its backing primitive is expected — no
+cast is needed. Assignment, argument passing, and returns all coerce:
+
+```gust
+n: integer = Priority.high    # 30
+s: string = HttpMethod.get    # "GET"
+
+def takes_int(n: integer) -> integer
+    return n + 1
+end
+
+print(takes_int(Priority.low))   # 11
+```
+
+Because an integer-backed value coerces to `integer`, it also coerces onward to
+`float`, since `integer` widens to `float`:
+
+```gust
+f: float = Priority.medium    # 20.0
+```
+
+### The coercion is one-way
+
+The reverse — assigning a raw `integer` or `string` where the enum type is
+expected — is a compile error (`G0102`). An arbitrary integer is not guaranteed
+to name a declared member, so Gust will not silently treat it as one. Mixing two
+different enum types is the same error:
+
+```gust
+p: Priority = 10        # error G0102: got integer, expected Priority
+q: Priority = Status.online   # error G0102: got Status, expected Priority
+```
+
+When you genuinely want to go the other way, cast the enum explicitly with `as`
+so the conversion is visible in the source:
+
+```gust
+x := Priority.high as integer   # 30
+```
+
+### Integer-backed enums in arithmetic
+
+An integer-backed enum participates in arithmetic directly, and the result is an
+`integer` (not the enum), because a computed number is not guaranteed to be a
+declared member:
+
+```gust
+n := Status.online + 5   # integer 6
+```
+
+A string-backed enum has no arithmetic. Applying an operator such as `+` to one
+is rejected (`G0402`); concatenate its coerced string value instead:
+
+```gust
+s := HttpMethod.get as string + "X"   # "GETX"
+```
+
+## Matching on enums
+
+`match` is the idiomatic way to handle every variant. Each `case` names a
+variant with its qualified `EnumName.variant` form; a trailing `else` covers the
+rest:
+
+```gust
+def describe(s: Status) -> string
+    match s
+        case Status.online
+            return "running"
+        case Status.offline
+            return "down"
+        case Status.maintenance
+            return "planned downtime"
+    end
+    return "???"
+end
+
+def short(c: Color) -> string
+    match c
+        case Color.red
+            return "r"
+        case Color.green
+            return "g"
+        else
+            return "?"
+    end
+end
+```
+
+## Rendering with `print`
+
+Printing a backed enum, or interpolating it into an f-string, renders the
+member. The backing type governs the representation:
+
+```gust
+print(Status.online)      # online
+print(Priority.high)      # 30
+print(HttpMethod.get)     # GET
+```
+
+## Introspection with `dir`
+
+`dir(EnumType)` returns the list of variant names in declaration order:
+
+```gust
+print(dir(Status))       # ["online", "offline", "maintenance"]
+print(dir(HttpMethod))   # ["get", "post", "put"]
+```
+
+## Backing types
+
+Only `integer` and `string` are supported backing types. The backing type
+governs:
+
+- what values you can assign — `low = 10` requires `: integer`, `get = "GET"`
+  requires `: string`
+- what a variant coerces to, and what `variant as BackingType` produces
+- whether arithmetic is available (integer only)
+- how variants render through `print` and f-strings
+
+## When `enum` vs. `auto_enum`
+
+- **`auto_enum`** — the underlying value is an implementation detail. Readers
+  only care about the name, so let the compiler number or string them.
+- **`enum`** — the value is load-bearing: persisted to disk, sent over the wire,
+  or matched against an external protocol. Assigning explicit values locks them
+  in so a later reordering cannot shift them.
+
+## Sum-type enums
+
+Leaving off the backing clause turns `enum` into a **sum type** (also called a
+tagged union or algebraic data type): a single type whose value is exactly one of
+a fixed set of **variants**, and each variant can carry its own fields.
+
+```gust
+enum Shape
+    case Circle(radius: float)
+    case Rect(width: integer, height: integer)
+    case Empty
+end
+```
+
+- Each `case` declares one variant: a `PascalCase` name and an optional
+  parenthesized field list.
+- A variant with no fields is written bare (`case Empty`).
+- You build a value by calling the **variant** name — `Circle(2.0)`,
+  `Rect(width: 3, height: 4)`, `Empty()` — and its static type is the enum.
+- You read a value back with `match`, which binds a variant's fields to locals.
+
+A variant field may name the enum type itself; the compiler detects the
+self-reference and boxes it, so recursive shapes such as expression trees work:
+
+```gust
+enum Expr
+    case IntLit(value: integer)
+    case BinOp(left: Expr, op: string, right: Expr)
+end
+```
+
+This is only an overview — construction, positional and named arguments,
+destructuring with `match`, binding a prefix of the fields, catch-all `else`, and
+recursive unions are covered in full on [Tagged unions](/lang/unions).
+
+## Comparison with the other "one of" types
+
+| You want | Reach for |
+|----------|-----------|
+| One of several named constants of a single backing type | backed `enum` (this page) |
+| A value that's one of several *existing* types, carrying no new fields | [union type `A \| B`](/lang/types#union-types-a--b) |
+| One of several variants, each with its own fields | [sum-type `enum`](/lang/unions) |
+
+A backed enum is about holding one of a finite set of *named constants of a
+single type*. A sum-type `enum` is about holding one of several *shapes of data*.
+If every variant is plainly a `string` or an `integer`, use a backed enum; if
+each variant carries its own fields, use the sum-type form.

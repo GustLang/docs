@@ -1,0 +1,346 @@
+---
+title: Control flow
+description: Gust's if/else, while, for, range, conditional expressions, break/continue, pass, with, and return constructs
+---
+
+Every block form below opens with a keyword and closes with a bare `end`. There
+are no braces and no `endif`/`endfor` variants. Conditions are never wrapped in
+mandatory parentheses.
+
+## `if` / `else if` / `else`
+
+```gust
+if ms > 500
+    print("slow")
+else if ms > 200
+    print("okay")
+else
+    print("fast")
+end
+```
+
+- Parentheses around the condition are optional and conventionally omitted.
+- `else if` is two words. There is no `elif` keyword.
+- You may chain any number of `else if` clauses; the trailing `else` is optional.
+- The condition must be `bool`. There is no truthiness on other types — `if n`
+  where `n` is an `integer` is a type error, so write `if n != 0`.
+
+Both `in` and `not in` are ordinary boolean operators, so membership reads
+naturally as a condition:
+
+```gust
+if code in [301, 302, 307]
+    print("redirect")
+end
+
+if "id" not in params
+    print("missing id")
+end
+```
+
+### Declaring a value for the condition
+
+The walrus operator `:=` is a statement, not an expression, so it cannot appear
+inside a condition (`if (n := next()) > 0` does not parse). Declare the value on
+its own line first, then branch on it:
+
+```gust
+n := next()
+if n > 0
+    print(n)
+end
+```
+
+## Conditional expression (ternary)
+
+A conditional expression chooses between two values in-line and evaluates to
+whichever branch the condition selects:
+
+```gust
+status := "online" if connected else "offline"
+```
+
+Read it left to right: *the value is `"online"` if `connected` else
+`"offline"`.* The `if` and `else` are both required — there is no one-sided
+form. A conditional expression can appear anywhere an expression is expected: an
+argument, a return value, a list element, or the right-hand side of an
+assignment.
+
+Nest one by parenthesizing the inner expression to make the grouping explicit:
+
+```gust
+sign := "neg" if x < 0 else ("zero" if x == 0 else "pos")
+```
+
+## `while`
+
+```gust
+count := 0
+while count < 3
+    print(count)
+    count = count + 1
+end
+```
+
+The condition must be `bool`, and it is re-checked before every iteration.
+`while` iterations run sequentially.
+
+Use `while!` to spawn the whole loop as a detached background thread; control
+returns to the caller immediately while the loop runs on its own:
+
+```gust
+while! server.is_running()
+    server.poll()
+end
+```
+
+See [Concurrency](/lang/concurrency) for the full semantics of the `!` suffix.
+
+## `for ... in ...`
+
+A `for` loop binds one or more loop variables and walks an iterable. Gust
+specializes the loop by what you iterate over — a range, a list, a dict, a
+string, or any type with a `__iter` method.
+
+### Ranges
+
+`range` produces a counted sequence of integers:
+
+```gust
+for i in range(10)
+    print(i)                   # 0..9
+end
+
+for i in range(2, 8)
+    print(i)                   # 2..7
+end
+```
+
+`range(n)` counts `0..n-1`. `range(start, end)` counts `start..end-1` — the
+start is inclusive and the end is exclusive. There is no step argument. To skip
+values, guard the body with `continue` or an `if`; for a custom stride, use a
+`while` loop.
+
+### Lists
+
+Iterate a list to bind each element in turn:
+
+```gust
+for name in names
+    print(name)
+end
+```
+
+When the element is a tuple, bind its parts directly with multiple loop
+variables:
+
+```gust
+pairs: list[tuple[integer, string]] = [(1, "a"), (2, "b")]
+for n, label in pairs
+    print(f"{n}: {label}")
+end
+```
+
+### Dicts
+
+Iterating a dict binds its keys:
+
+```gust
+for key in scores               # dicts iterate their keys
+    print(f"{key} = {scores[key]}")
+end
+```
+
+Bind both the key and the value with two loop variables:
+
+```gust
+for key, value in scores        # key/value pairs
+    print(f"{key} = {value}")
+end
+```
+
+Iteration order follows the dict's internal layout, but every entry appears
+exactly once.
+
+### Strings
+
+Iterating a string yields each character as a one-character string:
+
+```gust
+for ch in "hello"
+    print(ch)                   # "h", "e", "l", "l", "o"
+end
+```
+
+### Custom iteration with `__iter`
+
+Any type that defines a `__iter` method returning a list becomes iterable. The
+loop calls `__iter` once and walks the returned collection, binding each element:
+
+```gust
+def Squares
+    limit: integer
+end
+
+def Squares.__iter() -> list[integer]
+    out: list[integer] = []
+    for i in range(limit)
+        out.append(i * i)
+    end
+    return out
+end
+
+def main() -> none
+    for sq in Squares(limit: 4)
+        print(sq)               # 0, 1, 4, 9
+    end
+end
+```
+
+### Concurrent `for!`
+
+`for!` spawns each iteration on its own thread and joins them all at the loop's
+end:
+
+```gust
+for! url in urls
+    fetch(url)
+end
+```
+
+<Info>
+**Loops run sequentially by default**
+
+A plain `for` loop runs one iteration at a time. `for!` only parallelizes when
+every iteration is independent — no shared mutable state and no `break` or
+`continue`. See [Concurrency](/lang/concurrency).
+</Info>
+
+## `break` and `continue`
+
+Both keywords are legal inside a `for` or `while` loop body:
+
+- **`break`** exits the innermost enclosing loop immediately.
+- **`continue`** skips the rest of the current iteration and starts the next one.
+
+```gust
+# break — stop at the first match
+for item in items
+    if item == target
+        print("found")
+        break
+    end
+end
+
+# continue — skip uninteresting rows
+for row in rows
+    if row.is_empty()
+        continue
+    end
+    process(row)
+end
+```
+
+In nested loops, `break` and `continue` act on the innermost loop only. To leave
+an outer loop from inside an inner one, set a flag or extract the inner loop into
+a function that `return`s.
+
+<Warning>
+**Break / continue disable `for!` parallelism**
+
+A `for!` loop only parallelizes when every iteration is independent. A `break` or
+`continue` threads control flow through the loop, so the compiler falls back to
+sequential execution for that loop. See [Concurrency](/lang/concurrency).
+</Warning>
+
+## `pass`
+
+`pass` is a no-op statement. Use it where the grammar needs a statement but no
+action should be taken — a stub function body or an intentionally empty branch:
+
+```gust
+def stub() -> none
+    pass
+end
+
+if x > 0
+    pass                        # nothing to do in this case
+else
+    handle(x)
+end
+```
+
+## `with`
+
+A `with` block enters a context at the top of the block and exits it however the
+block is left — falling off the end, `return`, `break`, `continue`, or a raised
+error. The context's `__enter` method runs on entry and its `__exit` method runs
+on exit, so cleanup is guaranteed on every path out:
+
+```gust
+with lock
+    critical_section()
+end
+```
+
+If `__enter` returns a value, bind it with `as`:
+
+```gust
+with open_file(path) as f
+    f.write("hello")
+end
+```
+
+Any type with `__enter` and `__exit` methods can serve as a context.
+
+## `match`
+
+Use `match` to test one value against many exact patterns. See
+[Pattern matching](/lang/match) for the full treatment:
+
+```gust
+match code
+    case 200
+        return "ok"
+    case 301, 302
+        return "redirect"
+    case 404
+        return "not found"
+    else
+        return f"status {code}"
+end
+```
+
+## `try` / `catch`
+
+Guard a block against raised errors with `try` / `catch`. Errors are first-class
+typed values. See [Errors](/lang/errors) for raising, catch-all handlers,
+binding the caught error, and re-raising:
+
+```gust
+try
+    risky()
+catch ValueError
+    print("bad value")
+end
+```
+
+## `return`
+
+`return` ends the enclosing function. It can carry a value — which must match the
+declared return type — or be bare (`return`) in a `-> none` function:
+
+```gust
+def maybe() -> none
+    if bad
+        return
+    end
+    do_work()
+end
+```
+
+## Falling off the end
+
+A `-> none` function can implicitly return — no `return` is needed. Any other
+return type requires every path to return a value, and the analyzer reports the
+path that is missing one.

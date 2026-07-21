@@ -1,0 +1,341 @@
+---
+title: Pattern matching
+description: Gust's match statement over literals, named constants, enum variants, tagged-union variants, and runtime type patterns, plus exhaustiveness checking and current limitations.
+---
+
+`match` is Gust's multi-way branch. It tests one scrutinee expression against a series of `case` patterns and runs the body of the first arm that matches. It works on integers, floats, strings, booleans, `none`, named constants, enum members, [tagged-union](/lang/unions) variants, and runtime type patterns.
+
+Use `match` when you are comparing a single value against many specific alternatives. For range checks (`x > 10`) or conditions that mix several variables, an [`if / elseif`](/lang/control-flow) chain reads better.
+
+## Basic shape
+
+```gust
+match value
+    case pattern
+        ...statements...
+    case pattern, pattern
+        ...statements...
+    else
+        ...fallback...
+end
+```
+
+- Each `case` is followed by one or more comma-separated patterns. The arm fires if the scrutinee matches any of them.
+- Arms are tested top to bottom and the first match wins. There is no fall-through, so no `break` is needed.
+- `else` is the catch-all arm. It is optional, but when the scrutinee is an enum or a tagged union you either cover every variant or add an `else` (see [Exhaustiveness](#exhaustiveness)).
+- The whole block closes with a bare `end`.
+
+The scrutinee can be any expression, not just a variable:
+
+```gust
+match request.method.upper()
+    case "GET"
+        serve()
+    else
+        reject()
+end
+```
+
+## Matching integers
+
+```gust
+def http_label(code: integer) -> string
+    match code
+        case 200
+            return "ok"
+        case 301, 302
+            return "redirect"
+        case 404
+            return "not found"
+        case 500, 502, 503
+            return "server error"
+        else
+            return f"status {code}"
+    end
+end
+```
+
+A leading `-` forms a negative literal pattern:
+
+```gust
+match delta
+    case -1
+        step_back()
+    case 0
+        hold()
+    case 1
+        step_forward()
+    else
+        jump()
+end
+```
+
+## Matching floats
+
+Float literals match by value:
+
+```gust
+match ratio
+    case 0.0
+        return "empty"
+    case 1.0
+        return "full"
+    else
+        return "partial"
+end
+```
+
+Integer and float patterns may be mixed against a numeric scrutinee, following the same cross-numeric rules as the comparison operators.
+
+## Matching strings
+
+```gust
+match method
+    case "GET", "HEAD"
+        handle_read()
+    case "POST", "PUT", "PATCH"
+        handle_write()
+    case "DELETE"
+        handle_delete()
+    else
+        reject()
+end
+```
+
+String patterns compare by value, so two equal strings match regardless of identity.
+
+## Matching booleans
+
+```gust
+match ready
+    case true
+        start()
+    case false
+        wait()
+end
+```
+
+For a two-way boolean branch a plain `if / else` usually reads better.
+
+## Matching none
+
+`case none` tests a scrutinee against the `none` literal:
+
+```gust
+match maybe
+    case none
+        use_default()
+    else
+        use(maybe)
+end
+```
+
+This works when the scrutinee is statically typed. Matching `case none` against a value whose static type is `Any` is not supported today — narrow with an [`is none`](/lang/unions) test in an `if` instead.
+
+## Matching against named constants
+
+A `case` pattern that is a bare name is read as a value and compared for equality. A `constant` therefore makes a readable case label:
+
+```gust
+PORT_HTTP: constant[integer] = 80
+PORT_HTTPS: constant[integer] = 443
+
+match port
+    case PORT_HTTP
+        return "http"
+    case PORT_HTTPS
+        return "https"
+    else
+        return "other"
+end
+```
+
+This is a value comparison, not a capture: the name is read, never bound. Resolution decides the meaning — a capitalized bare name that is a variant of the scrutinee's tagged union matches by tag (see below), while any other name matches by value.
+
+## Matching enum variants
+
+Match an [enum](/lang/enums) against its members by their qualified name. Both integer-backed and string-backed enums work:
+
+```gust
+enum Status: integer
+    pending = 0
+    active = 1
+    cancelled = 2
+end
+
+def describe(s: Status) -> string
+    match s
+        case Status.pending
+            return "waiting"
+        case Status.active
+            return "running"
+        case Status.cancelled
+            return "stopped"
+    end
+end
+```
+
+String-backed enums (including `auto_enum`) compare their backing string by value:
+
+```gust
+auto_enum Color: string
+    red
+    green
+    blue
+end
+
+def temperature(c: Color) -> string
+    match c
+        case Color.red
+            return "warm"
+        case Color.green, Color.blue
+            return "cool"
+    end
+end
+```
+
+A member may be written with a package qualifier (`pkg.Color.red`); the qualifier is dropped during parsing, so it is purely for readability.
+
+## Destructuring tagged-union variants
+
+Matching a [tagged-union](/lang/unions) (sum type) value binds the matched variant's fields to locals, positionally. The names you choose in the pattern become the locals — they need not match the field names:
+
+```gust
+enum Shape
+    case Circle(radius: float)
+    case Rect(width: integer, height: integer)
+    case Empty
+end
+
+def area(s: Shape) -> float
+    match s
+        case Circle(r)
+            return 3.14159 * r * r
+        case Rect(w, h)
+            return (w * h) as float
+        case Empty
+            return 0.0
+    end
+end
+```
+
+Several forms are available:
+
+- **Zero-field variant** — write the bare variant name with no parentheses: `case Empty`.
+- **Full binding** — one name per field, in declaration order: `case Rect(w, h)`.
+- **Wildcard `_`** — skips a field you must position past without binding it: `case Node(_, value, _)`.
+- **Prefix / rest binding** — bind only a leading run of fields and drop the trailing ones: a three-field variant matched with `case Node(left)` binds just the first field. This lets a variant grow new trailing fields without editing every existing `case` site. Binding *more* names than the variant has fields is an error.
+- **Qualified variant name** — `case ast.ReturnStmt(has_value, value, line)` works the same as the bare `case ReturnStmt(...)`. Variant tags resolve by their bare name, so the package qualifier is dropped after parsing and is there only for clarity.
+
+Full treatment lives in [Tagged unions](/lang/unions#destructuring-with-match).
+
+## Type patterns
+
+A `case` whose pattern is a type tests the scrutinee's *runtime* type rather than a value. This is the statement form of the [`is`](/lang/unions) type test and is most useful over an `Any` or union scrutinee:
+
+```gust
+def classify(x: Any) -> string
+    match x
+        case list[string]
+            return "list of strings"
+        case dict[string, integer]
+            return "string-to-integer map"
+        case integer
+            return "integer"
+        case string
+            return "string"
+        else
+            return "something else"
+    end
+end
+```
+
+The tested type may be:
+
+- a bare primitive keyword: `integer`, `string`, `float`, or `bool`;
+- a subscripted container type: `list[T]`, `dict[K, V]`, `tuple[...]`, or `ref[T]`.
+
+The type in a type pattern must be fully concrete — it may not contain `Any`, because a boxed value records no box-time tag for an `Any` element and so could never match exactly. When the scrutinee already has a concrete static type, a type-pattern arm folds to a compile-time constant; when it is boxed (`Any` or a union), the arm compares the value's box-time type tag at runtime.
+
+## Wildcards and the default arm
+
+`else` is the catch-all. It runs when no `case` matched, and its presence makes any `match` complete regardless of the scrutinee type:
+
+```gust
+match token
+    case TT_PLUS, TT_MINUS
+        parse_additive()
+    else
+        parse_primary()
+end
+```
+
+An `else` arm must have a body — an empty `else` is rejected. Every `match` must contain at least one `case` or an `else`.
+
+## Exhaustiveness
+
+When the scrutinee is an enum or a tagged union and there is no `else`, the compiler checks that every variant is covered. A missing variant is a compile error naming exactly what is absent:
+
+```gust
+enum Shape
+    case Circle(r: float)
+    case Rect(w: integer, h: integer)
+    case Empty
+end
+
+def area(s: Shape) -> float
+    match s
+        case Circle(r)
+            return 3.14 * r * r
+        case Rect(w, h)
+            return (w * h) as float
+        # error: non-exhaustive match — missing: Empty
+    end
+end
+```
+
+Add the missing cases or an `else` arm to resolve it. This applies to both backed enums (`enum Status: integer`) and sum types (`enum Shape` with `case` variants). Guarded arms do not count toward exhaustiveness (see below).
+
+## Guards
+
+The parser accepts a trailing `if` condition on a `case`, and the analyzer type-checks it: the guard expression must be `bool`, and a guarded arm is excluded from exhaustiveness checking.
+
+However, code generation does **not** yet apply the guard at runtime. A guarded arm fires whenever its pattern matches, exactly as if the `if` clause were absent — the condition has no effect. Do not rely on guards. Branch inside the arm body instead:
+
+```gust
+match n
+    case 1
+        if n > 5
+            handle_large()
+        else
+            handle_small()
+        end
+    else
+        handle_other()
+end
+```
+
+## Other current limitations
+
+- **No range patterns** (`case 1..10`). Test a range with an `if` inside the arm body, or use an `if / elseif` chain instead of `match`.
+- **No scalar binding patterns.** A bare name in a pattern is read as a value, not bound (see [Matching against named constants](#matching-against-named-constants)). Variant destructuring (`case Circle(r)`) is the only construct that introduces bindings.
+- **`case none` against `Any`** is not supported — narrow with an `if x is none` test instead.
+
+These are additive when they land; existing `match` blocks won't need to change.
+
+## Errors the compiler catches
+
+Beyond exhaustiveness, the analyzer rejects several mistakes at compile time:
+
+- A literal pattern whose type can never equal the scrutinee, such as `case "x"` against an integer scrutinee.
+- A variant pattern that binds more names than the variant has fields.
+- A type pattern that contains `Any`.
+- A guard expression that is not `bool`.
+- An empty `else` body, or a `match` with no `case` and no `else`.
+
+## Style
+
+- Write one statement per line under a `case`, the same as any other block.
+- Group values that share a body with a comma rather than repeating it.
+- Prefer covering every enum or union variant explicitly over an `else`, so a newly added variant surfaces as an exhaustiveness error at every `match` site.
+- If every arm returns, you can drop the `else` and add an explicit `return` at the bottom of the function.

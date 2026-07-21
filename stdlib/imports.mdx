@@ -1,0 +1,127 @@
+---
+title: imports
+description: "Package / module resolution shared by the Gust compiler and by user tooling (build scripts, linters, package managers, language servers)"
+---
+
+```gust
+use imports
+```
+
+Package / module resolution shared by the Gust compiler and by user
+tooling (build scripts, linters, package managers, language servers).
+Exposing the *same* lookup logic the compiler uses means external tools
+resolve a `use X` import exactly as the compiler does, with no duplicated
+rules to drift out of sync.
+
+Gust resolves imports at compile time, so this is resolution only
+(a package name -> its on-disk location); it does not load or execute
+modules at runtime the way Python's `importlib` does.
+
+**On this page:** [`find_ancestor_with`](#imports.find_ancestor_with) · [`find_project_root`](#imports.find_project_root) · [`path_import_name`](#imports.path_import_name) · [`resolve_path_import`](#imports.resolve_path_import) · [`resolve_package_source_dir`](#imports.resolve_package_source_dir)
+
+## Functions
+
+<a id="imports.find_ancestor_with" />
+```gust
+def find_ancestor_with(start_dir: string, filename: string) -> string
+```
+
+Nearest ancestor of `start_dir` (inclusive) that contains a file named
+`filename`. Returns that directory, or "" when none is found within 64
+levels.
+
+**Parameters**
+
+- `start_dir: string` — Directory to begin the upward search from (searched first).
+- `filename: string` — File name to look for in each ancestor directory.
+
+---
+
+<a id="imports.find_project_root" />
+```gust
+def find_project_root(entry_path: string) -> string
+```
+
+Nearest ancestor of `entry_path` containing `gust.toml`. Falls back to
+the entry file's own directory when no manifest exists — so single-file
+programs still behave sensibly and `use foo` against a sibling `foo.g`
+keeps working without a project manifest.
+
+**Parameters**
+
+- `entry_path: string` — Path to the program's entry source file.
+
+---
+
+<a id="imports.path_import_name" />
+```gust
+def path_import_name(raw: string) -> string
+```
+
+The default package name for a path import `use "<raw>"`: the final
+path segment with a trailing `.g` and trailing slashes stripped.
+`"../foo"` -> `"foo"`, `"./lib/math"` -> `"math"`, `"../u.g"` -> `"u"`.
+Shared by the parser (to seed `Import.alias`) and the LSP (to map a
+qualified reference back to its path-imported package).
+
+**Parameters**
+
+- `raw: string` — The raw path string from a `use "<raw>"` import.
+
+---
+
+<a id="imports.resolve_path_import" />
+```gust
+def resolve_path_import(raw: string, source_file: string) -> string
+```
+
+Resolve a path-based `use "<raw>"` import to an absolute on-disk
+location, relative to the importing file `source_file`. `raw` may be
+absolute (`/x/y`) or relative (`./`, `../`), and may name either a
+directory or a `.g` file. Returns the package's **directory** (absolute,
+normalized) in all cases — a Gust package is a directory of `.g` files, so
+naming a single file (`use "../pkg/thing.g"`) imports its whole directory,
+not that file alone. Returns "" when nothing matches.
+
+Resolution is relative to `source_file`'s directory, so the same
+`use "../foo"` means the same thing regardless of the cwd, and two files
+in different directories that name the same target normalize to one
+canonical path (letting the loader dedup them).
+
+**Parameters**
+
+- `raw: string` — The raw path string from a `use "<raw>"` import (absolute or relative).
+- `source_file: string` — Path of the importing file, used as the resolution base.
+
+---
+
+<a id="imports.resolve_package_source_dir" />
+```gust
+def resolve_package_source_dir(
+    path: string,
+    stdlib_base: string,
+    project_root: string,
+) -> string
+```
+
+Find a package's .g-file directory.
+
+Lookup order:
+
+1. &lt;stdlib_base>/&lt;path>/
+2. &lt;project_root>/&lt;path>/
+3. &lt;project_root>/&lt;path>.g          (single-file package — returns project_root)
+4. &lt;project_root>/.gust/deps/&lt;path>/ (installed GitHub dependency)
+
+Installed dependencies are searched **last** so a local package or
+single-file module of the same name shadows a dep, and projects with no
+`.gust/deps` are unaffected.
+
+`path` is a dotted package name (`foo.bar`), mapped to `foo/bar` on disk.
+Returns "" when nothing matches.
+
+**Parameters**
+
+- `path: string` — Dotted package name (`foo.bar`), mapped to `foo/bar` on disk.
+- `stdlib_base: string` — Root directory of the standard library, searched first.
+- `project_root: string` — Project root directory, searched after stdlib ("" to skip).

@@ -1,0 +1,527 @@
+---
+title: inspect
+description: "Compile-time introspection over your program's own declarations"
+---
+
+```gust
+use inspect
+```
+
+Compile-time introspection over your program's own declarations. Every
+call is resolved by the compiler against the parsed program and lowered
+to a constant — there is no runtime cost and no runtime type metadata
+involved. Arguments are referred to by name: pass a bare function name,
+type name, or a `Type.method` reference (not a string).
+
+`item` is typed `Any` because it stands for a declaration, not a value;
+the compiler intercepts the call before the argument is evaluated.
+
+The closed set of things an argument can refer to, returned by `kind`.
+Compare with `==` or destructure with `match`.
+
+**Examples**
+
+```gust
+use inspect
+
+def greet(name: string, loud: bool) -> string
+    """Greet someone."""
+    ...
+end
+
+inspect.doc(greet)          # "Greet someone."
+sig := inspect.signature(greet)   # a Signature struct
+f"{sig}"                    # "(name: string, loud: bool) -> string"
+sig.parameters[0].name      # "name"
+sig.parameters[0].annotation # "string"
+sig.return_annotation       # "string"
+inspect.params(greet)       # ["name", "loud"]
+inspect.kind(greet)         # SymbolKind.Function
+inspect.fields(SomeStruct)  # ["x", "y"]
+inspect.methods(SomeStruct) # ["render", "area"]
+inspect.variants(Color)     # ["red", "green", "blue"]
+inspect.line(greet)         # 12
+inspect.file(greet)         # "src/app.g"
+```
+
+```gust
+use SymbolKind from inspect
+if inspect.kind(item) == SymbolKind.Function ...
+```
+
+**On this page:** [`SymbolKind`](#SymbolKind) · [`Parameter`](#Parameter) · [`Signature`](#Signature) · [`DocEntry`](#DocEntry) · [`doc`](#inspect.doc) · [`name`](#inspect.name) · [`kind`](#inspect.kind) · [`line`](#inspect.line) · [`file`](#inspect.file) · [`signature`](#inspect.signature) · [`params`](#inspect.params) · [`param_types`](#inspect.param_types) · [`return_type`](#inspect.return_type) · [`fields`](#inspect.fields) · [`field_types`](#inspect.field_types) · [`methods`](#inspect.methods) · [`variants`](#inspect.variants) · [`members`](#inspect.members) · [`describe`](#inspect.describe) · [`entries`](#inspect.entries) · [`is_function`](#inspect.is_function) · [`is_struct`](#inspect.is_struct) · [`is_enum`](#inspect.is_enum) · [`is_interface`](#inspect.is_interface) · [`is_error`](#inspect.is_error) · [`is_type`](#inspect.is_type) · [`is_method`](#inspect.is_method) · [`decorators`](#inspect.decorators)
+
+## `SymbolKind`
+
+<a id="SymbolKind" />
+```gust
+enum SymbolKind: string
+```
+
+What an inspected argument refers to.
+
+**Variants**
+
+- `Function = "function"` — A free or package function.
+- `Struct = "struct"` — A struct type.
+- `Enum = "enum"` — An enum type.
+- `Interface = "interface"` — An interface type.
+- `Error = "error"` — An error type.
+- `Type = "type"` — An ADT (`type ... end`).
+- `Constant = "constant"` — A top-level constant.
+- `Package = "package"` — An imported package.
+- `Method = "method"` — A `Type.method` reference.
+
+## `Parameter`
+
+<a id="Parameter" />
+A single parameter of a function or method: its `name`, its declared
+type `annotation` (source-level spelling), and `has_default` flagging
+whether the parameter carries a default value.
+
+```gust
+def Parameter
+
+    name: string
+    annotation: string
+    has_default: bool
+
+end
+```
+
+**Fields**
+
+- `name: string` — The parameter's name.
+- `annotation: string` — The parameter's declared type (source-level spelling).
+- `has_default: bool` — True if the parameter carries a default value.
+
+## `Signature`
+
+<a id="Signature" />
+The full signature of a callable. `parameters` holds one `Parameter`
+per declared parameter, in order, and `return_annotation` is the declared
+return type (source-level spelling).
+
+```gust
+def Signature
+
+    parameters: list[Parameter]
+    return_annotation: string
+
+end
+```
+
+**Fields**
+
+- `parameters: list[Parameter]` — One `Parameter` per declared parameter, in order.
+- `return_annotation: string` — The declared return type (source-level spelling).
+
+## `DocEntry`
+
+<a id="DocEntry" />
+A complete documentation record for one declaration, gathering
+everything the per-accessor calls return into a single struct.
+`signature` is an empty `Signature` (no parameters, blank return) for
+non-callables; `fields` / `field_types` are empty for non-structs;
+`variants` is empty for non-enums; `methods` lists a type's method names
+(or an interface's signature names), with `method_signatures[i]` /
+`method_docs[i]` carrying the matching `name(p: t) -> ret` spelling and
+docstring. `const_type` / `const_value` carry a constant's declared type
+and source-level value (both empty for non-constants). Produced by
+`describe` for one symbol and by `entries` for a whole package.
+
+```gust
+def DocEntry
+
+    name: string
+    kind: SymbolKind
+    doc: string
+    signature: Signature
+    fields: list[string]
+    field_types: list[string]
+    methods: list[string]
+    variants: list[string]
+    line: integer
+    file: string
+    const_type: string
+    const_value: string
+    method_signatures: list[string]
+    method_docs: list[string]
+    enum_base: string
+    enum_is_auto: bool
+    variant_values: list[string]
+    interfaces: list[string]
+    decorators: list[string]
+    method_decorators: list[list[string]]
+    is_private: bool
+    is_foreign: bool
+    method_is_private: list[bool]
+    method_is_foreign: list[bool]
+
+end
+```
+
+**Fields**
+
+- `name: string` — The declaration's name.
+- `kind: SymbolKind` — The declaration's `SymbolKind`.
+- `doc: string` — The declaration's docstring (empty if undocumented).
+- `signature: Signature` — The callable's `Signature` (empty for non-callables).
+- `fields: list[string]` — Field names of a struct or error type (empty otherwise).
+- `field_types: list[string]` — Field types matching `fields`, in order.
+- `methods: list[string]` — A type's method names, or an interface's signature names.
+- `variants: list[string]` — Member names of an enum or variant names of an ADT.
+- `line: integer` — The source line where the declaration appears.
+- `file: string` — The source file the declaration was defined in.
+- `const_type: string` — A constant's declared type (empty for non-constants).
+- `const_value: string` — A constant's source-level value (empty for non-constants).
+- `method_signatures: list[string]` — The `name(p: t) -> ret` spelling per entry in `methods`.
+- `method_docs: list[string]` — The docstring per entry in `methods`.
+- `enum_base: string` — An enum's backing type (`"integer"` / `"string"`); empty otherwise.
+- `enum_is_auto: bool` — True for an `auto_enum` (auto-assigned values).
+- `variant_values: list[string]` — An enum member's value per entry in `variants` (the explicit value, the member name for a string auto_enum, or the 1-based number for an integer auto_enum); empty for ADT variants.
+- `interfaces: list[string]` — The interface names a struct declares conformance to, in declaration order; empty for non-structs.
+- `decorators: list[string]` — The decorator names applied to this declaration (e.g. `["static"]`, `["inline"]`), in source order; empty if none.
+- `method_decorators: list[list[string]]` — Per entry in `methods`, that method's decorator names — so `"static" in method_decorators[i]` flags an associated function. Empty inner lists for undecorated / interface methods.
+- `is_private: bool` — True when the declaration is private (a `def private` declaration or a leading-underscore name). Documentation renderers hide these unless private members are explicitly requested.
+- `is_foreign: bool` — True when a function or method is `foreign` (its body lives in linked C); false for every non-callable.
+- `method_is_private: list[bool]` — Per entry in `methods`, whether that method is private.
+- `method_is_foreign: list[bool]` — Per entry in `methods`, whether that method is `foreign`.
+
+## Functions
+
+<a id="inspect.doc" />
+```gust
+def foreign doc(item: Any) -> string
+```
+
+Return the docstring of a function, struct, enum, interface, error,
+ADT, constant, or `Type.method` reference. Empty string if undocumented.
+
+**Parameters**
+
+- `item: Any` — A declaration reference to inspect.
+
+---
+
+<a id="inspect.name" />
+```gust
+def foreign name(item: Any) -> string
+```
+
+Return the name of the referenced symbol. For a `Type.method`
+reference this is the method name.
+
+**Parameters**
+
+- `item: Any` — A declaration reference to inspect.
+
+---
+
+<a id="inspect.kind" />
+```gust
+def foreign kind(item: Any) -> SymbolKind
+```
+
+Classify the argument as a `SymbolKind`: `Function`, `Struct`, `Enum`,
+`Interface`, `Error`, `Type` (ADT), `Constant`, `Package`, or `Method`.
+The argument must be a declaration reference, not a value.
+
+**Parameters**
+
+- `item: Any` — A declaration reference to classify.
+
+---
+
+<a id="inspect.line" />
+```gust
+def foreign line(item: Any) -> integer
+```
+
+The source line where the declaration appears (relative to its own
+file — see `file`). 0 if it can't be resolved.
+
+**Parameters**
+
+- `item: Any` — A declaration reference to inspect.
+
+---
+
+<a id="inspect.file" />
+```gust
+def foreign file(item: Any) -> string
+```
+
+The path of the source file the declaration was defined in. For
+declarations in the program being compiled this is the entry file;
+for ones pulled in via `use` it is the package's `.g` file.
+
+**Parameters**
+
+- `item: Any` — A declaration reference to inspect.
+
+---
+
+<a id="inspect.signature" />
+```gust
+def foreign signature(item: Any) -> Signature
+```
+
+The `Signature` of a function or method — its ordered `Parameter`
+list and `return_annotation`. Prints as `(name: type, ...) -> ret`.
+
+**Parameters**
+
+- `item: Any` — A function or method reference.
+
+---
+
+<a id="inspect.params" />
+```gust
+def foreign params(item: Any) -> list[string]
+```
+
+The parameter names of a function or method, in order.
+
+**Parameters**
+
+- `item: Any` — A function or method reference.
+
+---
+
+<a id="inspect.param_types" />
+```gust
+def foreign param_types(item: Any) -> list[string]
+```
+
+The parameter types of a function or method, in order (source-level
+spelling, e.g. "list[string]").
+
+**Parameters**
+
+- `item: Any` — A function or method reference.
+
+---
+
+<a id="inspect.return_type" />
+```gust
+def foreign return_type(item: Any) -> string
+```
+
+The return type of a function or method ("none" if it returns
+nothing).
+
+**Parameters**
+
+- `item: Any` — A function or method reference.
+
+---
+
+<a id="inspect.fields" />
+```gust
+def foreign fields(item: Any) -> list[string]
+```
+
+The field names of a struct or error type, in declaration order.
+
+**Parameters**
+
+- `item: Any` — A struct or error type reference.
+
+---
+
+<a id="inspect.field_types" />
+```gust
+def foreign field_types(item: Any) -> list[string]
+```
+
+The field types of a struct or error type, in declaration order
+(source-level spelling, e.g. "list[string]").
+
+**Parameters**
+
+- `item: Any` — A struct or error type reference.
+
+---
+
+<a id="inspect.methods" />
+```gust
+def foreign methods(item: Any) -> list[string]
+```
+
+The method names defined on a struct, or the signature names declared
+by an interface.
+
+**Parameters**
+
+- `item: Any` — A struct or interface reference.
+
+---
+
+<a id="inspect.variants" />
+```gust
+def foreign variants(item: Any) -> list[string]
+```
+
+The member names of an enum, or the variant names of an ADT.
+
+**Parameters**
+
+- `item: Any` — An enum or ADT reference.
+
+---
+
+<a id="inspect.members" />
+```gust
+def foreign members(item: Any) -> list[string]
+```
+
+Every member name of a type (fields plus methods) or the exported
+names of a package. The declaration-only, namespaced form of the
+built-in `dir` (use `dir(value)` for a runtime value's members).
+
+**Parameters**
+
+- `item: Any` — A type or package reference.
+
+---
+
+<a id="inspect.describe" />
+```gust
+def foreign describe(item: Any) -> DocEntry
+```
+
+Gather every fact about one declaration into a single `DocEntry`:
+its `name`, `kind`, `doc`, `signature` (empty for non-callables),
+`fields` / `field_types`, `methods`, `variants`, `line`, and `file`.
+The one-call form of the individual accessors — ideal for feeding a
+documentation renderer.
+
+**Parameters**
+
+- `item: Any` — A declaration reference to describe.
+
+---
+
+<a id="inspect.entries" />
+```gust
+def foreign entries(item: Any) -> list[DocEntry]
+```
+
+One `DocEntry` per documentable member of `item`. For a package
+(`use mypkg; inspect.entries(mypkg)`) that is every public top-level
+declaration it exports; for a struct or interface it is each method.
+Lets a tool document a whole module without naming each symbol by
+hand — the enumeration `members` can't feed back into `describe`.
+
+**Parameters**
+
+- `item: Any` — A package, struct, or interface reference.
+
+---
+
+<a id="inspect.is_function" />
+```gust
+def foreign is_function(item: Any) -> bool
+```
+
+True when the argument names a free or package function.
+
+**Parameters**
+
+- `item: Any` — A declaration reference to test.
+
+---
+
+<a id="inspect.is_struct" />
+```gust
+def foreign is_struct(item: Any) -> bool
+```
+
+True when the argument names a struct type.
+
+**Parameters**
+
+- `item: Any` — A declaration reference to test.
+
+---
+
+<a id="inspect.is_enum" />
+```gust
+def foreign is_enum(item: Any) -> bool
+```
+
+True when the argument names an enum type.
+
+**Parameters**
+
+- `item: Any` — A declaration reference to test.
+
+---
+
+<a id="inspect.is_interface" />
+```gust
+def foreign is_interface(item: Any) -> bool
+```
+
+True when the argument names an interface type.
+
+**Parameters**
+
+- `item: Any` — A declaration reference to test.
+
+---
+
+<a id="inspect.is_error" />
+```gust
+def foreign is_error(item: Any) -> bool
+```
+
+True when the argument names an error type.
+
+**Parameters**
+
+- `item: Any` — A declaration reference to test.
+
+---
+
+<a id="inspect.is_type" />
+```gust
+def foreign is_type(item: Any) -> bool
+```
+
+True when the argument names an ADT (`type ... end`).
+
+**Parameters**
+
+- `item: Any` — A declaration reference to test.
+
+---
+
+<a id="inspect.is_method" />
+```gust
+def foreign is_method(item: Any) -> bool
+```
+
+True when the argument is a `Type.method` reference.
+
+**Parameters**
+
+- `item: Any` — A declaration reference to test.
+
+---
+
+<a id="inspect.decorators" />
+```gust
+def foreign decorators(item: Any) -> list[string]
+```
+
+The decorator names applied to a declaration, in source order — for a
+function, a `Type.method` reference, or a struct type. Returns `["static"]`
+for a `@static` associated function, `["inline"]` for `@inline`, the name of
+a user decorator, and so on; empty when the declaration has none. The
+idiomatic static check is `"static" in inspect.decorators(Type.method)`.
+
+**Parameters**
+
+- `item: Any` — A function, method, or struct declaration reference.

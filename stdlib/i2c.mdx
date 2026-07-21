@@ -1,0 +1,155 @@
+---
+title: i2c
+description: "Cross-platform I2C bus access through one neutral, handle-based API with a backend per platform:"
+---
+
+```gust
+use i2c
+```
+
+Cross-platform I2C bus access through one neutral, handle-based API with a
+backend per platform:
+
+- Linux: the `/dev/i2c-<bus>` character devices via I2C_RDWR ioctls.
+- Raspberry Pi Pico (freestanding / Pico SDK): the `hardware_i2c` block.
+- macOS / Windows: no user-space I2C bus exists, so every call fails
+  gracefully (`open` returns -1, transfers return non-zero / an empty list)
+  rather than failing to link.
+
+Addresses are 7-bit. Byte values are plain `integer`s truncated to a byte.
+
+**Examples**
+
+```gust
+use i2c
+
+def main() -> none
+    h := i2c.open(1)
+    if h < 0
+        return
+    end
+    # Select register 0x00 on the device at address 0x40, then read 2 bytes.
+    data := i2c.write_read(h, 0x40, [0x00], 2)
+    i2c.close(h)
+end
+```
+
+**On this page:** [`configure`](#i2c.configure) · [`open`](#i2c.open) · [`close`](#i2c.close) · [`write`](#i2c.write) · [`read`](#i2c.read) · [`write_read`](#i2c.write_read)
+
+## Functions
+
+<a id="i2c.configure" />
+```gust
+def foreign configure(
+    bus: integer,
+    sda: integer,
+    scl: integer,
+    baud_khz: integer,
+) -> none
+```
+
+Embedded only: pin-mux `sda`/`scl` and set the bus speed for `bus`
+before calling `open`. On hosted platforms the bus pins and clock are
+owned by the OS/kernel (device tree), so this is a no-op — `open` picks
+them up from the system. Call this once, before `open`, on the Pico when
+the device is wired to non-default GPIOs (e.g. I2C1 on GP6/GP7).
+
+**Parameters**
+
+- `bus: integer` — I2C bus / controller index.
+- `sda: integer` — GPIO number for the SDA line.
+- `scl: integer` — GPIO number for the SCL line.
+- `baud_khz: integer` — Bus speed in kHz.
+
+---
+
+<a id="i2c.open" />
+```gust
+def foreign open(bus: integer) -> integer
+```
+
+Open I2C `bus` (Linux: `/dev/i2c-<bus>`; Pico: controller 0 or 1).
+On the Pico the bus is brought up using the pins/speed from a prior
+`configure`, falling back to the board default SDA/SCL at 400 kHz.
+Returns a non-negative handle to pass to the transfer calls, or -1 on
+error.
+
+**Parameters**
+
+- `bus: integer` — I2C bus / controller index.
+
+---
+
+<a id="i2c.close" />
+```gust
+def foreign close(handle: integer) -> none
+```
+
+Release a handle returned by `open`.
+
+**Parameters**
+
+- `handle: integer` — The bus handle to release.
+
+---
+
+<a id="i2c.write" />
+```gust
+def foreign write(
+    handle: integer,
+    addr: integer,
+    data: list[integer],
+) -> integer
+```
+
+Write the bytes in `data` to 7-bit address `addr`. Returns 0 on
+success, non-zero on NACK/error.
+
+**Parameters**
+
+- `handle: integer` — The bus handle from `open`.
+- `addr: integer` — 7-bit target device address.
+- `data: list[integer]` — Bytes to write (each truncated to a byte).
+
+---
+
+<a id="i2c.read" />
+```gust
+def foreign read(
+    handle: integer,
+    addr: integer,
+    count: integer,
+) -> list[integer]
+```
+
+Read `count` bytes from 7-bit address `addr`. Returns the bytes as a
+list (empty on error).
+
+**Parameters**
+
+- `handle: integer` — The bus handle from `open`.
+- `addr: integer` — 7-bit target device address.
+- `count: integer` — Number of bytes to read.
+
+---
+
+<a id="i2c.write_read" />
+```gust
+def foreign write_read(
+    handle: integer,
+    addr: integer,
+    data: list[integer],
+    count: integer,
+) -> list[integer]
+```
+
+Write `data` then read `count` bytes from `addr` in one transaction
+(repeated START, no STOP in between) — the usual "select register, read
+it back" pattern. Returns the bytes read (empty on error).
+
+**Parameters**
+
+- `handle: integer` — The bus handle from `open`.
+- `addr: integer` — 7-bit target device address.
+- `data: list[integer]` — Bytes to write before the read.
+- `count: integer` — Number of bytes to read back.

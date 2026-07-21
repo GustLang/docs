@@ -1,0 +1,304 @@
+---
+title: Packages & dependencies
+description: Pull Gust packages from GitHub with [dependencies], gust add/install/update/remove, gust.lock, and the shared package cache
+---
+
+Gust projects depend on other Gust packages by naming the **GitHub repos**
+they live in. There is no central registry — a dependency is a repo slug
+(`owner/repo`) pinned to a tag, branch, or commit, and the toolchain fetches
+it, caches it, and makes it resolvable as just another package you `use`.
+
+<Info>
+**Requirements**
+
+The fetcher shells out to `curl` (download) and `tar` (extract) — both are
+part of the same baseline toolchain that already supplies a C compiler, so
+`gustc` stays free of a libcurl link dependency. If either is missing from
+`PATH`, dependency commands fail with a message naming the missing tool.
+</Info>
+
+## The fast path
+
+```bash
+gust add GustLang/semver          # add + fetch a dependency
+```
+
+That one command appends the dependency to `gust.toml`, downloads it,
+records the exact commit in `gust.lock`, and materializes it under
+`.gust/deps/`. Then import it like any package:
+
+```gust
+use semver
+
+def main() -> none
+    v := semver.parse("1.4.0")
+    print(v.major)
+end
+```
+
+`gust build`, `gust run`, and `gust test` auto-install anything missing
+before they compile, so a fresh checkout just works — no separate install
+step required.
+
+## Declaring dependencies
+
+Dependencies live in a `[dependencies]` table in
+[`gust.toml`](/tooling/project-config). The **key** is the name you `use`;
+the value names the GitHub source and which ref to pin.
+
+### Shorthand form
+
+```toml
+[dependencies]
+semver = "GustLang/semver"            # default branch HEAD
+http2  = "GustLang/http2@v2.1.0"      # pinned to tag (or branch / commit SHA)
+```
+
+The string is `owner/repo` with an optional `@ref`. The ref after `@` may be
+a tag, a branch name, or a full commit SHA — every shorthand ref (even a SHA)
+is resolved through the GitHub commits API. Omit `@ref` to track the default
+branch's HEAD, which then moves forward on the next `gust update`. To pin to
+an exact commit and skip the network resolve entirely, use the table form's
+`rev` key below.
+
+### Table form
+
+Use the table form when you need a branch, an explicit commit, or a package
+that lives in a subdirectory of the repo:
+
+```toml
+[dependencies]
+# Pin to a tag
+semver = { github = "GustLang/semver", tag = "v1.4.0" }
+
+# Track a branch's latest commit
+edge = { github = "GustLang/edge", branch = "main" }
+
+# Pin to an exact commit (most reproducible)
+audit = { github = "GustLang/audit", rev = "a1b2c3d4e5f6..." }
+
+# A package nested inside a monorepo
+parser = { github = "acme/tools", tag = "v3", subdir = "packages/parser" }
+```
+
+| Key      | Meaning |
+|----------|---------|
+| `github` | **Required.** The `owner/repo` slug. |
+| `tag`    | Pin to a git tag. |
+| `branch` | Track a branch — `gust update` moves it to the branch's latest commit. |
+| `rev`    | Pin to an exact commit SHA (skips the network resolve). |
+| `subdir` | Package source directory within the repo. Auto-detected when omitted (see [Repo layout](#repo-layout)). |
+
+When more than one ref key is present, precedence is `rev` > `tag` >
+`branch`. With none, the dependency tracks the default branch's HEAD. Any key
+outside this set is reported as a non-fatal warning and ignored, so a typo in
+a dependency table never silently changes what you fetch.
+
+Exactly one source key is required: `github` **or** `path`. Setting both is a
+fatal manifest error.
+
+### Local path form
+
+For a package checked out next to your project — a sibling renderer, a
+work-in-progress fork — use the `path` form instead of a GitHub source:
+
+```toml
+[dependencies]
+gml = { path = "../gml" }
+```
+
+`path` is a directory relative to the manifest that declares it (or an
+absolute path). It is **mutually exclusive** with `github`. No network fetch
+happens: the directory is re-materialized into `.gust/deps/` on every build,
+so edits to the local source show up immediately. A path dependency has no
+commit to pin, so it is never written to `gust.lock`.
+
+### Use-name vs. repo name
+
+The table key is the use-name, so you can rename a dependency to avoid a
+clash or to read better in `use`:
+
+```toml
+[dependencies]
+json5 = { github = "acme/json-five" }   # `use json5`
+```
+
+With `gust add`, pass `--as` to set the use-name explicitly:
+
+```bash
+gust add acme/json-five --as json5
+```
+
+## Commands
+
+| Command | What it does |
+|---------|--------------|
+| [`gust add <owner/repo[@ref]>`](#gust-add) | Add a dependency to `gust.toml` and install it. |
+| [`gust install`](#gust-install) *(alias `sync`)* | Install everything to match `gust.lock`. |
+| [`gust update [<name>]`](#gust-update) | Re-resolve refs to their latest commit and rewrite the lock. |
+| [`gust remove <name>`](#gust-remove) | Drop a dependency from the manifest, lock, and `.gust/deps`. |
+
+### `gust add`
+
+```bash
+gust add owner/repo[@ref] [--as NAME]
+```
+
+Appends (or replaces) the entry under `[dependencies]`, then resolves,
+fetches, and materializes it along with any transitive dependencies, and
+rewrites `gust.lock`. The manifest edit is a line-level text edit, so your
+comments and key ordering survive.
+
+```bash
+$ gust add GustLang/semver@v1.4.0
+added semver = "GustLang/semver@v1.4.0" to /home/me/app/gust.toml
+installed 1 package(s)
+```
+
+### `gust install`
+
+```bash
+gust install        # alias: gust sync
+```
+
+Installs every dependency to match `gust.lock`. When the lock is consistent
+with the manifest, every package is fetched at its **locked** commit — this
+is the reproducible, offline-friendly path (a populated cache needs no
+network). When the lock is missing or out of sync with `gust.toml`, the
+missing refs are re-resolved and the lock is rewritten.
+
+### `gust update`
+
+```bash
+gust update          # re-resolve every dependency
+gust update semver   # re-resolve just one
+```
+
+Re-resolves dependency refs to their latest matching commit and rewrites
+`gust.lock`. This is how a `branch`- or default-tracking dependency moves
+forward — a `rev`-pinned one never changes. With no argument it refreshes
+all dependencies; with a use-name it refreshes only that one.
+
+### `gust remove`
+
+```bash
+gust remove semver
+```
+
+Removes the `[dependencies]` entry, deletes its `.gust/deps/<name>` tree,
+and re-resolves the remaining dependencies to rewrite the lock.
+
+## How resolution works
+
+Installing a dependency set runs in five steps:
+
+1. **Resolve** each ref to a full 40-char commit SHA via the GitHub commits
+   API (a `rev` pin is already a SHA and skips this).
+2. **Download** the SHA-pinned tarball from `codeload.github.com` and extract
+   it into a shared, content-addressed cache. A cached commit is never
+   re-downloaded.
+3. **Materialize** a per-project copy under `.gust/deps/<name>/` so the
+   compiler and LSP see it as just another folder of packages.
+4. **Lock** every resolved SHA in `gust.lock` for reproducible builds.
+5. **Recurse** into each fetched package's own `[dependencies]`.
+
+A [local `path` dependency](#local-path-form) skips steps 1, 2, and 4: its
+directory is copied straight into `.gust/deps/` and its own
+`[dependencies]` are still resolved recursively.
+
+### The shared cache
+
+Downloaded packages are cached, content-addressed by commit, at:
+
+```
+$XDG_CACHE_HOME/gust/pkg/<owner>/<repo>@<sha>/
+```
+
+falling back to `~/.cache/gust/pkg/` when `$XDG_CACHE_HOME` is unset. Because
+the key is the exact commit, the same dependency shared across many projects
+is downloaded once. (This is a sibling of the build object cache; `gust
+clean` clears the object cache, not the package cache.)
+
+### Per-project view: `.gust/deps`
+
+Each project gets its own directory copy of the cached package tree at
+`<project>/.gust/deps/<name>/`. A `.gust/.gitignore` (`*`) is written
+automatically so the materialized view is never committed — your `gust.toml`
+and `gust.lock` are the source of truth, not the fetched files.
+
+### `gust.lock`
+
+`gust.lock` is an auto-generated TOML file recording the exact commit each
+dependency resolved to:
+
+```toml
+# AUTO-GENERATED by `gust` — do not edit by hand
+version = 1
+
+[[package]]
+name   = "semver"
+github = "GustLang/semver"
+ref    = "v1.4.0"
+rev    = "a1b2c3d4e5f6789..."
+subdir = ""
+```
+
+**Commit `gust.lock`** — it's what makes a build reproducible. `gust install`
+honors it verbatim; `gust update` is the only command that moves a pinned
+SHA. Delete or corrupt it and the next install simply re-resolves from the
+manifest.
+
+<a id="repo-layout" />
+## Repo layout
+
+A package repo can put its `.g` source two ways, and the fetcher detects
+which without configuration:
+
+- **Source at the repo root** — `.g` files sit directly in the repo. Used
+  as-is.
+- **Conventional `<repo>/<repo>/` layout** — when the repo root has no `.g`
+  files, the fetcher looks for a subdirectory named after the repo and uses
+  that as the package source. This lets `gust add owner/repo` work with no
+  manual `subdir`. Detection also accepts a namespace directory whose own
+  `.g` files live one level deeper (a package that is itself a family of
+  subpackages), so a repo laid out as `web/{dom,window}/…` is recognized.
+
+Set `subdir` explicitly to override detection — required for a package
+nested anywhere else (e.g. a monorepo's `packages/parser`). A fetched
+package's own `gust.toml` is read for [transitive dependencies](#how-resolution-works)
+from inside its detected source subdir first, falling back to the repo root.
+
+For a [local `path` dependency](#local-path-form) the same detection runs
+against the local directory, keyed on the dependency's use-name rather than a
+repo name.
+
+## Versioning & conflicts
+
+Gust v1 uses a **flat namespace** with no version solver: each use-name
+resolves to exactly one commit across the whole dependency graph. If two
+packages require the *same* repo at two *different* commits, the install
+fails:
+
+```
+dependency conflict: acme/util is required at two different commits
+(...) — v1 has no version solver — pin both requesters to one ref
+```
+
+Resolve it by pinning both requesters to a single ref. Pinning with `rev`
+(an exact SHA) or a `tag` gives the most predictable graph.
+
+## Private repos & rate limits
+
+Set `GITHUB_TOKEN` to raise the GitHub API's unauthenticated rate limit
+(60/hr) and to reach private repositories — it's sent as a bearer token on
+both the resolve and the download:
+
+```bash
+GITHUB_TOKEN=ghp_xxx gust install
+```
+
+## See also
+
+- [`gust.toml`](/tooling/project-config) — the full manifest reference.
+- [Imports](/lang/imports) — how `use` resolves a package name to its
+  source, including dependencies.

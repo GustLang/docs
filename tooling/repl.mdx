@@ -1,0 +1,121 @@
+---
+title: REPL
+description: Use the interactive Gust read-eval-print loop for scratch work
+---
+
+`gust repl` launches an interactive read-eval-print loop. It runs as a full-screen terminal UI: type Gust code at the prompt, press Enter to evaluate, and the transcript scrolls above. Input is syntax-highlighted as you type, and the whole view is wrapped in a rounded border titled with the current Gust version.
+
+## Starting the REPL
+
+Run:
+
+```
+gust repl
+```
+
+A bare `gust` with no arguments prints top-level help — the REPL is reached only through the `repl` subcommand. On start you see the banner and the primary prompt:
+
+```
+Type "exit" to quit, "help" for commands
+
+gust>
+```
+
+The REPL compiles each entry with a `gustc` binary. It uses `gust` on your `PATH` first, then falls back to a build under `gust/gustc/build/gustc` (relative to the running executable and the current directory). If none is found the REPL still starts, but it prints a warning and every evaluation reports that the compiler is missing until you build or install one.
+
+## Evaluating expressions
+
+Any expression you type is evaluated and its result is printed:
+
+```
+gust> 2 + 2
+4
+gust> "hi ".uppercase()
+"HI "
+gust> [1, 2, 3].length
+3
+```
+
+Variable declarations persist across prompts, so later entries can refer to earlier bindings:
+
+```
+gust> name := "world"
+gust> f"hello, {name}"
+"hello, world"
+```
+
+### What gets auto-printed
+
+The REPL echoes a value only when the entry actually produces one worth showing:
+
+- Bare expressions are always printed (`2 + 2`, `xs[0]`, `f"..."`).
+- A call to a function that returns a value is printed; a call to a `none`-returning function is not.
+- A package-qualified call such as `os.platform()` is printed when the package function returns a value, and stays quiet when it returns `none`.
+- A method call on a value stays quiet, because it is often a void mutation. So `xs.append(1)` runs silently while `xs.length` prints.
+- `return` statements, assignments, and other statements print nothing.
+
+This means side-effecting entries do not spam `none` at you, while expressions you type to inspect a value still show their result.
+
+## Multi-line input
+
+Block-opening keywords switch the REPL into multi-line mode, shown by a `.... ` continuation prompt. The following keywords open a block: `def`, `if`, `for`, `while`, `try`, `match`, `interface`, `enum`, `auto_enum`, and `error`. The REPL keeps accepting lines until every open block is closed with a matching `end` and any brackets are balanced, then evaluates the whole entry:
+
+```
+gust> def square(n: integer) -> integer
+....      return n * n
+.... end
+gust> square(7)
+49
+```
+
+Nested blocks are tracked by depth, so an `if` inside a `for` inside a `def` all close correctly before the entry runs. Open brackets (`(`, `[`, `{`) also hold the entry open until they are balanced, so you can spread a long call or collection literal across several lines.
+
+If you make a mistake mid-block, press Ctrl-C to abort and start over — the REPL drops the in-progress entry and notes `Interrupted` in the transcript.
+
+## What persists across prompts
+
+Two kinds of entries are remembered and re-used by every later entry:
+
+- **Declarations** — `def`, `interface`, `enum`, `auto_enum`, `error`, and `use` imports, plus top-level `constant` bindings (optionally written `private ... constant`). Once entered, these stay in scope for the rest of the session.
+- **Statements** — variable bindings and other executable statements accumulate into a running body, so a value declared with `:=` earlier is visible later.
+
+A failed entry never commits its state: if compilation or execution fails, the declarations and statements it would have added are discarded, and the session continues from where it was.
+
+## Commands
+
+The REPL recognizes a handful of bare-word commands at the primary prompt (they are case-insensitive and only act when no multi-line entry is open):
+
+| Command         | Description |
+|-----------------|-------------|
+| `help`          | Show the available commands. |
+| `exit` / `quit` | Leave the REPL. |
+| `history`       | Show the command history — every entry you have evaluated, numbered, with multi-line entries indented. |
+| `clear`         | Reset the session: forget every binding, empty the history, and clear the transcript back to the banner. |
+
+`history` lists whole evaluated entries. This is distinct from the line-history you scroll with the arrow keys, which steps through individual input lines.
+
+## Line editing and keys
+
+Line editing supports the usual readline-style keys:
+
+| Key | Action |
+|-----|--------|
+| Enter | Submit the line (evaluate, or continue a multi-line entry). |
+| Left / Ctrl-B, Right / Ctrl-F | Move the cursor one character. |
+| Home / Ctrl-A, End / Ctrl-E | Jump to the start or end of the line. |
+| Backspace, Delete | Delete the character before or under the cursor. |
+| Ctrl-U | Clear the whole line. |
+| Ctrl-K | Delete from the cursor to the end of the line. |
+| Esc | Clear the current line. |
+| Up / Ctrl-P, Down / Ctrl-N | Browse older and newer line history. |
+| Ctrl-C | Cancel the current entry, or exit when the line and buffer are empty. |
+
+Browsing history saves your in-progress draft when you step away from the live input and restores it when you step back past the newest entry. History browsing is disabled while a multi-line entry is open.
+
+Ctrl-C is context-sensitive: when both the input line and the multi-line buffer are empty it exits the REPL; otherwise it cancels the current entry and clears the buffer.
+
+## How it works
+
+Each entry is assembled into a small program: the declarations and statements you have already entered, plus a synthetic `def main()` holding the running body, written to a throwaway temporary file. That file is compiled and run through `gustc run --debug`, and its output is shown in the transcript.
+
+Because each entry is a fresh compile, evaluation has a 10-second timeout; an entry that runs longer is reported as a timeout rather than hanging the session. Compiler-internal diagnostics are filtered out — generated-C warnings and `warning[...]` blocks are stripped, so you see only what your program actually printed. A failed entry reports its error and leaves the session state untouched.

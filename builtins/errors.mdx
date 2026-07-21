@@ -1,0 +1,156 @@
+---
+title: Errors
+description: "The standard error types, available in every program without an import"
+---
+
+The standard error types are part of the prelude — available everywhere with no `use`.
+```gust
+raise ValueError(message: "...") # Raise the error
+try
+    ...
+catch ValueError as e # Catch the error (as e is optional)
+    ...
+end
+```
+
+<a id="ValueError" />
+```gust
+error ValueError(message: string)
+```
+
+General-purpose error for invalid values or arguments.
+
+---
+
+<a id="IOError" />
+```gust
+error IOError(message: string, path: string)
+```
+
+File or I/O operation failed.
+
+---
+
+<a id="IndexError" />
+```gust
+error IndexError(message: string, index: integer)
+```
+
+Index out of bounds.
+
+---
+
+<a id="KeyError" />
+```gust
+error KeyError(message: string, key: string)
+```
+
+Missing dictionary key.
+
+---
+
+<a id="RuntimeError" />
+```gust
+error RuntimeError(message: string)
+```
+
+Operation not supported or not implemented.
+
+---
+
+<a id="SegmentationViolationError" />
+```gust
+error SegmentationViolationError(message: string)
+```
+
+Named counterparts to the OS signals that abnormally end a program. The
+fatal-signal handler in runtime/g_trace.c prints these names (e.g.
+`error: unhandled SegmentationViolationError`) instead of letting the shell
+show a bare "Terminated" / "Segmentation fault". They are defined here so the
+names are real, referable error types — a program installing its own handler
+through the `signal` package can `raise` them, and they read consistently with
+the rest of the prelude. (The handler itself prints rather than `raise`s: an
+async signal can arrive with corrupt state, so unwinding into `try`/`catch` is
+not safe — keep the two name lists in sync.)
+Invalid memory access (SIGSEGV).
+
+---
+
+<a id="BusError" />
+```gust
+error BusError(message: string)
+```
+
+Misaligned or invalid memory access (SIGBUS).
+
+---
+
+<a id="ArithmeticError" />
+```gust
+error ArithmeticError(message: string)
+```
+
+Arithmetic fault, e.g. integer division by zero (SIGFPE).
+
+---
+
+<a id="IllegalInstructionError" />
+```gust
+error IllegalInstructionError(message: string)
+```
+
+Illegal CPU instruction (SIGILL).
+
+---
+
+<a id="AbortError" />
+```gust
+error AbortError(message: string)
+```
+
+Process aborted (SIGABRT).
+
+---
+
+<a id="TerminatedError" />
+```gust
+error TerminatedError(message: string)
+```
+
+Terminated by an external signal, often an out-of-memory killer (SIGTERM).
+
+---
+
+<a id="InterruptError" />
+```gust
+error InterruptError(message: string)
+```
+
+Interrupted, e.g. Ctrl-C (SIGINT).
+
+---
+
+<a id="HangupError" />
+```gust
+error HangupError(message: string)
+```
+
+Controlling terminal closed (SIGHUP).
+
+---
+
+<a id="QuitError" />
+```gust
+error QuitError(message: string)
+```
+
+Quit requested (SIGQUIT).
+
+---
+
+<a id="SignalError" />
+```gust
+error SignalError(message: string)
+```
+
+Fallback for any other terminating signal.

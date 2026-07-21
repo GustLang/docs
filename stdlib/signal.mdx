@@ -1,0 +1,98 @@
+---
+title: signal
+description: "Unix signal handling"
+---
+
+```gust
+use signal
+```
+
+Unix signal handling. Register a handler with `on`; it runs in normal context
+(not inside the OS signal handler) at the next loop checkpoint, so it may
+allocate, raise, or exit freely. Until you call `on`/`ignore`/`reset` the
+default kernel behavior is unchanged (e.g. Ctrl-C kills the process).
+
+**Examples**
+
+```gust
+use signal
+def on_int(sig: integer) -> none
+    print("cleaning up...")
+    exit(0)
+end
+def main() -> none
+    signal.on(signal.SIGINT, on_int)
+    while true
+        pass
+    end
+end
+```
+
+Signal numbers are the Linux/x86-64 ABI values.
+
+**On this page:** [`on`](#signal.on) · [`ignore`](#signal.ignore) · [`reset`](#signal.reset) · [`send`](#signal.send)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `SIGHUP` | `integer` | `1` |
+| `SIGINT` | `integer` | `2` |
+| `SIGQUIT` | `integer` | `3` |
+| `SIGTERM` | `integer` | `15` |
+| `SIGUSR1` | `integer` | `10` |
+| `SIGUSR2` | `integer` | `12` |
+
+## Functions
+
+<a id="signal.on" />
+```gust
+def foreign on(signum: integer, handler: Function(integer)[none]) -> none
+```
+
+Install `handler` for `signum`. It is called with the signal number
+at the next loop checkpoint after the signal fires.
+
+**Parameters**
+
+- `signum: integer` — The signal number to handle.
+- `handler: Function(integer)[none]` — Callback invoked with the signal number.
+
+---
+
+<a id="signal.ignore" />
+```gust
+def foreign ignore(signum: integer) -> none
+```
+
+Ignore `signum` entirely (SIG_IGN).
+
+**Parameters**
+
+- `signum: integer` — The signal number to ignore.
+
+---
+
+<a id="signal.reset" />
+```gust
+def foreign reset(signum: integer) -> none
+```
+
+Restore the default OS disposition for `signum` (SIG_DFL).
+
+**Parameters**
+
+- `signum: integer` — The signal number to reset.
+
+---
+
+<a id="signal.send" />
+```gust
+def foreign send(signum: integer) -> none
+```
+
+Deliver `signum` to the current process (re-raise / testing).
+
+**Parameters**
+
+- `signum: integer` — The signal number to deliver.

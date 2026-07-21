@@ -1,0 +1,44 @@
+---
+title: exitcode
+description: "Standard process exit codes, named as constants"
+---
+
+```gust
+use exitcode
+```
+
+Standard process exit codes, named as constants. Covers the BSD sysexits.h
+range (64-78), common shell and coreutils conventions (0-2, 124, 126-127), and
+signal-derived statuses (128 + signal number). Pass one to `exit(code)`
+when terminating a program.
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `OK` | `integer` | `0` |
+| `ERROR` | `integer` | `1` |
+| `USAGE` | `integer` | `64` |
+| `DATA_ERROR` | `integer` | `65` |
+| `NO_INPUT` | `integer` | `66` |
+| `NO_USER` | `integer` | `67` |
+| `NO_HOST` | `integer` | `68` |
+| `UNAVAILABLE` | `integer` | `69` |
+| `SOFTWARE` | `integer` | `70` |
+| `OS_ERROR` | `integer` | `71` |
+| `OS_FILE` | `integer` | `72` |
+| `CANT_CREATE` | `integer` | `73` |
+| `IO_ERROR` | `integer` | `74` |
+| `TEMP_FAIL` | `integer` | `75` |
+| `PROTOCOL` | `integer` | `76` |
+| `NO_PERMISSION` | `integer` | `77` |
+| `CONFIG` | `integer` | `78` |
+| `TIMEOUT` | `integer` | `124` |
+| `NOT_EXECUTABLE` | `integer` | `126` |
+| `NOT_FOUND` | `integer` | `127` |
+| `INVALID_EXIT` | `integer` | `128` |
+| `INTERRUPTED` | `integer` | `130` |
+| `KILLED` | `integer` | `137` |
+| `SEGFAULT` | `integer` | `139` |
+| `TERMINATED` | `integer` | `143` |
+| `OUT_OF_RANGE` | `integer` | `255` |

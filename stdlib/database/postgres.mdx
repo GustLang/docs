@@ -1,0 +1,256 @@
+---
+title: database.postgres
+description: "PostgreSQL driver for the `database` package — a client for a PostgreSQL server"
+---
+
+```gust
+use database.postgres
+```
+
+PostgreSQL driver for the `database` package — a client for a PostgreSQL server.
+
+Connect with a libpq connection string (or a `postgres://` URL) and you get a
+`database.Connection` like any other driver:
+
+You write `?` placeholders (the `database` convention); this driver rewrites them
+to PostgreSQL's native `$1..$n` and passes the bound values as server-side
+parameters, so injection is impossible. Column values come back typed by mapping
+the column's PostgreSQL type OID onto a `database.Value` kind (integers, floats,
+booleans, and `bytea` blobs are recognized; everything else arrives as text).
+
+Unlike SQLite there is no `last_insert_id` — PostgreSQL exposes new ids through
+`INSERT ... RETURNING id`, which you read like any other query result; the
+`ExecResult.last_insert_id` field is therefore always 0 here.
+
+Requires the libpq development headers (`libpq-dev`) at build time and links
+`-lpq` automatically whenever a program uses this package.
+
+**Examples**
+
+```gust
+use database
+
+use database.postgres
+
+def main() -> none
+    conn := postgres.connect("host=localhost dbname=app user=me")
+    conn.execute("create table if not exists note(id serial primary key, body text)", [])
+    conn.execute("insert into note(body) values (?)", [database.text("hello")])
+    for row in database.query_all(conn, "select id, body from note where id > ?", [database.int_(0)])
+        print((row.get("id").as_integer() as string) + ": " + row.get("body").as_text())
+    end
+    conn.close()
+end
+```
+
+**On this page:** [`PgConnection`](#PgConnection) · [`PgCursor`](#PgCursor) · [`connect`](#database.postgres.connect)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `PG_OID_BOOL` | `integer` | `16` |
+| `PG_OID_BYTEA` | `integer` | `17` |
+| `PG_OID_INT8` | `integer` | `20` |
+| `PG_OID_INT2` | `integer` | `21` |
+| `PG_OID_INT4` | `integer` | `23` |
+| `PG_OID_FLOAT4` | `integer` | `700` |
+| `PG_OID_FLOAT8` | `integer` | `701` |
+
+## `PgConnection`
+
+<a id="PgConnection" />
+An open PostgreSQL session. Obtain one from `connect(...)`.
+
+**Implements:** [`Connection`](#Connection)
+
+```gust
+def PgConnection implements Connection
+
+    _conn: integer
+    _open: bool
+
+end
+```
+
+**Fields**
+
+- `_conn: integer` — Opaque handle to the underlying `PGconn*`.
+- `_open: bool` — False once `close()` has been called.
+
+**Methods**
+
+<a id="PgConnection.execute" />
+```gust
+def PgConnection.execute(sql: string, params: list[Value]) -> ExecResult
+```
+
+Run a non-`SELECT` statement and report rows affected. Bind `?`
+placeholders from `params`.
+
+**Parameters**
+
+- `sql` — The statement, with `?` placeholders.
+- `params` — One `database.Value` per placeholder, in order.
+
+**Raises**
+
+- `QueryError` — If the statement is rejected or fails to run.
+
+<Note>
+PostgreSQL has no `last_insert_id`, so `ExecResult.last_insert_id` is
+always 0 here — read a generated id with `INSERT ... RETURNING` as a
+query result instead.
+</Note>
+
+---
+
+<a id="PgConnection.query" />
+```gust
+def PgConnection.query(sql: string, params: list[Value]) -> Cursor
+```
+
+Run a query and return a `database.Cursor` over the result. libpq
+materializes the whole result set, which the cursor then walks row by row.
+Bind `?` placeholders from `params`.
+
+**Parameters**
+
+- `sql` — The query, with `?` placeholders.
+- `params` — One `database.Value` per placeholder, in order.
+
+**Raises**
+
+- `QueryError` — If the query is rejected or fails to run.
+
+---
+
+<a id="PgConnection.begin" />
+```gust
+def PgConnection.begin() -> none
+```
+
+Begin a transaction. Pair with `commit()` or `rollback()`.
+
+---
+
+<a id="PgConnection.commit" />
+```gust
+def PgConnection.commit() -> none
+```
+
+Commit the current transaction.
+
+---
+
+<a id="PgConnection.rollback" />
+```gust
+def PgConnection.rollback() -> none
+```
+
+Roll back the current transaction.
+
+---
+
+<a id="PgConnection.close" />
+```gust
+def PgConnection.close() -> none
+```
+
+Close the connection and release the server session. Idempotent.
+
+---
+
+<a id="PgConnection.is_open" />
+```gust
+def PgConnection.is_open() -> bool
+```
+
+True while the connection has not been closed.
+
+## `PgCursor`
+
+<a id="PgCursor" />
+A forward-only walk over a materialized libpq result set.
+
+**Implements:** [`Cursor`](#Cursor)
+
+```gust
+def PgCursor implements Cursor
+
+    _res: integer
+    _cols: list[string]
+    _types: list[integer]
+    _nrows: integer
+    _idx: integer
+    _open: bool
+
+end
+```
+
+**Fields**
+
+- `_res: integer` — Opaque handle to the `PGresult*`.
+- `_cols: list[string]` — Column names, in selection order.
+- `_types: list[integer]` — Per-column PostgreSQL type OIDs, aligned with `_cols`.
+- `_nrows: integer` — Total number of rows in the result.
+- `_idx: integer` — Index of the current row (-1 before the first `next()`).
+- `_open: bool` — False once the result has been cleared.
+
+**Methods**
+
+<a id="PgCursor.next" />
+```gust
+def PgCursor.next() -> bool
+```
+
+Advance to the next row. Returns false (and clears the result) once the
+last row has been consumed.
+
+---
+
+<a id="PgCursor.row" />
+```gust
+def PgCursor.row() -> Row
+```
+
+The current row — call only after `next()` returned true. Each column is
+boxed into a `database.Value` by mapping its type OID; unrecognized types
+arrive as text.
+
+---
+
+<a id="PgCursor.columns" />
+```gust
+def PgCursor.columns() -> list[string]
+```
+
+The column names of the result set, in selection order.
+
+---
+
+<a id="PgCursor.close" />
+```gust
+def PgCursor.close() -> none
+```
+
+Clear the underlying result set. Idempotent.
+
+## Functions
+
+<a id="database.postgres.connect" />
+```gust
+def connect(conninfo: string) -> PgConnection
+```
+
+Open a connection to a PostgreSQL server and return it. `conninfo` is a
+libpq connection string (`"host=... dbname=... user=... password=..."`) or a
+`postgres://user:pass@host:port/dbname` URL — libpq accepts both.
+
+**Parameters**
+
+- `conninfo: string` — A libpq connection string or `postgres://` URL.
+
+**Raises**
+
+- `ConnectionError` — If the connection cannot be established.

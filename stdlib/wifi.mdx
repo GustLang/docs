@@ -1,0 +1,204 @@
+---
+title: wifi
+description: "Full coverage of the Raspberry Pi Pico 2 W's CYW43 WiFi via the Pico SDK"
+---
+
+```gust
+use wifi
+```
+
+Full coverage of the Raspberry Pi Pico 2 W's CYW43 WiFi via the Pico SDK
+(pico_cyw43_arch + cyw43_ctrl): radio power, station + access-point modes,
+connect (blocking / async / explicit auth), link status, scanning, signal /
+MAC, power-save, and the on-chip LED.
+
+**Embedded-only.** A regular machine has no station-mode connect API, so
+building this package for a host target is a compile-time error rather than a
+misleading no-op. `connect`/`scan`/etc. lazily power the radio up, so the
+common path is just `wifi.connect(...)`; the lifecycle calls below are for
+finer control (AP mode, power management, turning the radio off).
+
+## Constants
+
+### Auth modes (pass to `connect_with` / `enable_ap`)
+
+| Name | Type | Value |
+|------|------|-------|
+| `AUTH_OPEN` | `integer` | `0` |
+| `AUTH_WPA_TKIP` | `integer` | `1` |
+| `AUTH_WPA2` | `integer` | `2` |
+| `AUTH_WPA2_MIXED` | `integer` | `3` |
+| `AUTH_WPA3` | `integer` | `4` |
+| `AUTH_WPA3_WPA2` | `integer` | `5` |
+
+### Link status (returned by `link_status`)
+
+| Name | Type | Value |
+|------|------|-------|
+| `LINK_DOWN` | `integer` | `0` |
+| `LINK_JOIN` | `integer` | `1` |
+| `LINK_NOIP` | `integer` | `2` |
+| `LINK_UP` | `integer` | `3` |
+| `LINK_FAIL` | `integer` | `0 - 1` |
+| `LINK_NONET` | `integer` | `0 - 2` |
+| `LINK_BADAUTH` | `integer` | `0 - 3` |
+
+### Power-save modes (pass to `power_save`)
+
+| Name | Type | Value |
+|------|------|-------|
+| `PM_DEFAULT` | `integer` | `0` |
+| `PM_AGGRESSIVE` | `integer` | `1` |
+| `PM_PERFORMANCE` | `integer` | `2` |
+| `PM_NONE` | `integer` | `3` |
+
+## Functions
+
+### Radio power / lifecycle
+
+<a id="wifi.init" />
+**`init() → bool`**
+
+Power up the CYW43 radio. Idempotent; returns true on success. Called
+automatically by `connect`/`scan`/etc., so you rarely need it directly.
+
+<a id="wifi.init_country" />
+**`init_country(country: string) → bool`**
+
+Like `init`, but set the regulatory domain from a 2-letter country code
+(e.g. "US", "GB"); "" means worldwide. Affects channels/power.
+
+<a id="wifi.deinit" />
+**`deinit() → none`**
+
+Power the radio down and release it.
+
+### Station mode
+
+<a id="wifi.enable_sta" />
+**`enable_sta() → none`**
+
+Switch the radio into station (client) mode.
+
+<a id="wifi.disable_sta" />
+**`disable_sta() → none`**
+
+Leave the network and disable station mode.
+
+<a id="wifi.connect" />
+**`connect(ssid: string, password: string, timeout_ms: integer) → bool`**
+
+Associate with `ssid` (WPA2-mixed) and wait up to `timeout_ms` for a
+DHCP lease. Returns true on success. The convenient common case.
+
+<a id="wifi.connect_with" />
+**`connect_with(ssid: string, password: string, auth: integer, timeout_ms: integer) → bool`**
+
+Like `connect` but with an explicit `auth` (one of the `AUTH_*`
+constants), for open / WPA3 / etc. networks.
+
+<a id="wifi.connect_async" />
+**`connect_async(ssid: string, password: string, auth: integer) → bool`**
+
+Start associating and return immediately (true if the request was
+issued). Poll `link_status` / `connected` for progress.
+
+<a id="wifi.disconnect" />
+**`disconnect() → none`**
+
+Disconnect from the current network.
+
+<a id="wifi.link_status" />
+**`link_status() → integer`**
+
+Current station link state — one of the `LINK_*` constants. Negative
+values (FAIL/NONET/BADAUTH) indicate failure.
+
+<a id="wifi.connected" />
+**`connected() → bool`**
+
+True when the link is up with an IP address.
+
+<a id="wifi.ip" />
+**`ip() → string`**
+
+The device's IPv4 address as a string, or "" when not connected.
+
+### Access-point mode
+
+<a id="wifi.enable_ap" />
+**`enable_ap(ssid: string, password: string, auth: integer, channel: integer) → none`**
+
+Run as an access point broadcasting `ssid` with `auth` (use `AUTH_OPEN`
+and "" for an open network). `channel` &lt;= 0 keeps the default. Note: serving
+IPs to clients still needs a DHCP server in your app.
+
+<a id="wifi.disable_ap" />
+**`disable_ap() → none`**
+
+Stop the access point.
+
+<a id="wifi.ap_clients" />
+**`ap_clients() → integer`**
+
+Number of stations currently associated to the access point.
+
+### Info / tuning
+
+<a id="wifi.mac" />
+**`mac() → string`**
+
+The station interface MAC address as "aa:bb:cc:dd:ee:ff".
+
+<a id="wifi.rssi" />
+**`rssi() → integer`**
+
+Signal strength of the current connection, in dBm (0 if unknown).
+
+<a id="wifi.power_save" />
+**`power_save(mode: integer) → none`**
+
+Set the WiFi power-management mode (one of the `PM_*` constants).
+`PM_NONE` favors latency/throughput; the default favors power.
+
+### On-chip LED (Pico W / 2 W LED is wired to the CYW43, not a GPIO)
+
+<a id="wifi.led" />
+**`led(on: bool) → none`**
+
+Drive the on-board LED (which hangs off the CYW43 chip, so plain `pin`
+can't reach it). Requires the radio to be initialized.
+
+<a id="wifi.led_get" />
+**`led_get() → bool`**
+
+Read the on-board LED state.
+
+### Scanning
+
+<a id="wifi.scan" />
+**`scan() → integer`**
+
+Perform a blocking scan for nearby networks and return how many were
+found. Read the results with `scan_ssid`/`scan_rssi`/`scan_channel`/
+`scan_auth` for indices `0 .. count-1`.
+
+<a id="wifi.scan_ssid" />
+**`scan_ssid(index: integer) → string`**
+
+SSID of scan result `index` ("" if out of range).
+
+<a id="wifi.scan_rssi" />
+**`scan_rssi(index: integer) → integer`**
+
+Signal strength (dBm) of scan result `index`.
+
+<a id="wifi.scan_channel" />
+**`scan_channel(index: integer) → integer`**
+
+Channel of scan result `index`.
+
+<a id="wifi.scan_auth" />
+**`scan_auth(index: integer) → integer`**
+
+Raw CYW43 auth/security mode of scan result `index` (0 = open).

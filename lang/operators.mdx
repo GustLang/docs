@@ -1,0 +1,238 @@
+---
+title: Operators
+description: Every arithmetic, comparison, logical, bitwise, membership, identity, cast, and ternary operator, with precedence and augmented forms
+---
+
+Every operator Gust recognizes is listed below, grouped by what it does. Each entry states the operand types it accepts, the result type it produces, and the edge cases the type checker enforces.
+
+## Arithmetic
+
+| Op   | Name           | Operand types      | Result type           | Notes |
+|------|----------------|--------------------|-----------------------|-------|
+| `+`  | add / concat   | numeric or string  | wider number / string | `"a" + "b"` yields `"ab"`. Mixed-numeric widens to `float`. |
+| `-`  | subtract       | numeric            | wider numeric         | `integer` when both sides are `integer`, otherwise `float`. |
+| `*`  | multiply       | numeric            | wider numeric         | Same widening rule as subtract. |
+| `/`  | true division  | numeric            | **always** `float`    | Never truncates. |
+| `//` | floor division | `integer, integer` | `integer`             | Integer-only. Both operands must be `integer`; `float` operands are rejected. |
+| `%`  | modulo         | `integer, integer` | `integer`             | Integer-only. Use `math.fmod` for `float` operands. |
+
+Widening is symmetric: any binary arithmetic operator with one `integer` and one `float` operand produces a `float`. Two `integer` operands stay `integer` for every operator except `/`.
+
+<Warning>
+**`/` returns `float`**
+
+```gust
+x: float   = 7 / 2    # 3.5 — true division
+y: integer = 7 // 2   # 3   — floor division
+```
+
+`/` always produces a `float`. Use `//` when you want an `integer` result, or cast explicitly: `x: integer = (7 / 2) as integer`.
+</Warning>
+
+`+` is the only arithmetic operator that also works on strings, where it concatenates. Long concatenation chains such as `a + b + c + d` are lowered to a single allocation, so there is no penalty for writing them inline. There is no exponentiation operator; use the `math` package for powers.
+
+## Comparison
+
+```gust
+a == b    a != b
+a <  b    a <= b
+a >  b    a >= b
+```
+
+Comparisons work on `integer`, `float`, `string`, `bool`, and enum variants, and always produce a `bool`. Strings compare lexicographically by code point. A comparison between an `integer` and a `float` widens to `float` before comparing.
+
+The two operands must be compatible. Comparing unrelated types (for example a `bool` against an `integer`) is a compile-time error.
+
+<Note>
+**Comparisons do not chain**
+
+`1 < 2 < 3` does not mean "1 is less than 2 and 2 is less than 3". Comparison operators are left-associative, so it parses as `(1 < 2) < 3`, which compares a `bool` against an `integer` and is rejected. Write the conjunction explicitly: `1 < 2 and 2 < 3`.
+</Note>
+
+## Logical
+
+```gust
+a and b     a or b     not a
+```
+
+`and` and `or` short-circuit: `a and b` skips `b` when `a` is falsy, and `a or b` skips `b` when `a` is truthy. The skipped operand is never evaluated, so it is safe to guard a risky expression behind a cheap one.
+
+```gust
+false and ((1 / 0) > 0)   # false — the division never runs
+true  or  ((1 / 0) > 0)   # true  — the division never runs
+```
+
+### Value-coalescing semantics
+
+`and` and `or` return **one of their operands**, not a plain `bool`. The result keeps the operand's value and type:
+
+- `a or b` evaluates to `a` when `a` is truthy, otherwise `b`.
+- `a and b` evaluates to `a` when `a` is falsy, otherwise `b`.
+
+An expression is **falsy** when it is `none`, `0`, `0.0`, `""`, an empty list `[]`, or an empty dict `{}`. Everything else is truthy.
+
+```gust
+"Hello" or "World"      # "Hello"  — first operand is truthy
+""      or "fallback"   # "fallback" — empty string is falsy
+"Apple" and "Banana"    # "Banana" — both truthy, so the last one
+5       and 0           # 0        — truthy then falsy yields the falsy one
+0       or 7            # 7        — zero is falsy
+```
+
+The result type is the coalesced union of the two operands. It is `bool` only when both operands are already `bool`; otherwise it takes the shape of whichever operand can flow through.
+
+The canonical use is supplying a default for a possibly-missing value. Pairing `or` with `dict.get` gives a missing-key fallback in one expression:
+
+```gust
+m: dict[string, string] = {"x": "found"}
+m.get("x") or "default"    # "found"   — key present
+m.get("y") or "default"    # "default" — get returns none, or falls through
+```
+
+`not a` always produces a `bool`: it is `true` when `a` is falsy and `false` when `a` is truthy, following the same falsy set.
+
+## Bitwise
+
+Bitwise operators require `integer` operands. The type checker rejects `float` or `string` operands before code generation.
+
+| Op   | Name        | Example           | Result   |
+|------|-------------|-------------------|----------|
+| `&`  | AND         | `0b1100 & 0b1010` | `0b1000` |
+| `\|` | OR          | `0b1100 \| 0b1010`| `0b1110` |
+| `^`  | XOR         | `0b1100 ^ 0b1010` | `0b0110` |
+| `~`  | NOT (unary) | `~0`              | `-1`     |
+| `<<` | shift left  | `1 << 4`          | `16`     |
+| `>>` | shift right | `256 >> 2`        | `64`     |
+
+<Note>
+**`|` is overloaded**
+
+In a **type position** (`string | integer`, `T | none`) `|` means "union". In an **expression position** with `integer` operands it means bitwise OR. The parser disambiguates from context — no manual escaping required.
+</Note>
+
+## Membership (`in`, `not in`)
+
+```gust
+"apple" in fruit         # true when the list contains the element
+"kiwi"  not in fruit     # shorthand for not ("kiwi" in fruit)
+"ell"   in "hello"       # true — substring test on strings
+"web"   in status_dict   # true when the string is a key of the dict
+```
+
+`in` produces a `bool`. It tests element membership in a list, substring presence in a string, and key presence in a dict. `not in` is the negation and reads more clearly than wrapping the whole test in `not`.
+
+## Identity and type tests (`is`, `is not`)
+
+`is` and `is not` produce a `bool` and cover two related checks.
+
+**Nullity.** `is none` and `is not none` are the idiomatic checks for an optional value. Inside the guarded branch the compiler narrows the value's type, so a `string | none` reads as a plain `string`:
+
+```gust
+def greet(name: string | none) -> none
+    if name is not none
+        print(name)     # name is narrowed to string here
+    end
+    return
+end
+```
+
+**Runtime type tests.** When the right side is a subscripted container type or a type name, `is` performs a real runtime test against the value's tag:
+
+```gust
+xs is list[integer]              # true
+d  is dict[string, integer]      # true
+(1, 2) is tuple[integer, integer]# true
+```
+
+The same form narrows subclass and interface references and is what `case` patterns build on. Bare `is list` (with no element type) is rejected — give the full element type. See [Types](/lang/types) and [Structs](/lang/structs) for how narrowing flows through the surrounding code.
+
+## Type cast (`as`)
+
+```gust
+n := "42" as integer     # string → integer
+s := 42   as string      # integer → string
+f := 42   as float       # integer → float
+i := 3.9  as integer     # float → integer (truncates toward zero)
+```
+
+`as` converts between the primitive types and unboxes a value from an `Any` or union slot. When a conversion can fail at runtime — for example `"foo" as integer` — it raises `ValueError`. Wrap it in `try` / `catch` when the input is user-controlled.
+
+`as` also serves structural conversions documented elsewhere: casting a `dict` to a struct fills each field from the matching key, and casting a struct back to a `dict` produces its field map. See [Structs](/lang/structs).
+
+## Compound assignment
+
+```gust
+total := 0
+total += 5            # total = total + 5
+total -= 2            # total = total - 2
+count := 1
+count *= 10           # count = count * 10
+ratio: float = 8.0
+ratio /= 2            # ratio = ratio / 2
+rem := 10
+rem %= 3              # rem = rem % 3
+```
+
+The five compound-assignment operators are `+=`, `-=`, `*=`, `/=`, and `%=`. There are no bitwise, shift, or floor-division compound forms. Each one desugars to `target = target OP value`, so the same type rules apply — notably `/=` follows `/` and produces a `float`, so its target must be a `float`.
+
+Compound assignments are statements, not expressions: they update a variable in place and do not yield a value.
+
+## Unary operators
+
+| Op    | Name            | Applies to      | Result             |
+|-------|-----------------|-----------------|--------------------|
+| `-`   | negation        | numeric         | same numeric type  |
+| `~`   | bitwise NOT     | `integer`       | `integer`          |
+| `not` | logical NOT     | any value       | `bool` (falsy test)|
+
+```gust
+-5        # -5
+~0        # -1
+not true  # false
+```
+
+## Ternary
+
+```gust
+status := "on" if online else "off"
+```
+
+Read it as: *`status` is `"on"` if `online`, else `"off"`*. The condition sits in the middle, and both branches must produce compatible types. This is the lowest-precedence expression form.
+
+## Precedence (low to high)
+
+Operators bind more tightly as you go down the list. Parenthesize anything a future reader might misread.
+
+1. Ternary (`value if cond else other`)
+2. `or`
+3. `and`
+4. `not`
+5. Comparisons and relations (`==`, `!=`, `<`, `>`, `<=`, `>=`, `in`, `not in`, `is`, `is not`)
+6. Bitwise OR (`|`) — in integer-expression context
+7. Bitwise XOR (`^`)
+8. Bitwise AND (`&`)
+9. Bit shifts (`<<`, `>>`)
+10. Addition / subtraction (`+`, `-`)
+11. Multiplication / division / floor-division / modulo (`*`, `/`, `//`, `%`)
+12. Type cast (`as`)
+13. Unary minus and bitwise NOT (`-`, `~`)
+14. Postfix (`.field`, `.method(...)`, `[index]`, `[start:end]`)
+15. Primary (literals, identifiers, grouped expressions, collection literals, struct construction)
+
+All binary operators are left-associative, so equal-precedence chains evaluate left to right. A few consequences worth remembering:
+
+```gust
+2 + 3 * 4               # 14  — * binds tighter than +
+(2 + 3) * 4             # 20  — parentheses override
+true or false and false # true — and binds tighter than or
+```
+
+## Operators in f-strings
+
+Inside a `{...}` interpolation any expression is legal, including full operator chains:
+
+```gust
+print(f"total = {a + b}")
+print(f"avg = {(a + b) / 2.0}")
+print(f"ok = {count > 0 and name is not none}")
+```

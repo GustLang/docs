@@ -1,0 +1,207 @@
+---
+title: cryptography.random
+description: "Random number generation, in two flavors that must not be confused:"
+---
+
+```gust
+use cryptography.random
+```
+
+Random number generation, in two flavors that must not be confused:
+
+- A fast, seedable *pseudo*-random generator — `seed`, `int_in`, `float_in`,
+
+```gust
+`coin`, `below`. Reproducible from a seed and fine for
+simulations, sampling, jitter, and games, but NOT secure: never use it for
+keys, tokens, salts, or anything an adversary should not predict.
+```
+
+- A cryptographically secure source — `random_bytes` plus the `token_*`
+
+```gust
+generators, drawn straight from the operating system's CSPRNG. Use these
+for key material, nonces, salts, and session tokens. It is the entropy
+source the sibling `cryptography.aes` and `cryptography.bcrypt` packages
+build on.
+```
+
+**Examples**
+
+```gust
+use cryptography.random
+
+def main() -> none
+    token := random.token_url_safe(32)   # a secure session token
+    roll := random.int_in(1, 6)          # a pseudo-random die roll
+    print(token)
+    print(roll)
+end
+```
+
+**On this page:** [`seed`](#cryptography.random.seed) · [`random_bytes`](#cryptography.random.random_bytes) · [`int_in`](#cryptography.random.int_in) · [`float_in`](#cryptography.random.float_in) · [`coin`](#cryptography.random.coin) · [`below`](#cryptography.random.below) · [`token_bytes`](#cryptography.random.token_bytes) · [`token_hex`](#cryptography.random.token_hex) · [`token_url_safe`](#cryptography.random.token_url_safe)
+
+## Functions
+
+<a id="cryptography.random.seed" />
+```gust
+def foreign seed(n: integer) -> none
+```
+
+Seed the pseudo-random number generator. Use 0 for a time-based seed.
+
+**Parameters**
+
+- `n: integer` — Seed value, or 0 for a time-based seed.
+
+<Warning>
+The seedable generator is not cryptographically secure. Never use it
+for keys, tokens, salts, or anything an adversary should not predict —
+use `random_bytes` or the `token_*` functions for those.
+</Warning>
+
+---
+
+<a id="cryptography.random.random_bytes" />
+```gust
+def foreign random_bytes(n: integer) -> bytes
+```
+
+Return `n` cryptographically secure random bytes from the operating
+system's CSPRNG (getrandom / /dev/urandom on a host, the hardware TRNG on
+the Pico). Unlike the pseudo-random draws above this is unpredictable and
+unseedable — the right source for keys, nonces, salts, and tokens.
+
+**Parameters**
+
+- `n: integer` — The number of random bytes to produce.
+
+**Raises**
+
+- `IOError` — No system CSPRNG is available.
+
+---
+
+<a id="cryptography.random.int_in" />
+```gust
+def int_in(min: integer, max: integer) -> integer
+```
+
+Random integer in [min, max] (inclusive).
+
+**Parameters**
+
+- `min: integer` — Inclusive lower bound.
+- `max: integer` — Inclusive upper bound.
+
+<Warning>
+Not cryptographically secure. Never use for secrets — use
+`token_bytes` / `random_bytes` for those.
+</Warning>
+
+---
+
+<a id="cryptography.random.float_in" />
+```gust
+def float_in(min: float, max: float) -> float
+```
+
+Random float in [min, max). Pass `(0.0, 1.0)` for a plain unit-interval
+draw.
+
+**Parameters**
+
+- `min: float` — Lower bound.
+- `max: float` — Upper bound.
+
+<Warning>
+Not cryptographically secure. Never use for secrets — use
+`token_bytes` / `random_bytes` for those.
+</Warning>
+
+---
+
+<a id="cryptography.random.coin" />
+```gust
+def coin() -> bool
+```
+
+Random boolean.
+
+<Warning>
+Not cryptographically secure. Never use for secrets — use
+`token_bytes` / `random_bytes` for those.
+</Warning>
+
+---
+
+<a id="cryptography.random.below" />
+```gust
+def below(n: integer) -> integer
+```
+
+Random integer in [0, n).
+
+**Parameters**
+
+- `n: integer` — Exclusive upper bound.
+
+<Warning>
+Not cryptographically secure. Never use for secrets — use
+`token_bytes` / `random_bytes` for those.
+</Warning>
+
+---
+
+<a id="cryptography.random.token_bytes" />
+```gust
+def token_bytes(nbytes: integer) -> bytes
+```
+
+Return `nbytes` of raw secure random bytes — a token in binary form.
+Equivalent to `random_bytes(nbytes)`, named for intent.
+
+**Parameters**
+
+- `nbytes: integer` — The number of random bytes (entropy) to produce.
+
+**Raises**
+
+- `IOError` — No system CSPRNG is available.
+
+---
+
+<a id="cryptography.random.token_hex" />
+```gust
+def token_hex(nbytes: integer) -> string
+```
+
+Return a secure random token as a lowercase-hex string of `2 * nbytes`
+characters.
+
+**Parameters**
+
+- `nbytes: integer` — The number of random bytes (entropy) behind the token.
+
+**Raises**
+
+- `IOError` — No system CSPRNG is available.
+
+---
+
+<a id="cryptography.random.token_url_safe" />
+```gust
+def token_url_safe(nbytes: integer) -> string
+```
+
+Return a secure random token as URL-safe base64 (RFC 4648 §5, no
+padding) over `nbytes` of entropy — safe to drop into URLs, cookies, and
+headers. The string is roughly `ceil(4 * nbytes / 3)` characters.
+
+**Parameters**
+
+- `nbytes: integer` — The number of random bytes (entropy) behind the token.
+
+**Raises**
+
+- `IOError` — No system CSPRNG is available.

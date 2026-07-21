@@ -1,0 +1,607 @@
+---
+title: unsafe
+description: "Low-level manual memory access: allocation outside the managed heap, raw loads and stores at a base address plus byte offset, block memory operations, and sequentially-consistent atomics on an integer cell"
+---
+
+```gust
+use unsafe
+```
+
+Low-level manual memory access: allocation outside the managed heap, raw
+loads and stores at a base address plus byte offset, block memory operations,
+and sequentially-consistent atomics on an integer cell.
+
+An `address` is an opaque machine word (spelled `integer`) that names a byte
+in memory. It carries no element type, no length, and no lifetime — nothing
+here is reference-counted or bounds-checked, and a bad address is undefined
+behavior. This is the substrate for hand-written data structures that sit
+beneath the managed collection types; ordinary code should use `list`, `dict`,
+`bytes`, and `string` instead.
+
+Allocations from `alloc`/`alloc_zeroed`/`resize` are owned by the caller and
+must be released with `free` exactly once. They are invisible to the managed
+heap: they are never scanned, never reference-counted, and never freed
+automatically.
+
+**Examples**
+
+```gust
+use unsafe
+
+def main() -> none
+    addr := unsafe.alloc(8)
+    unsafe.store64(addr, 0, 42)
+    print(unsafe.load64(addr, 0))   # 42
+    unsafe.free(addr)
+end
+```
+
+**On this page:** [`alloc`](#unsafe.alloc) · [`alloc_zeroed`](#unsafe.alloc_zeroed) · [`resize`](#unsafe.resize) · [`free`](#unsafe.free) · [`load8`](#unsafe.load8) · [`load16`](#unsafe.load16) · [`load32`](#unsafe.load32) · [`load64`](#unsafe.load64) · [`load_address`](#unsafe.load_address) · [`load_float`](#unsafe.load_float) · [`store8`](#unsafe.store8) · [`store16`](#unsafe.store16) · [`store32`](#unsafe.store32) · [`store64`](#unsafe.store64) · [`store_address`](#unsafe.store_address) · [`store_float`](#unsafe.store_float) · [`copy`](#unsafe.copy) · [`move`](#unsafe.move) · [`fill`](#unsafe.fill) · [`compare`](#unsafe.compare) · [`call1`](#unsafe.call1) · [`sort`](#unsafe.sort) · [`atomic_load`](#unsafe.atomic_load) · [`atomic_store`](#unsafe.atomic_store) · [`atomic_add`](#unsafe.atomic_add) · [`atomic_sub`](#unsafe.atomic_sub) · [`atomic_cas`](#unsafe.atomic_cas) · [`word_size`](#unsafe.word_size) · [`is_null`](#unsafe.is_null)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `NULL_ADDRESS` | `integer` | `0` |
+
+## Functions
+
+<a id="unsafe.alloc" />
+```gust
+def foreign alloc(size: integer) -> integer
+```
+
+Allocate `size` bytes of uninitialized memory and return its address,
+or `NULL_ADDRESS` if the request cannot be satisfied. Release it with
+`free`.
+
+**Parameters**
+
+- `size: integer` — Number of bytes to allocate.
+
+<Warning>
+The block is invisible to the managed runtime — it is never
+reference-counted or freed automatically. You must `free` it exactly
+once and never use the address after freeing it. The bytes are
+uninitialized; read them only after writing.
+</Warning>
+
+---
+
+<a id="unsafe.alloc_zeroed" />
+```gust
+def foreign alloc_zeroed(count: integer, size: integer) -> integer
+```
+
+Allocate `count * size` bytes, zero-filled, and return the address, or
+`NULL_ADDRESS` on failure. The product is computed with an overflow check.
+Release it with `free`.
+
+**Parameters**
+
+- `count: integer` — Number of elements.
+- `size: integer` — Byte size of one element.
+
+<Warning>
+The block is invisible to the managed runtime — it is never
+reference-counted or freed automatically. You must `free` it exactly
+once and never use the address after freeing it.
+</Warning>
+
+---
+
+<a id="unsafe.resize" />
+```gust
+def foreign resize(addr: integer, size: integer) -> integer
+```
+
+Grow or shrink the block at `addr` to `size` bytes, preserving contents
+up to the smaller of the old and new sizes, and return the (possibly
+moved) address. Returns `NULL_ADDRESS` on failure, leaving the original
+block intact. A `NULL_ADDRESS` input behaves like `alloc(size)`.
+
+**Parameters**
+
+- `addr: integer` — Address previously returned by an allocation function.
+- `size: integer` — New size in bytes.
+
+<Warning>
+When the block moves, the original address is freed; using it after a
+successful resize is undefined behavior. Use only the returned address.
+</Warning>
+
+---
+
+<a id="unsafe.free" />
+```gust
+def foreign free(addr: integer) -> none
+```
+
+Release a block previously returned by `alloc`, `alloc_zeroed`, or
+`resize`. A `NULL_ADDRESS` is ignored.
+
+**Parameters**
+
+- `addr: integer` — Address to release.
+
+<Warning>
+Using the address after `free`, or freeing the same block twice, is
+undefined behavior.
+</Warning>
+
+---
+
+<a id="unsafe.load8" />
+```gust
+def foreign load8(addr: integer, offset: integer) -> integer
+```
+
+Read the byte at `addr + offset` and return it zero-extended to the
+range 0-255.
+
+**Parameters**
+
+- `addr: integer` — Base address.
+- `offset: integer` — Byte offset from the base.
+
+<Warning>
+No bounds or alignment checking. Reading an unallocated, freed, or
+misaligned address is undefined behavior.
+</Warning>
+
+---
+
+<a id="unsafe.load16" />
+```gust
+def foreign load16(addr: integer, offset: integer) -> integer
+```
+
+Read the 16-bit value at `addr + offset`, host byte order, zero-extended.
+
+**Parameters**
+
+- `addr: integer` — Base address.
+- `offset: integer` — Byte offset from the base.
+
+<Warning>
+No bounds or alignment checking. Reading an unallocated, freed, or
+misaligned address is undefined behavior.
+</Warning>
+
+---
+
+<a id="unsafe.load32" />
+```gust
+def foreign load32(addr: integer, offset: integer) -> integer
+```
+
+Read the 32-bit value at `addr + offset`, host byte order, zero-extended.
+
+**Parameters**
+
+- `addr: integer` — Base address.
+- `offset: integer` — Byte offset from the base.
+
+<Warning>
+No bounds or alignment checking. Reading an unallocated, freed, or
+misaligned address is undefined behavior.
+</Warning>
+
+---
+
+<a id="unsafe.load64" />
+```gust
+def foreign load64(addr: integer, offset: integer) -> integer
+```
+
+Read the 64-bit value at `addr + offset`, host byte order.
+
+**Parameters**
+
+- `addr: integer` — Base address.
+- `offset: integer` — Byte offset from the base.
+
+<Warning>
+No bounds or alignment checking. Reading an unallocated, freed, or
+misaligned address is undefined behavior.
+</Warning>
+
+---
+
+<a id="unsafe.load_address" />
+```gust
+def foreign load_address(addr: integer, offset: integer) -> integer
+```
+
+Read a pointer-width address stored at `addr + offset`. Use this rather
+than `load64` when reading a stored address so the intent is explicit and
+the width tracks the platform.
+
+**Parameters**
+
+- `addr: integer` — Base address.
+- `offset: integer` — Byte offset from the base.
+
+<Warning>
+No bounds or alignment checking. Reading an unallocated, freed, or
+misaligned address is undefined behavior.
+</Warning>
+
+---
+
+<a id="unsafe.load_float" />
+```gust
+def foreign load_float(addr: integer, offset: integer) -> float
+```
+
+Read the 64-bit floating-point value at `addr + offset`.
+
+**Parameters**
+
+- `addr: integer` — Base address.
+- `offset: integer` — Byte offset from the base.
+
+<Warning>
+No bounds or alignment checking. Reading an unallocated, freed, or
+misaligned address is undefined behavior.
+</Warning>
+
+---
+
+<a id="unsafe.store8" />
+```gust
+def foreign store8(addr: integer, offset: integer, value: integer) -> none
+```
+
+Write the low 8 bits of `value` to `addr + offset`.
+
+**Parameters**
+
+- `addr: integer` — Base address.
+- `offset: integer` — Byte offset from the base.
+- `value: integer` — Value whose low byte is written.
+
+<Warning>
+No bounds or alignment checking. Writing to an unallocated, freed, or
+misaligned address is undefined behavior and can corrupt memory.
+</Warning>
+
+---
+
+<a id="unsafe.store16" />
+```gust
+def foreign store16(addr: integer, offset: integer, value: integer) -> none
+```
+
+Write the low 16 bits of `value` to `addr + offset`, host byte order.
+
+**Parameters**
+
+- `addr: integer` — Base address.
+- `offset: integer` — Byte offset from the base.
+- `value: integer` — Value whose low 16 bits are written.
+
+<Warning>
+No bounds or alignment checking. Writing to an unallocated, freed, or
+misaligned address is undefined behavior and can corrupt memory.
+</Warning>
+
+---
+
+<a id="unsafe.store32" />
+```gust
+def foreign store32(addr: integer, offset: integer, value: integer) -> none
+```
+
+Write the low 32 bits of `value` to `addr + offset`, host byte order.
+
+**Parameters**
+
+- `addr: integer` — Base address.
+- `offset: integer` — Byte offset from the base.
+- `value: integer` — Value whose low 32 bits are written.
+
+<Warning>
+No bounds or alignment checking. Writing to an unallocated, freed, or
+misaligned address is undefined behavior and can corrupt memory.
+</Warning>
+
+---
+
+<a id="unsafe.store64" />
+```gust
+def foreign store64(addr: integer, offset: integer, value: integer) -> none
+```
+
+Write the full 64 bits of `value` to `addr + offset`, host byte order.
+
+**Parameters**
+
+- `addr: integer` — Base address.
+- `offset: integer` — Byte offset from the base.
+- `value: integer` — Value to write.
+
+<Warning>
+No bounds or alignment checking. Writing to an unallocated, freed, or
+misaligned address is undefined behavior and can corrupt memory.
+</Warning>
+
+---
+
+<a id="unsafe.store_address" />
+```gust
+def foreign store_address(
+    addr: integer,
+    offset: integer,
+    value: integer,
+) -> none
+```
+
+Write a pointer-width address `value` to `addr + offset`. The
+counterpart to `load_address`.
+
+**Parameters**
+
+- `addr: integer` — Base address.
+- `offset: integer` — Byte offset from the base.
+- `value: integer` — Address value to store.
+
+<Warning>
+No bounds or alignment checking. Writing to an unallocated, freed, or
+misaligned address is undefined behavior and can corrupt memory.
+</Warning>
+
+---
+
+<a id="unsafe.store_float" />
+```gust
+def foreign store_float(addr: integer, offset: integer, value: float) -> none
+```
+
+Write the 64-bit floating-point `value` to `addr + offset`.
+
+**Parameters**
+
+- `addr: integer` — Base address.
+- `offset: integer` — Byte offset from the base.
+- `value: float` — Value to write.
+
+<Warning>
+No bounds or alignment checking. Writing to an unallocated, freed, or
+misaligned address is undefined behavior and can corrupt memory.
+</Warning>
+
+---
+
+<a id="unsafe.copy" />
+```gust
+def foreign copy(dst: integer, src: integer, count: integer) -> none
+```
+
+Copy `count` bytes from `src` to `dst`.
+
+**Parameters**
+
+- `dst: integer` — Destination address.
+- `src: integer` — Source address.
+- `count: integer` — Number of bytes to copy.
+
+<Warning>
+The two regions must not overlap — use `move` when they might. No
+bounds checking: reading or writing past either allocation is
+undefined behavior.
+</Warning>
+
+---
+
+<a id="unsafe.move" />
+```gust
+def foreign move(dst: integer, src: integer, count: integer) -> none
+```
+
+Copy `count` bytes from `src` to `dst`, correct even when the regions
+overlap.
+
+**Parameters**
+
+- `dst: integer` — Destination address.
+- `src: integer` — Source address.
+- `count: integer` — Number of bytes to copy.
+
+<Warning>
+No bounds checking: reading or writing past either allocation is
+undefined behavior.
+</Warning>
+
+---
+
+<a id="unsafe.fill" />
+```gust
+def foreign fill(dst: integer, byte_value: integer, count: integer) -> none
+```
+
+Set `count` bytes starting at `dst` to the low 8 bits of `byte_value`.
+
+**Parameters**
+
+- `dst: integer` — Destination address.
+- `byte_value: integer` — Value whose low byte fills the region.
+- `count: integer` — Number of bytes to write.
+
+<Warning>
+No bounds checking: writing more than the destination allocation holds
+is undefined behavior and can corrupt memory.
+</Warning>
+
+---
+
+<a id="unsafe.compare" />
+```gust
+def foreign compare(a: integer, b: integer, count: integer) -> integer
+```
+
+Compare `count` bytes at `a` and `b`. Returns a negative value, zero,
+or a positive value when the first differing byte at `a` is respectively
+less than, equal to, or greater than the one at `b`.
+
+**Parameters**
+
+- `a: integer` — First address.
+- `b: integer` — Second address.
+- `count: integer` — Number of bytes to compare.
+
+<Warning>
+No bounds checking: reading past either allocation is undefined
+behavior.
+</Warning>
+
+---
+
+<a id="unsafe.call1" />
+```gust
+def foreign call1(fn: integer, arg: integer) -> none
+```
+
+Invoke the function at address `fn` with the single pointer-width
+argument `arg`. The target must have the C shape `void (*)(void *)` —
+the shape of a runtime destructor.
+
+**Parameters**
+
+- `fn: integer` — Function address, e.g. obtained from `c_symbol_address`.
+- `arg: integer` — Value passed to the target as a pointer-width word.
+
+<Warning>
+Calling an address that is not a function, or one whose signature
+does not match, is undefined behavior.
+</Warning>
+
+---
+
+<a id="unsafe.sort" />
+```gust
+def foreign sort(
+    base: integer,
+    count: integer,
+    elem_size: integer,
+    compare: integer,
+) -> none
+```
+
+Sort `count` elements of `elem_size` bytes at `base` in place, ordering
+by the comparison function at address `compare`. The target must have the
+C shape `int (*)(const void *, const void *)`, receiving the addresses of
+two elements and returning a negative, zero, or positive value.
+
+**Parameters**
+
+- `base: integer` — Address of the first element.
+- `count: integer` — Number of elements.
+- `elem_size: integer` — Byte size of one element.
+- `compare: integer` — Comparison function address, e.g. from `c_symbol_address`.
+
+<Warning>
+Calling with a `compare` address that is not a function of the
+required shape, or a region smaller than `count * elem_size` bytes,
+is undefined behavior.
+</Warning>
+
+---
+
+<a id="unsafe.atomic_load" />
+```gust
+def foreign atomic_load(addr: integer) -> integer
+```
+
+Atomically read the 64-bit cell at `addr`.
+
+**Parameters**
+
+- `addr: integer` — Address of the cell.
+
+---
+
+<a id="unsafe.atomic_store" />
+```gust
+def foreign atomic_store(addr: integer, value: integer) -> none
+```
+
+Atomically write `value` to the 64-bit cell at `addr`.
+
+**Parameters**
+
+- `addr: integer` — Address of the cell.
+- `value: integer` — Value to store.
+
+---
+
+<a id="unsafe.atomic_add" />
+```gust
+def foreign atomic_add(addr: integer, delta: integer) -> integer
+```
+
+Atomically add `delta` to the 64-bit cell at `addr` and return the new
+value.
+
+**Parameters**
+
+- `addr: integer` — Address of the cell.
+- `delta: integer` — Amount to add (may be negative).
+
+---
+
+<a id="unsafe.atomic_sub" />
+```gust
+def foreign atomic_sub(addr: integer, delta: integer) -> integer
+```
+
+Atomically subtract `delta` from the 64-bit cell at `addr` and return
+the new value.
+
+**Parameters**
+
+- `addr: integer` — Address of the cell.
+- `delta: integer` — Amount to subtract.
+
+---
+
+<a id="unsafe.atomic_cas" />
+```gust
+def foreign atomic_cas(
+    addr: integer,
+    expected: integer,
+    desired: integer,
+) -> bool
+```
+
+Atomically set the cell at `addr` to `desired` only if it currently
+holds `expected`. Returns `true` when the swap happened, `false` otherwise.
+
+**Parameters**
+
+- `addr: integer` — Address of the cell.
+- `expected: integer` — Value the cell must currently hold for the swap to occur.
+- `desired: integer` — Value to store on success.
+
+---
+
+<a id="unsafe.word_size" />
+```gust
+def foreign word_size() -> integer
+```
+
+Size in bytes of a pointer-width address on this platform (8 on a
+64-bit target).
+
+---
+
+<a id="unsafe.is_null" />
+```gust
+def is_null(addr: integer) -> bool
+```
+
+True when `addr` is the null address.
+
+**Parameters**
+
+- `addr: integer` — Address to test.

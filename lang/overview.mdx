@@ -1,0 +1,162 @@
+---
+title: Language reference
+description: A guided tour of the Gust language reference, its core principles, and program structure
+---
+
+Gust is a statically typed, compiled language with a pragmatic feature set. Source files (`.g`) compile to C, then to native binaries. This section is the reference: each page covers one topic in depth, with runnable examples.
+
+## A taste of Gust
+
+```gust
+enum Shape
+    case Circle(radius: float)
+    case Square(side: float)
+end
+
+def area(s: Shape) -> float
+    match s
+        case Circle(r)
+            return 3.14159 * r * r
+        case Square(side)
+            return side * side
+        else
+            return 0.0
+    end
+end
+
+def main() -> none
+    shapes := [Circle(2.0), Square(3.0)]
+    total := 0.0
+    for s in shapes
+        total = total + area(s)
+    end
+    print(total)
+end
+```
+
+This one program already exercises a tagged union, pattern matching, type inference, a typed list, and a `for` loop. The pages below take each of those apart.
+
+## Reading order
+
+You don't have to read these in order, but this is the path we recommend for someone new:
+
+1. [Syntax basics](/lang/syntax) — tokens, comments, blocks, the `end` keyword, where code can live.
+2. [Variables](/lang/variables) — `:=`, `=`, type annotations, scope.
+3. [Types](/lang/types) — the type system in one place.
+4. [Operators](/lang/operators) — arithmetic, comparison, logical, bitwise, `in`, `is`, `as`, ternary.
+5. [Strings](/lang/strings) — literals, f-strings, methods.
+6. [Collections](/lang/collections) — `list[T]`, `dict[K, V]`, tuples, slicing, comprehensions.
+7. [Control flow](/lang/control-flow) — `if`, `while`, `for`, `range`, `break`, `continue`.
+8. [Functions](/lang/functions) — declarations, multiple returns, named args, closures, lambdas.
+9. [Structs](/lang/structs) — records, methods, subclassing, associated functions.
+10. [Interfaces](/lang/interfaces) — vtable dispatch, `implements`.
+11. [Enums](/lang/enums) — `enum`, `auto_enum`, backing types, coercion.
+12. [Tagged unions](/lang/unions) — sum-type `enum`s whose variants carry data.
+13. [Pattern matching](/lang/match) — `match` / `case` / `else`.
+14. [Error handling](/lang/errors) — `error`, `raise`, `try`, `catch`.
+15. [Concurrency](/lang/concurrency) — explicit `!` on `def`/`for`/`while`.
+16. [Constants](/lang/constants) — top-level immutables.
+17. [Imports](/lang/imports) — `use`, `use X from Y`.
+18. [Decorators](/lang/decorators) — `@name` and `@name(args...)` on declarations, plus writing your own.
+
+## Feature map
+
+Every major capability of the language, and the page that covers it in full:
+
+### Values and types
+
+- **Type inference and explicit annotations** — `x := 1` infers, `x: integer = 1` is explicit. See [Variables](/lang/variables).
+- **Primitive types** — `integer`, `float`, `bool`, `string`, `none`, plus `Any`. See [Types](/lang/types).
+- **Collections** — `list[T]`, `dict[K, V]`, and tuples, with literals, indexing, and slicing. See [Collections](/lang/collections).
+- **Generics** — parameterize types and functions with `[T]`, as in `list[T]` or `Signal[integer]`. See [Types](/lang/types) and [Structs](/lang/structs).
+- **Tagged unions and `union(A | B)` types** — a value that is exactly one of several shapes. See [Tagged unions](/lang/unions) and [Types](/lang/types).
+- **Casting** — `x as Type` converts between compatible types, including casting a `dict` **to** a struct and reading a struct's fields back **as** a dict. See [Operators](/lang/operators) and [Structs](/lang/structs).
+
+### Expressions and operators
+
+- **Arithmetic, comparison, logical, and bitwise operators**, plus `in` membership, `is` identity/type tests, `as` casts, and the `a if cond else b` ternary. See [Operators](/lang/operators).
+- **Strings and f-strings** — `"..."` literals, `f"{expr}"` interpolation, and the string method API. See [Strings](/lang/strings).
+- **Comprehensions** — build lists and dicts inline with `[expr for x in it]`. See [Collections](/lang/collections).
+
+### Control flow
+
+- **`if` / `else`**, **`while`**, and **`for ... in`** loops, iterating over collections or a `range`, with `break`, `continue`, and `return`. See [Control flow](/lang/control-flow).
+- **Pattern matching** — `match` over integers, strings, booleans, enum variants, and tagged-union variants with field destructuring. See [Pattern matching](/lang/match).
+
+### Program units
+
+- **Functions** — typed parameters and return, multiple returns via tuples, named arguments, recursion, first-class function values, closures, and block lambdas. See [Functions](/lang/functions).
+- **Structs** — named records with fields and methods (`def Struct.method()`), associated functions (`@static`), subclassing (`def Sub extends Parent`) with vtable dispatch, and foreign methods. See [Structs](/lang/structs).
+- **Interfaces** — nominal method contracts satisfied with `implements` and dispatched through a vtable. See [Interfaces](/lang/interfaces).
+- **Enums** — backed enums (`enum Name: integer` / `: string`) and `auto_enum` for auto-numbered constants, with backing-type coercion. See [Enums](/lang/enums).
+- **Errors** — first-class `error` types, `raise`, `try` / `catch`, and re-raising. See [Error handling](/lang/errors).
+- **Constants** — top-level `constant[T]` immutables. See [Constants](/lang/constants).
+
+### The bigger picture
+
+- **Packages and imports** — organize code into standard library and local packages, imported with `use <pkg>` or `use X from <pkg>`. See [Imports](/lang/imports).
+- **Concurrency** — opt in per construct with a `!` suffix on `def`, `for`, or `while`; plain forms stay sequential. See [Concurrency](/lang/concurrency).
+- **Decorators and derive** — annotate declarations with `@name` / `@name(args...)`, use built-in compiler decorators, and write your own. See [Decorators](/lang/decorators).
+
+## Core principles
+
+- **Static, but not noisy.** Types are checked at compile time, but inference lets you skip annotations when they'd be redundant.
+- **One block terminator.** Every block ends with a bare `end`. No `}`, no `endif`.
+- **Top-level is declarative.** At the top level you may write `def` (functions, methods, structs, subclasses), `interface`, `error`, `enum` (both backed enums and tagged unions), `auto_enum`, `use`, `@decorator`-annotated declarations, and `constant[T]`. Loose statements are not allowed at the top level — executable code lives inside a `def`.
+- **No hidden cost.** Each feature compiles to a predictable C construct. When you want to see it, `gust emit` prints the generated C.
+- **Parallelism is explicit.** Nothing runs in parallel unless you ask for it. Opt in per construct with a `!` suffix on `def`, `for`, or `while`.
+
+## Program structure
+
+A Gust program is a set of top-level declarations, with a `main` function as the entry point:
+
+```gust
+use math                          # package imports
+
+error NetError(message: string)   # error types
+
+interface Pingable                # interfaces
+    def ping() -> bool
+end
+
+def Server                        # structs
+    name: string
+    online: bool
+end
+
+def Server.ping() -> bool         # methods
+    return online
+end
+
+MAX_RETRIES: constant[integer] = 3   # constants
+
+def main() -> none                # entry point
+    print("hello")
+end
+```
+
+## The `end` keyword
+
+Every block in Gust closes with a bare `end`:
+
+```gust
+if x > 0
+    print("positive")
+else
+    print("non-positive")
+end             # ← just `end`, not `end if`
+```
+
+The same goes for `def`, `interface`, `enum`, `auto_enum`, `for`, `while`, `try`, and `match`.
+
+## Comments
+
+```gust
+# Single-line comment. That's the whole menu.
+```
+
+Gust does not have block comments — `#` to end-of-line is it. To document a module or declaration, write a `"""..."""` docstring on the line after it rather than a comment block.
+
+---
+
+Next up → [Syntax basics](/lang/syntax).

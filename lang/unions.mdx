@@ -1,0 +1,390 @@
+---
+title: Unions
+description: Gust's union types (A | B), optionals (T | none), is/as narrowing, optional dict.get() chaining, and sum-type (tagged-union) enums
+---
+
+Gust has two ways to say "a value is one of several things," and they solve
+different problems:
+
+- A **union type**, written `A | B`, holds one of several *existing* types
+  as-is — no new fields, no wrapper. `string | integer` is genuinely a `string`
+  or genuinely an `integer`. This is the compositional form you reach for on a
+  return type or parameter.
+- A **tagged union** (sum-type `enum`) is a named type whose value is one of a
+  fixed set of *variants*, each carrying its own fields. This is the nominal
+  form you reach for when each alternative is its own little record.
+
+The first half of this page covers union types and the optional (`T | none`)
+that falls out of them. The second half covers tagged unions.
+
+## Union types (`A | B`)
+
+Separate the alternatives with `|`. The result is a type whose static value is
+exactly one of the listed arms:
+
+```gust
+def stringify(v: string | integer) -> string
+    return f"{v}"
+end
+```
+
+`A | B` is the only spelling you write. The internal tag `union(A|B)` shows up
+in older diagnostics and compiler tooling, but it is not source syntax — writing
+`union(string|integer)` in an annotation is a parse error.
+
+A union may have any number of arms, and each arm can itself be any type —
+primitives, structs, containers, or `none`:
+
+```gust
+def describe(v: string | integer | bool) -> string
+    match v
+        case string
+            return "s"
+        case integer
+            return "i"
+        case bool
+            return "b"
+    end
+    return "?"
+end
+```
+
+Union types appear anywhere a type annotation does:
+
+```gust
+def parse(raw: string) -> integer | none      # return type
+    ...
+end
+
+payload: string | integer = 42                 # variable annotation
+
+def Box                                         # struct field
+    slot: string | integer
+end
+
+items: list[string | integer] = ["a", 1, "b"]  # container element type
+```
+
+## Optionals (`T | none`)
+
+A union whose arms include `none` is Gust's **optional** — the value is either a
+`T` or absent. This is how the language models "maybe missing" without a
+separate wrapper type.
+
+Two common sources produce optionals:
+
+The one-argument form of `dict.get` returns `V | none`, so a lookup that might
+miss is statically forced to account for the miss:
+
+```gust
+d: dict[string, string] = {"host": "web"}
+h := d.get("host")            # string | none
+```
+
+The two-argument form `d.get(key, default)` always returns a plain `V` — the
+default fills a missing key, so there is nothing to be absent.
+
+A function whose declared return type includes `none` may also fall off the end
+without an explicit `return`; the implicit result is `none`:
+
+```gust
+def find(xs: list[integer], target: integer) -> integer | none
+    for x in xs
+        if x == target
+            return x               # found — a plain integer
+        end
+    end
+    # no target match: control reaches the end, so `find` returns none
+end
+```
+
+Only a function whose return type admits `none` (or a `-> none` function) may
+omit a trailing return this way — a `-> integer` function that could fall
+through is an error.
+
+## Narrowing with `is` and `as`
+
+You cannot use a union value directly — the compiler does not know which arm is
+live. Two operators recover a concrete type:
+
+- `is` / `is not` test which arm the value currently holds and yield a `bool`.
+  The forms `is none` and `is not none` test the absence arm specifically.
+- `as` recovers the concrete value once you know the arm.
+
+An `is` (or `is not none`) test **narrows** the value inside the guarded branch,
+so within that branch it already has the concrete type:
+
+```gust
+def main() -> none
+    r := find([1, 2, 3], 2)       # integer | none
+    if r is none
+        print("absent")
+        return
+    end
+    # In this branch `r` is a plain integer — no cast needed.
+    print(r + 100)
+end
+```
+
+Because the branch after `is not none` already sees the plain type, an `as`
+cast there is redundant and warns (`W0506`). Reach for `as` when you narrowed
+with an `is` test that the compiler cannot use to retype the binding — most
+often after branching on a non-`none` arm:
+
+```gust
+def describe(v: string | integer) -> string
+    if v is string
+        return v as string        # recover the concrete string
+    end
+    return f"{v as integer}"
+end
+```
+
+## Matching a union
+
+`match` reads a union arm-by-arm with **type patterns** — each `case` names an
+arm's type (or `none`), and a trailing `else` covers the rest:
+
+```gust
+def render(v: string | integer | none) -> string
+    match v
+        case none
+            return "-"
+        case string
+            return v as string
+        case integer
+            return f"{v as integer}"
+    end
+    return "?"
+end
+```
+
+This is the idiom to fully unpack a union whose arms need different handling.
+The same type patterns drive an `if`/`is` chain; `match` reads cleaner once you
+have more than two arms.
+
+## What you cannot do to a union directly
+
+Because a union might hold any of its arms at runtime, the compiler rejects
+operations that only make sense on one specific arm. Narrow first.
+
+Operators do not apply to a union — `v + 1` on a `string | integer` is a
+compile error (`G0402`) telling you to `match` first:
+
+```gust
+def bad(v: string | integer) -> string
+    x := v + 1                    # G0402: operator '+' cannot be applied to a union
+    return f"{x}"
+end
+```
+
+A method call has the same restriction: the compiler cannot pick which arm's
+method to dispatch, so `v.trim()` on a `string | integer` is rejected until you
+narrow to the arm that has the method.
+
+Field access is the one exception: reading `p.field` on a union is allowed **only
+when every arm carries that field with a common type**. This lets a union of
+records that share a field read that field without a match:
+
+```gust
+def Cat
+    name: string
+    lives: integer
+end
+
+def Dog
+    name: string
+    legs: integer
+end
+
+def pet_name(p: Cat | Dog) -> string
+    return p.name                 # both arms have `name: string`
+end
+```
+
+Reading a field that only some arms carry (`p.lives` above) is rejected — narrow
+with a `match` first.
+
+## Chaining member access on an optional
+
+A two-arm optional (`X | none`) auto-unwraps its `X` arm for **member access** —
+a method call, field read, or index. This lets a `dict.get(key)` result chain
+directly:
+
+```gust
+cfg: dict[string, string] = {"a": "  hi  "}
+n := cfg.get("a").trim().length   # get → string | none, unwrapped for .trim()
+```
+
+The unwrap is a convenience for *reading through* the optional; it does not
+apply at **boundary** sites. Assigning the optional, passing it as an argument,
+or returning it against a concrete `X` still sees the full `X | none` and
+requires you to handle the `none` arm. Guard with `is not none` first whenever
+the key might genuinely be absent.
+
+## Supplying a fallback with `or`
+
+`and` / `or` are value-coalescing: `a or b` evaluates to `a` when it is truthy,
+otherwise to `b`, and `none` is falsy. So `optional or default` collapses an
+optional to a plain value by supplying the fallback — and the `none` arm drops
+from the result type:
+
+```gust
+d: dict[string, string] = {"host": "web"}
+host := d.get("host") or "localhost"   # string (no `| none`)
+print(host.trim())                     # usable directly
+```
+
+See [operators](/lang/operators) for the full value-coalescing rules.
+
+## Tagged unions (sum-type enums)
+
+A **tagged union** (also called a sum type or algebraic data type) is a single
+*named* type whose value is exactly one of a fixed set of **variants** — and each
+variant can carry its own fields. Declared with `enum` and a body of `case`
+lines.
+
+Where a union type `A | B` holds one of several *existing* types as-is, a tagged
+union holds one of several *shapes of data*, each with its own named fields. It
+is the right tool when "a value is either an A (with these fields) or a B (with
+those fields)."
+
+### Declaring a sum-type `enum`
+
+Write `enum Name` with **no backing-type clause** — the absence of `: integer` /
+`: string` is what selects the sum-type form:
+
+```gust
+enum Shape
+    case Circle(radius: float)
+    case Rect(width: integer, height: integer)
+    case Empty
+end
+```
+
+- Each `case` declares one variant: a `PascalCase` name and a parenthesized
+  field list (`name: Type`, same form as struct fields).
+- A variant can carry **zero fields** — write it bare, with no parentheses
+  (`case Empty` above).
+- An optional docstring may follow the `enum` line, like any declaration.
+
+The two `enum` forms are mutually exclusive: a backed enum (`enum Name:
+integer`) rejects `case` variants, and a sum type rejects `= value` on a
+variant — the compiler tells you which clause to drop. See
+[enums](/lang/enums) for the backed form.
+
+### Constructing a value
+
+Build a value by calling the **variant name** — not the type name. Both
+positional and named arguments work, exactly like [struct construction](/lang/structs#constructing-a-value):
+
+```gust
+c := Circle(2.0)                  # positional
+r := Rect(width: 3, height: 4)    # named
+e := Empty()                      # zero-field variant — empty parens
+```
+
+The static type of all three is `Shape`. A `Shape`-typed variable can hold any
+of its variants.
+
+### Destructuring with match
+
+`match` is how you read a tagged union: each `case` names a variant and binds
+its fields to locals **positionally**, in field-declaration order.
+
+```gust
+def area(s: Shape) -> float
+    match s
+        case Circle(r)              # r := the radius field
+            return 3.14159 * r * r
+        case Rect(w, h)             # w, h := width, height
+            return (w * h) as float
+        case Empty                  # zero-field variant — no binds
+            return 0.0
+    end
+    return 0.0
+end
+```
+
+Binds are positional, **not** by field name — `case Rect(w, h)` binds `width`
+to `w` and `height` to `h` purely by order.
+
+#### Binding a prefix of the fields
+
+You may bind **fewer** names than a variant has fields; trailing fields are
+simply ignored. This keeps existing `match` arms valid when a new field is
+appended to a variant.
+
+```gust
+match s
+    case Rect(w)                    # only need the width here
+        print(f"wide? {w > 100}")
+    else
+        print("not a rect")
+end
+```
+
+Use `_` for a field you must position past but don't want: `case Rect(_, h)`.
+
+#### Catch-all with else
+
+A trailing `else` handles every variant you didn't name:
+
+```gust
+match s
+    case Circle(r)
+        return r
+    else
+        return 0.0
+end
+```
+
+Reading a variant's fields **requires** a `match` — there's no `s.radius`
+accessor on a tagged-union value, because the active variant isn't known until
+you branch on it.
+
+### Recursive unions
+
+A variant's field may name the enum type **directly** — the compiler detects
+the self-reference and boxes that field on the heap for you, so the value
+isn't infinitely sized:
+
+```gust
+enum Expr
+    case Lit(value: integer)
+    case Add(left: Expr, right: Expr)
+end
+
+def eval(e: Expr) -> integer
+    match e
+        case Lit(v)
+            return v
+        case Add(l, r)
+            return eval(l) + eval(r)
+    end
+    return 0
+end
+
+def main() -> none
+    tree := Add(Lit(2), Lit(3))    # (2 + 3)
+    print(eval(tree))              # 5
+end
+```
+
+Self-reference through a collection works too — `case Node(children:
+list[Tree])` is the standard shape for n-ary trees. This is the idiom for
+trees, linked structures, and expression ASTs — it is exactly how the Gust
+compiler models its own AST.
+
+## Choosing between the "one of" types
+
+| You want | Reach for |
+|----------|-----------|
+| One of several *existing* types, carrying no new fields | union type `A \| B` (this page) |
+| A value that is either present or absent | optional `T \| none` (this page) |
+| One of several named constants of a single backing type | [backed `enum`](/lang/enums) |
+| One of several variants, each with its own fields | sum-type `enum` (this page) |
+
+A union type is compositional and structural: any `string | integer` is
+interchangeable with any other. A sum-type `enum` is nominal: each variant is
+its own little record, and `match` recovers the fields safely.

@@ -1,0 +1,225 @@
+---
+title: ansi
+description: "ANSI terminal escape sequences for colored and styled output"
+---
+
+```gust
+use ansi
+```
+
+ANSI terminal escape sequences for colored and styled output. Exposes the
+raw SGR constants plus convenience wrappers that wrap a string in a style
+and a reset.
+
+**Examples**
+
+```gust
+use ansi
+print(ansi.red("error: ") + "file not found")
+```
+
+**On this page:** [`sgr`](#ansi.sgr) · [`fg_param`](#ansi.fg_param) · [`bg_param`](#ansi.bg_param) · [`red`](#ansi.red) · [`green`](#ansi.green) · [`yellow`](#ansi.yellow) · [`blue`](#ansi.blue) · [`magenta`](#ansi.magenta) · [`cyan`](#ansi.cyan) · [`white`](#ansi.white) · [`bold`](#ansi.bold) · [`dim`](#ansi.dim) · [`italic`](#ansi.italic) · [`underline`](#ansi.underline)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `RESET` | `string` | `"\x1b[0m"` |
+| `BOLD` | `string` | `"\x1b[1m"` |
+| `DIM` | `string` | `"\x1b[2m"` |
+| `ITALIC` | `string` | `"\x1b[3m"` |
+| `UNDERLINE` | `string` | `"\x1b[4m"` |
+| `RED` | `string` | `"\x1b[1;31m"` |
+| `GREEN` | `string` | `"\x1b[1;32m"` |
+| `YELLOW` | `string` | `"\x1b[1;33m"` |
+| `BLUE` | `string` | `"\x1b[1;34m"` |
+| `MAGENTA` | `string` | `"\x1b[1;35m"` |
+| `CYAN` | `string` | `"\x1b[1;36m"` |
+| `WHITE` | `string` | `"\x1b[1;37m"` |
+
+## Functions
+
+<a id="ansi.sgr" />
+```gust
+def sgr(parts: list[string]) -> string
+```
+
+Assemble an SGR escape from numeric `parts` (e.g. `["1", "31"]` →
+`"\x1b[1;31m"`). Returns `""` for an empty list so callers can skip
+emitting a matching reset.
+
+**Parameters**
+
+- `parts: list[string]` — SGR parameter strings to join with `;`.
+
+---
+
+<a id="ansi.fg_param" />
+```gust
+def fg_param(color: string) -> string
+```
+
+Map a named color to its foreground SGR parameter, or `""` if unknown.
+Recognizes the 8 base colors plus their `bright_`/`gray` variants. The
+single source of truth for the named-color table (used by `cli`).
+
+**Parameters**
+
+- `color: string` — The named color to map.
+
+---
+
+<a id="ansi.bg_param" />
+```gust
+def bg_param(color: string) -> string
+```
+
+Map a named color to its background SGR parameter, or `""` if unknown.
+Recognizes the 8 base colors plus their `bright_`/`gray` variants.
+
+**Parameters**
+
+- `color: string` — The named color to map.
+
+---
+
+<a id="ansi.red" />
+```gust
+def red(text: string) -> string
+```
+
+Wrap `text` in bold red + reset.
+
+**Parameters**
+
+- `text: string` — The string to colorize.
+
+---
+
+<a id="ansi.green" />
+```gust
+def green(text: string) -> string
+```
+
+Wrap `text` in bold green + reset.
+
+**Parameters**
+
+- `text: string` — The string to colorize.
+
+---
+
+<a id="ansi.yellow" />
+```gust
+def yellow(text: string) -> string
+```
+
+Wrap `text` in bold yellow + reset.
+
+**Parameters**
+
+- `text: string` — The string to colorize.
+
+---
+
+<a id="ansi.blue" />
+```gust
+def blue(text: string) -> string
+```
+
+Wrap `text` in bold blue + reset.
+
+**Parameters**
+
+- `text: string` — The string to colorize.
+
+---
+
+<a id="ansi.magenta" />
+```gust
+def magenta(text: string) -> string
+```
+
+Wrap `text` in bold magenta + reset.
+
+**Parameters**
+
+- `text: string` — The string to colorize.
+
+---
+
+<a id="ansi.cyan" />
+```gust
+def cyan(text: string) -> string
+```
+
+Wrap `text` in bold cyan + reset.
+
+**Parameters**
+
+- `text: string` — The string to colorize.
+
+---
+
+<a id="ansi.white" />
+```gust
+def white(text: string) -> string
+```
+
+Wrap `text` in bold white + reset.
+
+**Parameters**
+
+- `text: string` — The string to colorize.
+
+---
+
+<a id="ansi.bold" />
+```gust
+def bold(text: string) -> string
+```
+
+Wrap `text` in bold + reset.
+
+**Parameters**
+
+- `text: string` — The string to style.
+
+---
+
+<a id="ansi.dim" />
+```gust
+def dim(text: string) -> string
+```
+
+Wrap `text` in dim + reset.
+
+**Parameters**
+
+- `text: string` — The string to style.
+
+---
+
+<a id="ansi.italic" />
+```gust
+def italic(text: string) -> string
+```
+
+Wrap `text` in italic + reset.
+
+**Parameters**
+
+- `text: string` — The string to style.
+
+---
+
+<a id="ansi.underline" />
+```gust
+def underline(text: string) -> string
+```
+
+Wrap `text` in underline + reset.
+
+**Parameters**
+
+- `text: string` — The string to style.

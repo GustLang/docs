@@ -1,0 +1,747 @@
+---
+title: math
+description: "Numeric limits, constants, and mathematical functions: the integer and float range bounds, the constants π, τ, e, infinity, and NaN, absolute value, rounding and truncation, sign and comparison helpers, division remainders, powers and roots, exponentials and logarithms, trigonometric and hyperbolic functions, angle conversion, float classification, and integer helpers such as `gcd`, `lcm`, and `factorial`"
+---
+
+```gust
+use math
+```
+
+Numeric limits, constants, and mathematical functions: the integer and float
+range bounds, the constants π, τ, e, infinity, and NaN, absolute value,
+rounding and truncation, sign and comparison helpers, division remainders,
+powers and roots, exponentials and logarithms, trigonometric and hyperbolic
+functions, angle conversion, float classification, and integer helpers such
+as `gcd`, `lcm`, and `factorial`.
+
+**Examples**
+
+```gust
+use math
+
+def main() -> none
+    print(math.sqrt(2.0))             # 1.4142135623730951
+    print(math.gcd(24, 36))           # 12
+    print(math.clamp(5.0, 0.0, 1.0))  # 1.0
+end
+```
+
+**On this page:** [`copysign`](#math.copysign) · [`fmod`](#math.fmod) · [`remainder`](#math.remainder) · [`sqrt`](#math.sqrt) · [`cbrt`](#math.cbrt) · [`hypot`](#math.hypot) · [`pow`](#math.pow) · [`exp`](#math.exp) · [`exp2`](#math.exp2) · [`expm1`](#math.expm1) · [`log`](#math.log) · [`log2`](#math.log2) · [`log10`](#math.log10) · [`log1p`](#math.log1p) · [`sin`](#math.sin) · [`cos`](#math.cos) · [`tan`](#math.tan) · [`asin`](#math.asin) · [`acos`](#math.acos) · [`atan`](#math.atan) · [`atan2`](#math.atan2) · [`sinh`](#math.sinh) · [`cosh`](#math.cosh) · [`tanh`](#math.tanh) · [`asinh`](#math.asinh) · [`acosh`](#math.acosh) · [`atanh`](#math.atanh) · [`max_int`](#math.max_int) · [`min_int`](#math.min_int) · [`max_float`](#math.max_float) · [`min_float`](#math.min_float) · [`pi`](#math.pi) · [`tau`](#math.tau) · [`e`](#math.e) · [`inf`](#math.inf) · [`nan`](#math.nan) · [`abs_int`](#math.abs_int) · [`abs_float`](#math.abs_float) · [`floor`](#math.floor) · [`ceil`](#math.ceil) · [`trunc`](#math.trunc) · [`round_to`](#math.round_to) · [`sign`](#math.sign) · [`min_of`](#math.min_of) · [`max_of`](#math.max_of) · [`clamp`](#math.clamp) · [`degrees`](#math.degrees) · [`radians`](#math.radians) · [`is_nan`](#math.is_nan) · [`is_inf`](#math.is_inf) · [`is_finite`](#math.is_finite) · [`is_close`](#math.is_close) · [`gcd`](#math.gcd) · [`lcm`](#math.lcm) · [`factorial`](#math.factorial) · [`lerp`](#math.lerp)
+
+## Functions
+
+<a id="math.copysign" />
+```gust
+def foreign copysign(x: float, y: float) -> float
+```
+
+Return `x` with the sign of `y`.
+
+**Parameters**
+
+- `x: float` — The magnitude source.
+- `y: float` — The sign source.
+
+---
+
+<a id="math.fmod" />
+```gust
+def foreign fmod(x: float, y: float) -> float
+```
+
+Floating-point remainder of `x / y` with the sign of `x`.
+
+**Parameters**
+
+- `x: float` — The dividend.
+- `y: float` — The divisor.
+
+---
+
+<a id="math.remainder" />
+```gust
+def foreign remainder(x: float, y: float) -> float
+```
+
+IEEE 754 remainder — `x` minus the nearest integer multiple of `y`.
+
+**Parameters**
+
+- `x: float` — The dividend.
+- `y: float` — The divisor.
+
+---
+
+<a id="math.sqrt" />
+```gust
+def foreign sqrt(x: float) -> float
+```
+
+Square root. Returns NaN for negative input.
+
+**Parameters**
+
+- `x: float` — The radicand.
+
+---
+
+<a id="math.cbrt" />
+```gust
+def foreign cbrt(x: float) -> float
+```
+
+Cube root. Defined for negative input.
+
+**Parameters**
+
+- `x: float` — The radicand.
+
+---
+
+<a id="math.hypot" />
+```gust
+def foreign hypot(x: float, y: float) -> float
+```
+
+Length of the hypotenuse — sqrt(x² + y²) without intermediate overflow.
+
+**Parameters**
+
+- `x: float` — Length of one leg.
+- `y: float` — Length of the other leg.
+
+---
+
+<a id="math.pow" />
+```gust
+def foreign pow(base: float, exp: float) -> float
+```
+
+Raise `base` to `exp`.
+
+**Parameters**
+
+- `base: float` — The base value.
+- `exp: float` — The exponent.
+
+---
+
+<a id="math.exp" />
+```gust
+def foreign exp(x: float) -> float
+```
+
+e raised to the power `x`.
+
+**Parameters**
+
+- `x: float` — The exponent.
+
+---
+
+<a id="math.exp2" />
+```gust
+def foreign exp2(x: float) -> float
+```
+
+2 raised to the power `x`.
+
+**Parameters**
+
+- `x: float` — The exponent.
+
+---
+
+<a id="math.expm1" />
+```gust
+def foreign expm1(x: float) -> float
+```
+
+exp(x) - 1, accurate for small `x`.
+
+**Parameters**
+
+- `x: float` — The exponent.
+
+---
+
+<a id="math.log" />
+```gust
+def foreign log(x: float) -> float
+```
+
+Natural logarithm (base e).
+
+**Parameters**
+
+- `x: float` — The value to take the logarithm of.
+
+---
+
+<a id="math.log2" />
+```gust
+def foreign log2(x: float) -> float
+```
+
+Base-2 logarithm.
+
+**Parameters**
+
+- `x: float` — The value to take the logarithm of.
+
+---
+
+<a id="math.log10" />
+```gust
+def foreign log10(x: float) -> float
+```
+
+Base-10 logarithm.
+
+**Parameters**
+
+- `x: float` — The value to take the logarithm of.
+
+---
+
+<a id="math.log1p" />
+```gust
+def foreign log1p(x: float) -> float
+```
+
+log(1 + x), accurate for small `x`.
+
+**Parameters**
+
+- `x: float` — The value added to 1 before taking the logarithm.
+
+---
+
+<a id="math.sin" />
+```gust
+def foreign sin(x: float) -> float
+```
+
+Sine of `x` (radians).
+
+**Parameters**
+
+- `x: float` — The angle in radians.
+
+---
+
+<a id="math.cos" />
+```gust
+def foreign cos(x: float) -> float
+```
+
+Cosine of `x` (radians).
+
+**Parameters**
+
+- `x: float` — The angle in radians.
+
+---
+
+<a id="math.tan" />
+```gust
+def foreign tan(x: float) -> float
+```
+
+Tangent of `x` (radians).
+
+**Parameters**
+
+- `x: float` — The angle in radians.
+
+---
+
+<a id="math.asin" />
+```gust
+def foreign asin(x: float) -> float
+```
+
+Arcsine — returns radians in [-π/2, π/2].
+
+**Parameters**
+
+- `x: float` — The sine value, in [-1, 1].
+
+---
+
+<a id="math.acos" />
+```gust
+def foreign acos(x: float) -> float
+```
+
+Arccosine — returns radians in [0, π].
+
+**Parameters**
+
+- `x: float` — The cosine value, in [-1, 1].
+
+---
+
+<a id="math.atan" />
+```gust
+def foreign atan(x: float) -> float
+```
+
+Arctangent — returns radians in (-π/2, π/2).
+
+**Parameters**
+
+- `x: float` — The tangent value.
+
+---
+
+<a id="math.atan2" />
+```gust
+def foreign atan2(y: float, x: float) -> float
+```
+
+Two-argument arctangent — angle of the vector (x, y) in (-π, π].
+
+**Parameters**
+
+- `y: float` — The y-coordinate of the vector.
+- `x: float` — The x-coordinate of the vector.
+
+---
+
+<a id="math.sinh" />
+```gust
+def foreign sinh(x: float) -> float
+```
+
+Hyperbolic sine.
+
+**Parameters**
+
+- `x: float` — The argument.
+
+---
+
+<a id="math.cosh" />
+```gust
+def foreign cosh(x: float) -> float
+```
+
+Hyperbolic cosine.
+
+**Parameters**
+
+- `x: float` — The argument.
+
+---
+
+<a id="math.tanh" />
+```gust
+def foreign tanh(x: float) -> float
+```
+
+Hyperbolic tangent.
+
+**Parameters**
+
+- `x: float` — The argument.
+
+---
+
+<a id="math.asinh" />
+```gust
+def foreign asinh(x: float) -> float
+```
+
+Inverse hyperbolic sine.
+
+**Parameters**
+
+- `x: float` — The argument.
+
+---
+
+<a id="math.acosh" />
+```gust
+def foreign acosh(x: float) -> float
+```
+
+Inverse hyperbolic cosine. Defined for `x >= 1`.
+
+**Parameters**
+
+- `x: float` — The argument, must be >= 1.
+
+---
+
+<a id="math.atanh" />
+```gust
+def foreign atanh(x: float) -> float
+```
+
+Inverse hyperbolic tangent. Defined for `-1 < x < 1`.
+
+**Parameters**
+
+- `x: float` — The argument, must be in (-1, 1).
+
+---
+
+<a id="math.max_int" />
+```gust
+def max_int() -> integer
+```
+
+Largest representable signed 64-bit integer (9223372036854775807).
+
+---
+
+<a id="math.min_int" />
+```gust
+def min_int() -> integer
+```
+
+Smallest representable signed 64-bit integer (-9223372036854775808).
+
+---
+
+<a id="math.max_float" />
+```gust
+def max_float() -> float
+```
+
+Largest finite double-precision float.
+
+---
+
+<a id="math.min_float" />
+```gust
+def min_float() -> float
+```
+
+Most negative finite double-precision float (-DBL_MAX), the
+counterpart to `max_float`. (Not the smallest positive normal.)
+
+---
+
+<a id="math.pi" />
+```gust
+def pi() -> float
+```
+
+π — the ratio of a circle's circumference to its diameter.
+
+---
+
+<a id="math.tau" />
+```gust
+def tau() -> float
+```
+
+τ = 2π — one full turn in radians.
+
+---
+
+<a id="math.e" />
+```gust
+def e() -> float
+```
+
+Euler's number — the base of the natural logarithm.
+
+---
+
+<a id="math.inf" />
+```gust
+def inf() -> float
+```
+
+Positive infinity. Negate with `-math.inf()` for negative infinity.
+
+---
+
+<a id="math.nan" />
+```gust
+def nan() -> float
+```
+
+Not-a-number.
+
+<Note>
+Test for NaN with `math.is_nan(x)`; `x == math.nan()` is always false.
+</Note>
+
+---
+
+<a id="math.abs_int" />
+```gust
+def abs_int(x: integer) -> integer
+```
+
+Absolute value of an integer.
+
+**Parameters**
+
+- `x: integer` — The integer whose magnitude is returned.
+
+---
+
+<a id="math.abs_float" />
+```gust
+def abs_float(x: float) -> float
+```
+
+Absolute value of a float.
+
+**Parameters**
+
+- `x: float` — The float whose magnitude is returned.
+
+---
+
+<a id="math.floor" />
+```gust
+def floor(x: float) -> integer
+```
+
+Round toward negative infinity.
+
+**Parameters**
+
+- `x: float` — The value to round down.
+
+---
+
+<a id="math.ceil" />
+```gust
+def ceil(x: float) -> integer
+```
+
+Round toward positive infinity.
+
+**Parameters**
+
+- `x: float` — The value to round up.
+
+---
+
+<a id="math.trunc" />
+```gust
+def trunc(x: float) -> integer
+```
+
+Round toward zero (drop the fractional part).
+
+**Parameters**
+
+- `x: float` — The value to truncate.
+
+---
+
+<a id="math.round_to" />
+```gust
+def round_to(x: float, decimals: integer) -> float
+```
+
+Round to N decimal places, halves away from zero.
+
+**Parameters**
+
+- `x: float` — The value to round.
+- `decimals: integer` — Number of decimal places to retain.
+
+---
+
+<a id="math.sign" />
+```gust
+def sign(x: float) -> integer
+```
+
+Returns -1, 0, or 1 according to the sign of `x`.
+
+**Parameters**
+
+- `x: float` — The value whose sign is reported.
+
+---
+
+<a id="math.min_of" />
+```gust
+def min_of(a: float, b: float) -> float
+```
+
+Smaller of two floats. Propagates NaN if either input is NaN.
+
+**Parameters**
+
+- `a: float` — First value to compare.
+- `b: float` — Second value to compare.
+
+---
+
+<a id="math.max_of" />
+```gust
+def max_of(a: float, b: float) -> float
+```
+
+Larger of two floats. Propagates NaN if either input is NaN.
+
+**Parameters**
+
+- `a: float` — First value to compare.
+- `b: float` — Second value to compare.
+
+---
+
+<a id="math.clamp" />
+```gust
+def clamp(x: float, low: float, high: float) -> float
+```
+
+Constrain `x` to the inclusive range [low, high].
+
+**Parameters**
+
+- `x: float` — The value to constrain.
+- `low: float` — Lower bound of the range.
+- `high: float` — Upper bound of the range.
+
+---
+
+<a id="math.degrees" />
+```gust
+def degrees(radians: float) -> float
+```
+
+Convert radians to degrees.
+
+**Parameters**
+
+- `radians: float` — The angle in radians.
+
+---
+
+<a id="math.radians" />
+```gust
+def radians(degrees: float) -> float
+```
+
+Convert degrees to radians.
+
+**Parameters**
+
+- `degrees: float` — The angle in degrees.
+
+---
+
+<a id="math.is_nan" />
+```gust
+def is_nan(x: float) -> bool
+```
+
+True if `x` is NaN. The only safe way to test for NaN.
+
+**Parameters**
+
+- `x: float` — The value to test.
+
+---
+
+<a id="math.is_inf" />
+```gust
+def is_inf(x: float) -> bool
+```
+
+True if `x` is positive or negative infinity.
+
+**Parameters**
+
+- `x: float` — The value to test.
+
+---
+
+<a id="math.is_finite" />
+```gust
+def is_finite(x: float) -> bool
+```
+
+True if `x` is neither NaN nor infinite.
+
+**Parameters**
+
+- `x: float` — The value to test.
+
+---
+
+<a id="math.is_close" />
+```gust
+def is_close(a: float, b: float, tol: float) -> bool
+```
+
+True if `|a - b| <= tol`. Use for float equality tests.
+
+**Parameters**
+
+- `a: float` — First value to compare.
+- `b: float` — Second value to compare.
+- `tol: float` — Maximum allowed absolute difference.
+
+---
+
+<a id="math.gcd" />
+```gust
+def gcd(a: integer, b: integer) -> integer
+```
+
+Greatest common divisor of two integers (Euclidean algorithm).
+
+**Parameters**
+
+- `a: integer` — First integer.
+- `b: integer` — Second integer.
+
+---
+
+<a id="math.lcm" />
+```gust
+def lcm(a: integer, b: integer) -> integer
+```
+
+Least common multiple of two integers.
+
+**Parameters**
+
+- `a: integer` — First integer.
+- `b: integer` — Second integer.
+
+---
+
+<a id="math.factorial" />
+```gust
+def factorial(n: integer) -> integer
+```
+
+n! — the product of every integer from 1 to n.
+
+**Parameters**
+
+- `n: integer` — The non-negative integer to take the factorial of.
+
+**Raises**
+
+- `ValueError` — If `n` is negative, or greater than 20 (the result would overflow a signed 64-bit integer).
+
+---
+
+<a id="math.lerp" />
+```gust
+def lerp(a: float, b: float, t: float) -> float
+```
+
+Linear interpolation: returns `a + (b - a) * t`. `t` is not clamped.
+
+**Parameters**
+
+- `a: float` — Start value (returned when `t` is 0).
+- `b: float` — End value (returned when `t` is 1).
+- `t: float` — Interpolation factor.

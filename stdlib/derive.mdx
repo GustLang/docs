@@ -1,0 +1,245 @@
+---
+title: derive
+description: "Authoring surface for compile-time derive macros"
+---
+
+```gust
+use derive
+```
+
+Authoring surface for compile-time derive macros.
+
+A derive is an ordinary Gust function, registered with `@derive("name")`, that
+the compiler runs during compilation for every declaration tagged `@name`. It
+receives a `Struct` describing the decorated type and returns a `Code` fragment
+— generated Gust source that the compiler parses and splices back in before
+analysis. The contract is uniform across every derive: a `Struct` in, a `Code`
+fragment out.
+
+Build `Code` with the `quote … end` construct (real Gust with `$ident` /
+`${expr}` interpolation holes) rather than string concatenation; assemble
+per-field fragments with ordinary list comprehensions and `join`.
+
+**Examples**
+
+```gust
+@derive("model")
+def model(s: derive.Struct) -> derive.Code
+    cols := derive.join([quote $f.name end, for f in s.fields], ", ")
+    return quote
+        def $s.name._columns() -> list[string]
+            return [$cols]
+        end
+    end
+end
+```
+
+**On this page:** [`Code`](#Code) · [`Field`](#Field) · [`Struct`](#Struct) · [`raw`](#derive.raw) · [`join`](#derive.join) · [`str`](#derive.str) · [`int_`](#derive.int_) · [`bool_`](#derive.bool_)
+
+## `Code`
+
+<a id="Code" />
+A fragment of generated Gust source — the output of `quote … end` and the
+return type of a derive. Opaque: produced only by `quote` / the helpers
+below and consumed by returning it from the derive.
+
+```gust
+def Code
+
+    src: string
+
+end
+```
+
+**Fields**
+
+- `src: string` — The rendered source text of the fragment.
+
+## `Field`
+
+<a id="Field" />
+One field of a decorated struct, as seen by a derive.
+
+```gust
+def Field
+
+    name: string
+    type_tag: string
+    nullable: bool
+
+end
+```
+
+**Fields**
+
+- `name: string` — The field's name.
+- `type_tag: string` — The field's declared type as a tag string (`integer`, `string`, `integer|none`, `list[string]`, …).
+- `nullable: bool` — True when the declared type is `T | none`.
+
+## `Struct`
+
+<a id="Struct" />
+The decorated struct handed to a derive — its name, fields (in
+declaration order), and the arguments of the triggering decorator
+(`@model("posts")` → `dec_args == ["posts"]`).
+
+`import_paths`/`import_aliases` are parallel lists recording how the
+program being compiled imported each package — so a derive that emits
+code referencing its own (or another) package can qualify it with the
+alias the user actually chose, rather than hard-coding one. Read them
+via `alias_for`.
+
+```gust
+def Struct
+
+    name: string
+    fields: list[Field]
+    dec_args: list[string]
+    import_paths: list[string]
+    import_aliases: list[string]
+
+end
+```
+
+**Fields**
+
+- `name: string` — The struct's name.
+- `fields: list[Field]` — The struct's fields, in declaration order.
+- `dec_args: list[string]` — String arguments passed to the decorator, in order.
+- `import_paths: list[string]` — Imported package paths (e.g. `"database.orm"`), in source order.
+- `import_aliases: list[string]` — The alias each path was bound to, aligned with `import_paths`.
+
+**Methods**
+
+<a id="Struct.alias_for" />
+```gust
+def Struct.alias_for(path: string, fallback: string) -> string
+```
+
+The alias the program bound package `path` to (so generated code can
+qualify a reference with the user's chosen name even when they wrote
+`use database.orm as models`). Returns `fallback` when `path` was not
+imported — generated code that needs the package will then fail to
+resolve under `fallback`, which is the honest signal that the import is
+missing.
+
+**Parameters**
+
+- `path` — The dotted package path to look up (e.g. `"database.orm"`).
+- `fallback` — The alias to assume when `path` was not imported.
+
+---
+
+<a id="Struct.arg_or" />
+```gust
+def Struct.arg_or(label: string, fallback: string) -> string
+```
+
+The first decorator argument, or `fallback` when none was given. `label`
+documents the argument's role (e.g. "model") and is not otherwise used.
+
+**Parameters**
+
+- `label` — A human-readable name for the argument's role.
+- `fallback` — The value to return when the decorator had no argument.
+
+---
+
+<a id="Struct.field_named" />
+```gust
+def Struct.field_named(name: string) -> Field
+```
+
+The field named `name`.
+
+**Parameters**
+
+- `name` — The field name to look up.
+
+**Raises**
+
+- `KeyError` — when the struct has no field named `name`.
+
+---
+
+<a id="Struct.has_field" />
+```gust
+def Struct.has_field(name: string) -> bool
+```
+
+Whether the struct declares a field named `name`.
+
+**Parameters**
+
+- `name` — The field name to test for.
+
+## Functions
+
+<a id="derive.raw" />
+```gust
+def raw(src: string) -> Code
+```
+
+A `Code` fragment from a literal source string — an escape hatch for the
+rare case `quote` can't express. Prefer `quote … end`.
+
+**Parameters**
+
+- `src: string` — Raw Gust source.
+
+---
+
+<a id="derive.join" />
+```gust
+def join(parts: list[Code], sep: string) -> Code
+```
+
+Concatenate `parts` into one `Code`, separating them with `sep`. The way
+to splice a per-field list into one hole — `$inits` where
+`inits := join([...], ", ")`.
+
+**Parameters**
+
+- `parts: list[Code]` — The fragments to concatenate, in order.
+- `sep: string` — The separator inserted between fragments.
+
+---
+
+<a id="derive.str" />
+```gust
+def str(s: string) -> Code
+```
+
+A `Code` fragment that renders `s` as a Gust string *literal* (quoted and
+escaped) — use in a hole where the generated code needs a string constant,
+e.g. `$str(table)` → `"user"`.
+
+**Parameters**
+
+- `s: string` — The string to embed as a literal.
+
+---
+
+<a id="derive.int_" />
+```gust
+def int_(n: integer) -> Code
+```
+
+A `Code` fragment rendering `n` as an integer literal.
+
+**Parameters**
+
+- `n: integer` — The integer to embed.
+
+---
+
+<a id="derive.bool_" />
+```gust
+def bool_(b: bool) -> Code
+```
+
+A `Code` fragment rendering `b` as a boolean literal.
+
+**Parameters**
+
+- `b: bool` — The boolean to embed.

@@ -1,0 +1,141 @@
+---
+title: integer
+description: "64-bit signed integer"
+---
+
+64-bit signed integer. Backed by `int64_t` in the C runtime.
+
+Literals:
+
+```gust
+42                  # decimal
+-7                  # negative
+0xff                # hex
+0b1010              # binary
+0o755               # octal
+1_000_000           # underscore separators
+```
+
+Operators:
+
+```gust
++ - *               # arithmetic
+/                   # true division (always returns float)
+//                  # floor division (truncates toward zero) — raises ValueError on `// 0`
+%                   # modulo — raises ValueError on `% 0`
+== != < > <= >=     # comparison
+& | ^ ~ << >>       # bitwise
+```
+
+Casting:
+
+```gust
+x as string         # integer to string
+x as float          # widen to float
+"42" as integer     # parse from string (raises ValueError on bad input)
+3.14 as integer     # truncate float toward zero
+```
+
+Range: -9223372036854775808 to 9223372036854775807
+See math.max_int() and math.min_int()
+
+## Dunders
+
+<a id="integer.__string" />
+```gust
+def integer.__string() -> string
+```
+
+Triggered by `print(n)` and f-string interpolation.
+
+---
+
+<a id="integer.__integer" />
+```gust
+def integer.__integer() -> integer
+```
+
+Triggered by `n as integer`. Identity.
+
+---
+
+<a id="integer.__float" />
+```gust
+def integer.__float() -> float
+```
+
+Triggered by `n as float`. Widens to double-precision.
+
+---
+
+<a id="integer.__bool" />
+```gust
+def integer.__bool() -> bool
+```
+
+Triggered by `n as bool`. Non-zero is true.
+
+---
+
+<a id="integer.__eq" />
+```gust
+def integer.__eq(other: integer) -> bool
+```
+
+Triggered by `==` and `!=` (auto-negated).
+
+**Parameters**
+
+- `other: integer` — The integer to compare against.
+
+---
+
+<a id="integer.__lt" />
+```gust
+def integer.__lt(other: integer) -> bool
+```
+
+Triggered by `<`.
+
+**Parameters**
+
+- `other: integer` — The integer to compare against.
+
+---
+
+<a id="integer.__lte" />
+```gust
+def integer.__lte(other: integer) -> bool
+```
+
+Triggered by `<=`.
+
+**Parameters**
+
+- `other: integer` — The integer to compare against.
+
+---
+
+<a id="integer.__gt" />
+```gust
+def integer.__gt(other: integer) -> bool
+```
+
+Triggered by `>`.
+
+**Parameters**
+
+- `other: integer` — The integer to compare against.
+
+---
+
+<a id="integer.__gte" />
+```gust
+def integer.__gte(other: integer) -> bool
+```
+
+Triggered by `>=`.
+
+**Parameters**
+
+- `other: integer` — The integer to compare against.

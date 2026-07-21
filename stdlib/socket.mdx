@@ -1,0 +1,410 @@
+---
+title: socket
+description: "Thin TCP socket primitives over POSIX sockets, with no external dependencies"
+---
+
+```gust
+use socket
+```
+
+Thin TCP socket primitives over POSIX sockets, with no external dependencies.
+
+This package exposes the raw connect / listen / accept / send / recv plumbing so
+that byte-stream protocols can be written in Gust itself rather than in C. It is
+the layer the `http` and `websockets` packages are built on.
+
+Handles are plain file descriptors. `connect` and `listen` are the entry points;
+`Listener.accept` yields a `Socket`, and a `Socket` carries the send/recv methods.
+All operations raise `IOError` on a socket-level failure.
+
+Plaintext only — there is no TLS here. `wss://` / `https://` need a TLS layer
+wrapping these sockets; the `ssl` package provides exactly that.
+
+**Examples**
+
+```gust
+use socket
+
+def main() -> none
+    conn := socket.connect("example.com", 80)
+    conn.send("GET / HTTP/1.0\r\nHost: example.com\r\n\r\n")
+    reply := conn.recv_string(4096)
+    print(reply)
+    conn.close()
+end
+```
+
+**On this page:** [`Socket`](#Socket) · [`Listener`](#Listener) · [`Stream`](#Stream) · [`connect`](#socket.connect) · [`listen`](#socket.listen) · [`from_fd`](#socket.from_fd) · [`listener_from_fd`](#socket.listener_from_fd) · [`set_timeout`](#socket.set_timeout)
+
+## `Socket`
+
+<a id="Socket" />
+A connected TCP socket.
+
+Obtain one from `connect(host, port)` (client side) or `Listener.accept()`
+(server side). `recv` returning empty `bytes` means the peer closed the
+connection.
+
+**Implements:** [`Stream`](#Stream)
+
+```gust
+def Socket implements Stream
+
+    _fd: integer
+    _open: bool
+
+end
+```
+
+**Fields**
+
+- `_fd: integer` — The underlying file descriptor.
+- `_open: bool` — False once `close()` has been called locally.
+
+**Methods**
+
+<a id="Socket.send" />
+```gust
+def Socket.send(text: string) -> none
+```
+
+Send `text` in full, looping over short writes.
+
+This is for text protocols: the string is sent up to its first NUL byte. For
+arbitrary binary data (which may contain NULs) use `send_bytes`.
+
+**Parameters**
+
+- `text` — The text to send.
+
+**Raises**
+
+- `IOError` — If the connection drops mid-send.
+
+---
+
+<a id="Socket.send_bytes" />
+```gust
+def Socket.send_bytes(data: bytes) -> none
+```
+
+Send every byte of `data` in full, looping over short writes. Length-aware,
+so embedded NUL bytes are sent correctly.
+
+**Parameters**
+
+- `data` — The raw bytes to send.
+
+**Raises**
+
+- `IOError` — If the send fails.
+
+---
+
+<a id="Socket.recv" />
+```gust
+def Socket.recv(max: integer) -> bytes
+```
+
+Read whatever bytes are available now, up to `max`, and return them.
+
+Blocks until at least one byte arrives, then returns immediately — it does
+not wait for `max` bytes. An empty result means the peer closed the
+connection (EOF); use that to end a read loop. At most 16 MiB is returned
+per call regardless of `max`.
+
+**Parameters**
+
+- `max` — Maximum number of bytes to read in this call.
+
+**Raises**
+
+- `IOError` — On a socket error.
+
+---
+
+<a id="Socket.recv_string" />
+```gust
+def Socket.recv_string(max: integer) -> string
+```
+
+Like `recv`, but decode the bytes as a string. Convenient for text
+protocols; an empty string means EOF.
+
+**Parameters**
+
+- `max` — Maximum number of bytes to read in this call.
+
+**Raises**
+
+- `IOError` — On a socket error.
+
+---
+
+<a id="Socket.recv_exact" />
+```gust
+def Socket.recv_exact(n: integer) -> bytes
+```
+
+Read exactly `n` bytes, looping until all of them arrive, and return them.
+
+Useful for framed protocols where the next field's length is known (e.g. a
+fixed-size frame header).
+
+**Parameters**
+
+- `n` — The exact number of bytes to read.
+
+**Raises**
+
+- `IOError` — If the peer closes before `n` bytes have been read.
+
+---
+
+<a id="Socket.close" />
+```gust
+def Socket.close() -> none
+```
+
+Close the socket. Idempotent — closing an already-closed socket is a
+no-op.
+
+---
+
+<a id="Socket.is_open" />
+```gust
+def Socket.is_open() -> bool
+```
+
+True while the socket has not been closed locally. This does not detect a
+peer-side close — a `recv` returning empty `bytes` is the signal for that.
+
+---
+
+<a id="Socket.fd" />
+```gust
+def Socket.fd() -> integer
+```
+
+The raw file descriptor, for callers that need to poll it directly.
+
+---
+
+<a id="Socket.peer_ip" />
+```gust
+def Socket.peer_ip() -> string
+```
+
+The remote peer's IP address as text (IPv4 or IPv6), or "" if it
+cannot be determined.
+
+## `Listener`
+
+<a id="Listener" />
+A listening TCP server socket. Create with `listen(port)`, then call
+`.accept()` in a loop to take incoming connections.
+
+```gust
+def Listener
+
+    _fd: integer
+    _open: bool
+
+end
+```
+
+**Fields**
+
+- `_fd: integer` — The underlying listening file descriptor.
+- `_open: bool` — False once `close()` has been called.
+
+**Methods**
+
+<a id="Listener.accept" />
+```gust
+def Listener.accept() -> Socket
+```
+
+Block until the next client connects and return it as a `Socket`.
+
+**Raises**
+
+- `IOError` — If `accept` fails.
+
+---
+
+<a id="Listener.close" />
+```gust
+def Listener.close() -> none
+```
+
+Stop listening and close the listening socket. Idempotent.
+
+---
+
+<a id="Listener.fd" />
+```gust
+def Listener.fd() -> integer
+```
+
+The raw file descriptor, for callers that need to poll it directly.
+
+## `Stream`
+
+<a id="Stream" />
+A bidirectional byte stream — the shared surface of `socket.Socket`
+and `ssl.SSLSocket`.
+
+Protocol layers (`http`, `websockets`) take a `Stream` rather than a
+concrete socket type, so the same code drives a plaintext `ws://`/`http://`
+connection or a TLS `wss://`/`https://` one depending on which value is
+handed in. `recv` returning empty `bytes` always means the peer closed.
+
+**Implemented by:** [`Socket`](#Socket)
+
+**Methods**
+
+<a id="Stream.send" />
+```gust
+def Stream.send(text: string) -> none
+```
+
+---
+
+<a id="Stream.send_bytes" />
+```gust
+def Stream.send_bytes(data: bytes) -> none
+```
+
+---
+
+<a id="Stream.recv" />
+```gust
+def Stream.recv(max: integer) -> bytes
+```
+
+---
+
+<a id="Stream.recv_string" />
+```gust
+def Stream.recv_string(max: integer) -> string
+```
+
+---
+
+<a id="Stream.recv_exact" />
+```gust
+def Stream.recv_exact(n: integer) -> bytes
+```
+
+---
+
+<a id="Stream.close" />
+```gust
+def Stream.close() -> none
+```
+
+---
+
+<a id="Stream.is_open" />
+```gust
+def Stream.is_open() -> bool
+```
+
+---
+
+<a id="Stream.fd" />
+```gust
+def Stream.fd() -> integer
+```
+
+---
+
+<a id="Stream.peer_ip" />
+```gust
+def Stream.peer_ip() -> string
+```
+
+## Functions
+
+<a id="socket.connect" />
+```gust
+def connect(host: string, port: integer) -> Socket
+```
+
+Open a TCP connection to `host:port` and return the connected socket.
+
+The host is resolved via the system resolver, so a hostname or a literal
+IPv4/IPv6 address both work.
+
+**Parameters**
+
+- `host: string` — Hostname or IP address to connect to.
+- `port: integer` — TCP port to connect to.
+
+**Raises**
+
+- `IOError` — If resolution or the connection fails.
+
+---
+
+<a id="socket.listen" />
+```gust
+def listen(port: integer) -> Listener
+```
+
+Bind a TCP listening socket on all interfaces at `port` and return it.
+
+`SO_REUSEADDR` is set and the listen backlog is 128.
+
+**Parameters**
+
+- `port: integer` — TCP port to listen on.
+
+**Raises**
+
+- `IOError` — If the socket cannot be created, bound, or put into the listening state.
+
+---
+
+<a id="socket.from_fd" />
+```gust
+def from_fd(fd: integer) -> Socket
+```
+
+Wrap an already-connected file descriptor as a `Socket` — e.g. one
+accepted by a lower layer that hands back a raw fd. The descriptor is
+adopted as-is (not duplicated).
+
+**Parameters**
+
+- `fd: integer` — A connected socket file descriptor.
+
+---
+
+<a id="socket.listener_from_fd" />
+```gust
+def listener_from_fd(fd: integer) -> Listener
+```
+
+Wrap an existing listening file descriptor as a `Listener`.
+
+**Parameters**
+
+- `fd: integer` — A listening socket file descriptor.
+
+---
+
+<a id="socket.set_timeout" />
+```gust
+def set_timeout(fd: integer, ms: integer) -> none
+```
+
+Bound how long a single `recv`/`send` on `fd` may block, in milliseconds.
+A stalled call past the timeout raises `IOError`, the same as a hung peer. A
+`ms` of 0 clears the timeout, so calls block indefinitely.
+
+**Parameters**
+
+- `fd: integer` — A connected socket file descriptor.
+- `ms: integer` — Timeout in milliseconds; 0 to block indefinitely.

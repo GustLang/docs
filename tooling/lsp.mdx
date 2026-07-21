@@ -1,0 +1,189 @@
+---
+title: Language server (LSP)
+description: Run the Gust language server and wire it into LSP-aware editors
+---
+
+Gust ships a full Language Server Protocol implementation, so you get the same editor features everywhere: hover types, completion, go-to-definition, live diagnostics, semantic highlighting, and more.
+
+The server analyzes in-process. The compiler is linked directly into the `gust` binary, so each request drives the real lexer, parser, and analyzer with no subprocess and no separate install. Hover, definition, and semantic tokens resolve the symbol under the cursor through the analyzer's typed AST, so the type you see is the one the compiler actually inferred, not a textual guess.
+
+## Running the server
+
+The language server is built into the compiler. Start it with:
+
+```bash
+gust lsp
+```
+
+It speaks JSON-RPC over stdio, which is what every mainstream LSP client expects. A `--stdio` flag is accepted for client compatibility, but stdio is the only transport and is already the default:
+
+```bash
+gust lsp --stdio
+```
+
+You rarely run this by hand — your editor launches it for you (see [Editor setup](#editor-setup)). Running it manually in a terminal is useful mainly for debugging, since the server logs to stderr.
+
+## Capabilities
+
+The server advertises these features in its `initialize` response:
+
+| Feature | Method | Supported |
+|---|---|:---:|
+| Diagnostics (errors and warnings) | `textDocument/publishDiagnostics` | ✓ |
+| Hover — type, signature, and doc | `textDocument/hover` | ✓ |
+| Completion — keywords, identifiers, members | `textDocument/completion` | ✓ |
+| Signature help | `textDocument/signatureHelp` | ✓ |
+| Go-to-definition | `textDocument/definition` | ✓ |
+| Go-to-type-definition | `textDocument/typeDefinition` | ✓ |
+| Go-to-implementation | `textDocument/implementation` | ✓ |
+| Find references | `textDocument/references` | ✓ |
+| Document highlight | `textDocument/documentHighlight` | ✓ |
+| Document symbols (outline) | `textDocument/documentSymbol` | ✓ |
+| Semantic highlighting | `textDocument/semanticTokens/full` | ✓ |
+| Code actions (quick fixes) | `textDocument/codeAction` | ✓ |
+| Formatting (whole document) | `textDocument/formatting` | ✓ |
+| `gust.toml` validation + completion | (over completion + diagnostics) | ✓ |
+| Rename | `textDocument/rename` | *planned* |
+
+Document sync is full-document: the client sends the whole buffer on every keystroke, and the server reads that live buffer — unsaved edits are honored, not just what's on disk.
+
+## Editor setup
+
+<Tabs>
+  <Tab title="VS Code">
+
+  Install the [Gust extension](/tooling/vscode). Nothing else to configure — it bundles the LSP client and launches the server automatically.
+
+  </Tab>
+  <Tab title="Neovim (nvim-lspconfig)">
+
+  ```lua
+  require('lspconfig').configs.gust = {
+    default_config = {
+      cmd = { 'gust', 'lsp' },
+      filetypes = { 'gust' },
+      root_dir = require('lspconfig.util').find_git_ancestor,
+    },
+  }
+  require('lspconfig').gust.setup({})
+  ```
+
+  </Tab>
+  <Tab title="Helix">
+
+  Add to `languages.toml`:
+  ```toml
+  [[language]]
+  name = "gust"
+  scope = "source.gust"
+  file-types = ["g"]
+  roots = ["gust.toml", ".git"]
+  language-servers = ["gust-lsp"]
+
+  [language-server.gust-lsp]
+  command = "gust"
+  args = ["lsp"]
+  ```
+
+  </Tab>
+  <Tab title="Zed">
+
+  ```json
+  {
+    "languages": {
+      "Gust": {
+        "language_server": {
+          "command": "gust",
+          "arguments": ["lsp"]
+        }
+      }
+    }
+  }
+  ```
+
+  </Tab>
+</Tabs>
+
+## Diagnostics
+
+Diagnostics are the core feature and republish automatically on open, change, and save — you never have to save to see an error. Every diagnostic carries its source range and its rule code:
+
+- **Type errors** — mismatched argument types, missing returns, undefined names, and every other semantic check the analyzer runs.
+- **Parser errors** — syntactic mistakes reported with line, column, and a source snippet.
+- **Lint warnings** — the analyzer's style and correctness rules (shadowing, unused variables, mutability, naming, and more), tagged with their `G####` / `W####` codes.
+
+Cross-package errors are routed to the file that produced them, not just the file you're editing. When a file in your project has no `main`, the server still analyzes it as a library so its diagnostics show up.
+
+Because each diagnostic carries its rule code, you can silence one occurrence with a `#gust-ignore <code>` directive on the offending line, or silence it project-wide via `[lint].ignore` in `gust.toml`. See [linting rules](/rules) for the full catalog.
+
+## Hover
+
+Hover on any identifier to see what it is. The panel renders as Markdown with a Gust code block, and the label depends on the kind of symbol:
+
+- **Functions and methods** show a `(function)` or `(method)` tag, the name, each parameter on its own line, and the return type on the closing line.
+- **Structs and constructors** show the field or parameter list in the same multi-line form.
+- **Enums and interfaces** show the declaration name followed by each variant or requirement on its own line.
+- **Variables, fields, parameters, and constants** show the name and its inferred type.
+
+Any docstring attached to the declaration is included below the signature. The cursor has to be on an identifier — hovering whitespace, punctuation, or a comment returns nothing.
+
+## Navigation
+
+Three related "go to" requests answer different questions about the symbol under the cursor:
+
+- **Go-to-definition** (`textDocument/definition`) jumps to where the symbol is declared — the `def`, field, parameter, or `use` that introduced it. It resolves across files and across packages.
+- **Go-to-type-definition** (`textDocument/typeDefinition`) jumps to the declaration of the symbol's *type* rather than the symbol itself. On a variable of type `Foo`, it lands on `def Foo`.
+- **Go-to-implementation** (`textDocument/implementation`) jumps from an interface (or an interface method) to the concrete types that implement it.
+
+**Find references** (`textDocument/references`) lists every use of the symbol under the cursor. **Document highlight** (`textDocument/documentHighlight`) does the same thing scoped to the current file, so your editor can highlight all occurrences of the identifier you're on.
+
+## Document symbols
+
+The outline (`textDocument/documentSymbol`) is hierarchical. Top-level declarations — functions, structs, interfaces, errors, and enums — appear as parents, and a container's members nest underneath it: a struct's fields and methods, an enum's variants, an interface's requirements. This drives the editor's outline view, breadcrumb bar, and symbol search.
+
+## Semantic tokens
+
+Semantic highlighting (`textDocument/semanticTokens/full`) colors identifiers by what the analyzer resolved them to, not by a regex guess — a name colored as a `type` really is a type. The server answers the whole document per request; it advertises no range or delta mode. After a save it sends a `workspace/semanticTokens/refresh` so the client re-fetches once the freshly analyzed tree is ready.
+
+The legend covers these token types (no token modifiers are used):
+
+`namespace`, `type`, `struct`, `interface`, `enum`, `enumMember`, `parameter`, `variable`, `property`, `function`, `method`.
+
+Packages map to `namespace`, error types to `type`, constants to `variable`, and fields to `property`; everything else maps to the like-named token.
+
+## Completion
+
+Completion (`textDocument/completion`) offers keywords, in-scope identifiers, and — after a `.` — the members of the receiver's type. Completion triggers automatically on `.`, space, `>`, `/`, and `"`, in addition to being invokable on demand.
+
+Completion needs the buffer to parse far enough to locate the cursor's context, and it reads your live unsaved buffer. If completion comes back empty, the surrounding code usually has a syntax error the analyzer can't see past.
+
+## Signature help
+
+Signature help (`textDocument/signatureHelp`) pops the parameter list of the call you're inside and highlights the active argument. It triggers on `(` and re-triggers on `,` as you move between arguments.
+
+## Code actions
+
+When the cursor is on a diagnostic, the server offers quick fixes (`textDocument/codeAction`, kind `quickfix`):
+
+- **Apply the suggested edit** — for any warning the analyzer attached an autofix to. This is the same fix `gust check --fix` applies, and it's offered first so it's the preferred action. Both single-line and multi-line range fixes are supported.
+- **Add the missing import** — for an unimported-symbol error (`G0701`), inserts the suggested `use X from Y` line pulled from the diagnostic message.
+- **Add `#gust-ignore <code>`** — appends the directive to the offending line, or extends an existing `#gust-ignore` list already on that line, silencing that one rule.
+
+## Formatting
+
+Whole-document formatting (`textDocument/formatting`) runs the same formatter as `gust format`. A `gust.toml` manifest is never reformatted — formatting it returns no edits — so only your `.g` source is touched.
+
+## `gust.toml` support
+
+The server also understands `gust.toml` manifests. It validates them against the same schema the manifest loader uses: it warns on unknown sections and keys, checks the `build.optimize` enum and boolean-valued keys, and completes section headers, keys, and enum values as you type.
+
+## How analysis runs
+
+Each request runs the compiler in-process under a per-request arena, so analysis for one file never leaks state into the next. Derive macros (comptime `@derive` expansions) are only expanded on `didOpen` and `didSave`, not on every keystroke, because expansion compiles the handler — the result is cached so derived symbols still resolve while you type. Same-package sibling files are merged into the analysis so cross-file references resolve even for files you haven't opened.
+
+## Troubleshooting
+
+- **The server seems dead** — run `gust lsp` from a terminal, then edit; errors and per-request timing lines print to stderr.
+- **Completion is empty** — the buffer has to parse far enough for the analyzer to locate the cursor; a syntax error earlier in the file blocks it. Unsaved edits are read live, so you don't need to save first.
+- **Hover shows nothing** — the cursor must be on an identifier, not whitespace, punctuation, or a comment.
+- **Semantic colors look stale after a big edit** — the server refreshes tokens on save; if your client ignores `workspace/semanticTokens/refresh`, saving forces a re-fetch.

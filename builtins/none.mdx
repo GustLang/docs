@@ -1,0 +1,48 @@
+---
+title: none
+description: "The absence of a value"
+---
+
+The absence of a value. Used as the implicit return of statements with
+no value, the missing-key sentinel from `dict.get`, and the right-hand side
+of `is none` / `is not none` checks.
+
+Literals:
+none
+
+Operators:
+
+```gust
+is none             # check if a value is none
+is not none         # check if a value is not none
+```
+
+Note: use `is none` / `is not none`, never `== none` / `!= none`.
+The analyzer rewrites the latter as a hint and refuses to emit it.
+
+`none` is also the printable form for unset values:
+
+**Examples**
+
+```gust
+x: integer | none = none
+print(x)        # → none
+```
+
+## Dunders
+
+<a id="none.__string" />
+```gust
+def none.__string() -> string
+```
+
+Triggered by `print(x)` and f-string interpolation. Always returns "none".
+
+---
+
+<a id="none.__bool" />
+```gust
+def none.__bool() -> bool
+```
+
+Triggered by `x as bool`. Always false.

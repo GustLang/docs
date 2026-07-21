@@ -1,0 +1,126 @@
+---
+title: sync
+description: "Coordination primitives for shared state across threads"
+---
+
+```gust
+use sync
+```
+
+Coordination primitives for shared state across threads.
+
+A `Lock` gives one thread at a time exclusive access to whatever it guards.
+The idiomatic use is a `with` block, which acquires the lock on entry and
+releases it however the block is left — falling off the end, `return`,
+`break`/`continue`, or a raise.
+
+**Examples**
+
+```gust
+use sync
+
+counter := 0
+lock := sync.new_lock()
+
+with lock
+    counter = counter + 1
+end
+```
+
+`acquire`/`release` are available for the rare case that a critical section
+doesn't fit a single lexical block, but pairing them by hand is error-prone —
+prefer `with`.
+
+The lock spins while waiting rather than parking the waiting thread, so it is
+suited to short critical sections. A thread must not attempt to acquire a lock
+it already holds; doing so spins forever.
+
+**On this page:** [`Lock`](#Lock) · [`new_lock`](#sync.new_lock)
+
+## `Lock`
+
+<a id="Lock" />
+A mutual-exclusion lock. Construct with `new_lock`, guard a critical
+section with `with lock`, and release the backing cell with `close` when
+the lock is no longer needed.
+
+```gust
+def Lock
+
+    _cell: integer
+
+end
+```
+
+**Fields**
+
+- `_cell: integer` — Address of the 8-byte atomic gate word — 0 when free, 1 when held. Private; never read or write it directly.
+
+**Methods**
+
+<a id="Lock.acquire" />
+```gust
+def Lock.acquire() -> none
+```
+
+Block until the lock is free, then take it. On return the caller is the
+sole holder and must eventually `release`. Prefer `with` over pairing this
+with `release` by hand.
+
+<Warning>
+The lock is not reentrant. A thread that acquires a lock it already
+holds spins forever.
+</Warning>
+
+---
+
+<a id="Lock.try_acquire" />
+```gust
+def Lock.try_acquire() -> bool
+```
+
+Attempt to take the lock without waiting. Returns `true` and holds the
+lock when it was free, or `false` immediately when another thread holds
+it.
+
+---
+
+<a id="Lock.release" />
+```gust
+def Lock.release() -> none
+```
+
+Release the lock, letting a waiting thread take it. Only the current
+holder may call this.
+
+---
+
+<a id="Lock.is_held" />
+```gust
+def Lock.is_held() -> bool
+```
+
+True when the lock is currently held by some thread. Intended for tests
+and diagnostics — a true result may be stale the moment it returns.
+
+---
+
+<a id="Lock.close" />
+```gust
+def Lock.close() -> none
+```
+
+Release the lock's backing cell. Call when the lock is no longer needed.
+
+<Warning>
+Using the lock after `close` is undefined behavior.
+</Warning>
+
+## Functions
+
+<a id="sync.new_lock" />
+```gust
+def new_lock() -> Lock
+```
+
+Create a new lock in the unlocked state.

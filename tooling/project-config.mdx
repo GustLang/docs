@@ -1,0 +1,357 @@
+---
+title: gust.toml
+description: Per-project configuration fields for gust.toml and how they map to CLI flags
+---
+
+`gust.toml` is the per-project configuration. Place it in the project root;
+the compiler walks upward from the current directory looking for it, so any
+command run inside the tree finds the manifest without you cd-ing to the root.
+
+Create one with [`gust init`](/start/cli#init).
+
+<Info>
+**CLI flags always win**
+
+Every field in `gust.toml` has a matching CLI flag. When both are set, the CLI takes precedence — the config file is the *default*, the flags are the *override*.
+</Info>
+
+## Minimal example
+
+```toml
+[project]
+name    = "myapp"
+version = "0.1.0"
+entry   = "src/main.g"
+
+[build]
+output   = "build/myapp"
+optimize = "release"
+```
+
+## Project layout
+
+[`gust init`](/start/cli#init) scaffolds a conventional layout. Nothing in the
+compiler mandates it — the only fixed rules are that `gust.toml` sits at the
+root and that tests are files matching `test_*.g` (or `*_test.g`) — but the
+generated tree is the layout the tooling assumes.
+
+An executable project (`gust init`):
+
+```
+myapp/
+  gust.toml            # project manifest (this page)
+  src/
+    main.g             # entry point; defines main()
+  tests/
+    test_basic.g       # a sample test, discovered by `gust test`
+  .gitignore           # ignores build/ and *.o
+```
+
+A library project (`gust init --lib`) has no entry point and puts its source in
+a `<name>/` subdirectory, so the repository follows the `<repo>/<repo>/` package
+layout that [`gust add`](/tooling/packages) resolves against:
+
+```
+mylib/
+  gust.toml            # [project] with kind = "library"; no [build]
+  mylib/
+    mylib.g            # exported API; no main()
+  tests/
+    test_mylib.g       # imports the library and exercises it
+  .gitignore
+```
+
+The `entry` and `output` fields point at these paths by default, but you can put
+sources anywhere and set the fields to match — the compiler only cares about
+what `entry`/`output` resolve to, not the directory names.
+
+## Full reference
+
+### `[project]`
+
+<a id="project.name" />
+**`field name: string`**
+
+Project identifier. Letters, digits, `-`, and `_`. Used in diagnostic output
+and, by convention, as the default build output name. `gust init` always
+writes it.
+
+<a id="project.version" />
+**`field version: string`**
+
+Semantic version string, e.g. `"0.1.0"`. Currently informational only —
+future versions of the compiler will use this for packaging and release
+metadata.
+
+<a id="project.entry" />
+**`field entry: string`**
+
+Path to the default source file for `gust build`, `gust run`, `gust emit`,
+and `gust check`. Resolved relative to `gust.toml`.
+
+When `entry` is set, you can run `gust build` with no positional argument —
+the default entry is used. Omit the field if your project doesn't have a
+single canonical entry point.
+
+```toml
+[project]
+entry = "src/main.g"
+```
+
+<a id="project.kind" />
+**`field kind: "binary" | "library" (optional)`**
+
+Whether the project builds into an executable or is consumed via `use`.
+
+- Unset (default) — **infer**: a project that defines `main()` is buildable;
+  otherwise it behaves as a library (no `main` required).
+- `"binary"` — always wants a `main()` at its entry.
+- `"library"` — never built directly and never asked for a `main`. `gust
+  build`/`run`/`record` on the whole project refuse with a hint to use `gust
+  check` (or to build a specific `<file.g>`).
+
+`gust init --lib` sets this to `"library"`.
+
+<a id="project.description" />
+**`field description: string (optional)`**
+
+A one-line project description. Informational; `gust init` writes it when you
+provide one.
+
+### `[build]`
+
+<a id="build.output" />
+**`field output: string`**
+
+Default output binary path, resolved relative to `gust.toml`. Overridable
+via [`-o`/`--output`](/start/cli#build.-o). If unset and no CLI flag is
+passed, the binary goes to `./<source-stem>`.
+
+```toml
+[build]
+output = "build/myapp"
+```
+
+<a id="build.optimize" />
+**`field optimize: "debug" | "release"`**
+
+Optimization mode.
+
+- `"release"` — `-O2`, strip unused symbols. The right default for shipped
+  binaries.
+- `"debug"` — `-O0 -g`, keep symbols. Stack traces are readable; throughput
+  is lower.
+
+Overridable via [`--release`/`--debug`](/start/cli#build.release).
+
+<a id="build.cflags" />
+**`field cflags: list[string] (default: [])`**
+
+Extra C compiler flags, appended to every `build` invocation. CLI `--cflag`
+entries are *also* appended, in order.
+
+```toml
+[build]
+cflags = ["-Wall", "-Wextra"]
+```
+
+<a id="build.cc" />
+**`field cc: string (optional)`**
+
+Override the C compiler driver. Leave unset to auto-detect — Gust prefers
+`zig cc` when zig is on `PATH`, otherwise uses the platform `cc`.
+
+Overridable via [`--cc`](/start/cli#build.cc).
+
+```toml
+[build]
+cc = "zig cc"
+```
+
+<a id="build.target" />
+**`field target: string (optional)`**
+
+Default target triple for builds (zig-style: `<arch>-<os>-<abi>`). Leave
+unset to target the host. When set to a non-native triple, `gust run`
+refuses to execute — cross-compiled binaries can't run on the build host.
+
+Overridable via [`--target`](/start/cli#build.target).
+
+```toml
+[build]
+target = "x86_64-linux-musl"
+```
+
+<a id="build.link_mode" />
+**`field link_mode: string (default: "auto")`**
+
+Selects linking: `"auto"` defers to the target ABI (`linux-musl` links static,
+everything else dynamic), `"dynamic"` and `"static"` force it either way.
+Static linking is ignored on macOS targets (Apple doesn't ship static system
+libraries).
+
+Overridable via [`--static`/`--no-static`](/start/cli#build.static).
+
+<a id="build.auto_vendor" />
+**`field auto_vendor: bool (default: true)`**
+
+When `true`, the compiler auto-builds the libcurl+mbedTLS vendor bundle that
+`use requests` links against. Disable to have the build fail loudly when a
+bundle is missing — useful for CI where you'd rather pre-build the bundle
+than rebuild it implicitly.
+
+Overridable via [`--no-auto-vendor`](/start/cli#build.no-auto-vendor).
+
+### `[format]`
+
+<a id="format.indent" />
+**`field indent: integer (default: 4)`**
+
+Spaces per indent level used by `gust format`.
+
+Overridable via [`--indent`](/start/cli#format.indent).
+
+<a id="format.line_width" />
+**`field line_width: integer (default: 90)`**
+
+Soft line-length limit. The formatter splits over-long lines at bracketed
+groups to fit within it, and emits an advisory `F018` warning for any line it
+can't split further. Must be positive.
+
+Overridable via [`--line-width`](/start/cli#format.line-width).
+
+### `[lint]`
+
+<a id="lint.ignore" />
+**`field ignore: list[string] (default: [])`**
+
+Diagnostic codes to suppress project-wide. Each entry is a code such as
+`"F018"` (line-too-long), `"W0101"` (non-snake-case function), or a `G`
+error code. Matching is case-insensitive.
+
+This is the global counterpart to the inline `#gust-ignore CODE` /
+`#gust-ignore-file CODE` markers: anything listed here is silenced
+everywhere `gust check`, `gust format`, `gust build`, and the LSP would
+otherwise report it. Use it to opt out of a rule for the whole project
+rather than annotating every site.
+
+```toml
+[lint]
+ignore = ["F018", "W0101"]   # don't warn on long lines or non-snake-case names
+```
+
+Run [`gust explain <CODE>`](/start/cli) to see what a code means before
+silencing it.
+
+### `[markup]`
+
+<a id="markup.renderer" />
+**`field renderer: string (default: "gml")`**
+
+The package that inline `<markup>` desugars against — the target of the
+generated `<renderer>.h(...)`, `.attr(...)`, etc. Defaults to the reference
+renderer `gml`. Point it at an alternative renderer that
+exports the same constructor surface
+(`h`/`t`/`attr`/`on`/`cls`/`cn`/`flat`/`fragment`/`build`/`with_attrs` plus
+`Node`/`Attr`/`Component`).
+
+```toml
+[markup]
+renderer = "gml"
+```
+
+### `[dependencies]`
+
+Packages your project depends on. Each key is the name you `use`; the value
+selects a source and, for remote sources, a ref to pin. Keys are arbitrary
+use-names, so unlike the fixed-schema sections `[dependencies]` has no fixed key
+set. A value takes one of three forms.
+
+**Shorthand string** — `"owner/repo"` or `"owner/repo@ref"`. The `@ref` is
+optional; omit it to track the default branch's `HEAD`.
+
+```toml
+[dependencies]
+semver = "GustLang/semver"          # default branch HEAD
+color  = "acme/color@v1.4.0"        # pinned to a tag/ref
+```
+
+**GitHub table** — `{ github = "owner/repo", ... }`. Pin the ref with exactly
+one of `tag`, `branch`, or `rev` (a commit SHA); when more than one is present
+the precedence is `rev` > `tag` > `branch`, and with none the default branch's
+`HEAD` is used. An optional `subdir` selects a package directory inside the repo
+(the root when absent).
+
+```toml
+[dependencies]
+semver = { github = "GustLang/semver", tag = "v1.4.0" }
+parser = { github = "acme/tools", branch = "main", subdir = "packages/parser" }
+pinned = { github = "acme/tools", rev = "9f3c1ab" }
+```
+
+**Local path table** — `{ path = "../gml" }`. Names a directory on disk instead
+of a remote source; the path is resolved relative to the manifest that declares
+it (or may be absolute), and no network fetch happens. This is how a sibling
+package checked out next to your project — a `gml` renderer, say — is referenced
+without publishing it. A `path` entry is mutually exclusive with `github`.
+
+```toml
+[dependencies]
+gml = { path = "../gml" }
+```
+
+`gust build` / `run` / `test` auto-install remote dependencies before compiling,
+and [`gust add`](/start/cli#add) edits this table for you. See
+[Packages & dependencies](/tooling/packages) for the full grammar, the
+`gust add`/`install`/`update`/`remove` commands, `gust.lock`, and the
+package cache.
+
+## Full annotated template
+
+The one `gust init` generates, reproduced for reference:
+
+```toml
+# Gust project configuration.
+# Every CLI flag has a matching key here; CLI flags win when both are set.
+
+[project]
+name    = "myapp"
+version = "0.1.0"
+entry   = "src/main.g"    # default source for `gustc build` / `gustc run`
+
+[build]
+output      = "build/myapp"                 # default -o
+optimize    = "release"                     # "debug" | "release"  (--release/--debug)
+cflags      = []                            # extra C flags         (--cflag=FLAG)
+# cc          = "zig cc"                    # override driver       (--cc); unset => auto
+# target      = "x86_64-linux-gnu"          # default target triple (--target); unset => native
+# link_mode   = "auto"                       # "auto" | "dynamic" | "static"  (--static/--no-static)
+auto_vendor = true                          # build curl+mbedTLS on demand for `use requests` (--no-auto-vendor)
+
+[format]
+indent     = 4                              # spaces per indent      (--indent)
+line_width = 90                             # soft line-length limit (--line-width)
+
+# [lint]
+# ignore = ["F018"]                          # diagnostic codes to suppress project-wide
+```
+
+A library project (`gust init --lib`) gets a shorter manifest: `[project]`
+with `kind = "library"` and `[format]` only — no `entry` or `[build]`, since
+a library is imported with `use` rather than built into a binary.
+
+## Validation
+
+Unknown sections and keys produce **warnings**; malformed TOML, wrong value
+types (e.g. a non-integer `format.indent`), and out-of-range values (e.g. an
+`optimize` outside `"debug"`/`"release"`) are **fatal** — the command prints
+the error and exits `2`. The [language server](/tooling/lsp) validates and
+completes `gust.toml` against the same schema as you edit it.
+
+## Discovery
+
+The compiler searches for `gust.toml` by walking upward from the current
+working directory. Running `gust build` anywhere inside a project finds the
+config — you don't have to `cd` to the root first. If no `gust.toml` is
+found anywhere up the chain, the compiler uses built-in defaults equivalent
+to a fully empty file.

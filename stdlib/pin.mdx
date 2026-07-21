@@ -1,0 +1,107 @@
+---
+title: pin
+description: "Cross-platform GPIO line access through one neutral, handle-based API with a backend per platform:"
+---
+
+```gust
+use pin
+```
+
+Cross-platform GPIO line access through one neutral, handle-based API with a
+backend per platform:
+
+- Linux: the `/dev/gpiochip<chip>` character device (the kernel v2 line
+  uABI from &lt;linux/gpio.h>, so no extra library). Needs Linux 5.10+ for the
+  v2 ioctls.
+- Raspberry Pi Pico (freestanding / Pico SDK): the `hardware_gpio` block.
+- macOS / Windows: no GPIO — every call fails gracefully.
+
+A line is addressed by (`chip`, `line`). On the Pico there is one bank, so
+`chip` is ignored and `line` is the GPIO number. `open_*` requests the line
+and returns a handle to pass to the other calls.
+
+**Examples**
+
+```gust
+use pin
+
+def main() -> none
+    led := pin.open_output(0, 25)
+    pin.write(led, true)
+    pin.close(led)
+end
+```
+
+**On this page:** [`open_output`](#pin.open_output) · [`open_input`](#pin.open_input) · [`write`](#pin.write) · [`read`](#pin.read) · [`close`](#pin.close)
+
+## Functions
+
+<a id="pin.open_output" />
+```gust
+def foreign open_output(chip: integer, line: integer) -> integer
+```
+
+Request `line` on `chip` as an output. Returns a handle (>= 0) or -1
+on error.
+
+**Parameters**
+
+- `chip: integer` — GPIO chip index (ignored on the Pico).
+- `line: integer` — GPIO line / pin number.
+
+---
+
+<a id="pin.open_input" />
+```gust
+def foreign open_input(chip: integer, line: integer, pullup: bool) -> integer
+```
+
+Request `line` on `chip` as an input, optionally with the internal
+pull-up enabled. Returns a handle (>= 0) or -1 on error.
+
+**Parameters**
+
+- `chip: integer` — GPIO chip index (ignored on the Pico).
+- `line: integer` — GPIO line / pin number.
+- `pullup: bool` — When true, enable the internal pull-up resistor.
+
+---
+
+<a id="pin.write" />
+```gust
+def foreign write(handle: integer, on: bool) -> integer
+```
+
+Drive an output `handle` high (true) or low (false). Returns 0 on
+success, non-zero on error.
+
+**Parameters**
+
+- `handle: integer` — The line handle from `open_output`.
+- `on: bool` — True drives the line high, false drives it low.
+
+---
+
+<a id="pin.read" />
+```gust
+def foreign read(handle: integer) -> integer
+```
+
+Read the level of `handle`: 1 (high), 0 (low), or -1 on error.
+
+**Parameters**
+
+- `handle: integer` — The line handle from `open_input`.
+
+---
+
+<a id="pin.close" />
+```gust
+def foreign close(handle: integer) -> none
+```
+
+Release a handle returned by `open_output` / `open_input`.
+
+**Parameters**
+
+- `handle: integer` — The line handle to release.

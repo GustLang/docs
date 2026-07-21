@@ -1,0 +1,259 @@
+---
+title: Interfaces
+description: Nominal method contracts in Gust — declaring, implementing, and dispatching through a vtable
+---
+
+Interfaces in Gust are nominal method contracts. A struct satisfies an interface only when it explicitly declares `implements InterfaceName` **and** provides every member the interface declares, with matching signatures. The compiler checks the contract at the point where you write `implements`, so a conformance gap is a compile error, not a surprise at the call site.
+
+## Declaring an interface
+
+```gust
+interface Pingable
+    def ping() -> bool
+    def status() -> string
+end
+```
+
+The header is `interface Name`, the body is a sequence of member requirements, and the block closes with a bare `end`. An interface body may contain three kinds of member:
+
+- **Method requirements** — a bodyless `def name(args) -> ReturnType` signature.
+- **Property requirements** — a bare `name: Type` line.
+- **Default methods** — a `def` signature that carries a body, terminated with `end`.
+
+An interface may carry a docstring immediately after its header, and each requirement may carry its own docstring.
+
+### Private interfaces
+
+Prefix the name with `private` to keep the interface unexported — other packages cannot name it or implement it:
+
+```gust
+interface private Loggable
+    def log() -> string
+end
+```
+
+### Property requirements
+
+A bare `name: Type` line declares a *property* the conformer must expose:
+
+```gust
+interface Named
+    name: string
+    def greet() -> string
+end
+```
+
+A conforming struct satisfies a property two ways, interchangeably:
+
+- with a **field** of the same name and type — the common case, and
+- with a **0-argument getter method** of the same name that returns the property's type.
+
+Either way you read it through the interface value as `iface.name` — no parentheses. The access dispatches through a vtable getter slot, so the same call site works whether the concrete type backs the property with a field or with a method.
+
+```gust
+def Person implements Named
+    name: string
+    age: integer
+end
+
+def Robot implements Named
+    id: integer
+end
+
+def Robot.name() -> string
+    return "R2D2"
+end
+```
+
+`Person` satisfies `name` with a field; `Robot` satisfies it with a getter. A function taking `Named` reads `n.name` on either.
+
+### Default methods
+
+An interface method may carry a body, terminated with `end`. Any conforming struct that does **not** define its own method of that name inherits the default:
+
+```gust
+interface Greeter
+    def who() -> string
+
+    def greet() -> string
+        return "Hello, " + who() + "!"
+    end
+end
+```
+
+A struct that implements `Greeter` only has to provide `who()`; it gets `greet()` for free, and may still override it by defining its own `greet()`.
+
+A default body may call any other member of the interface with a bare, unqualified call:
+
+- **a sibling requirement** — `greet()` above calls the abstract `who()`, which dispatches to the conformer's implementation, and
+- **another default** — a default can call a second default, and both are inherited together.
+
+```gust
+interface Doubler
+    def base() -> integer
+
+    def twice() -> integer
+        return base() + base()
+    end
+
+    def quad() -> integer
+        return twice() + twice()
+    end
+end
+```
+
+A struct that implements `Doubler` supplies only `base()`; `twice()` and `quad()` come for free, and each resolves to the conformer's own members at call time. Defaults resolve polymorphically whether you call them on the concrete value or through an interface-typed value.
+
+Behind the scenes the compiler splices each inherited default into the conforming struct as a real method before type checking, so an inherited default is checked and compiled exactly like a hand-written one — including when the interface comes from an imported package.
+
+## Implementing an interface
+
+Add `implements InterfaceName` to a struct's declaration, then define the required methods with `def Struct.method()`:
+
+```gust
+def Server implements Pingable
+    name:   string
+    online: bool
+end
+
+def Server.ping() -> bool
+    return online
+end
+
+def Server.status() -> string
+    return "online" if online else "offline"
+end
+```
+
+Method bodies read the struct's fields directly by name — `online`, not `self.online`.
+
+A struct may implement several interfaces in one comma-separated clause, and each interface name may be package-qualified:
+
+```gust
+def Buf implements Loggable, Sized
+    n: integer
+end
+
+def Widget implements gml.Component
+    label: string
+end
+```
+
+The `implements` clause is required. A struct that happens to have matching methods but omits `implements InterfaceName` will **not** be accepted where the interface type is expected — conformance is nominal, never structural.
+
+A subclass inherits its parent's conformances. If `Base implements Pingable`, then `Derived extends Base` also satisfies `Pingable` without repeating the clause, because the parent's interface list merges into the child.
+
+### Conformance errors
+
+With the `implements` clause present, the analyzer verifies the contract at the declaration and gives a precise diagnostic (G0401) when a member is missing or has the wrong signature:
+
+- A missing method or property reports `does not satisfy interface 'I': missing member 'x'`.
+- A method whose signature disagrees reports the mismatch, e.g. `method 'ping' does not match interface 'Pingable': returns integer, interface declares bool`.
+
+## Using an interface as a type
+
+An interface name is a first-class type. It can appear as a parameter type, a return type, a struct field type, or a collection element type.
+
+### Parameters
+
+```gust
+def check(device: Pingable) -> none
+    if device.ping()
+        print(device.status())
+    end
+end
+
+s := Server(name: "web-1", online: true)
+check(s)
+```
+
+At the call site the compiler *widens* the concrete `s` into the interface value — it packs a pointer to the receiver plus the method/getter table. A single `check` then handles any type that satisfies `Pingable`.
+
+### Return types
+
+A function may return an interface, letting the concrete type vary by branch:
+
+```gust
+def pick(loud: bool) -> Pingable
+    if loud
+        return Server(name: "edge", online: true)
+    end
+    return Service(name: "billing", healthy: false)
+end
+```
+
+A concrete struct returned by value is heap-boxed as it widens, so the interface value stays valid after the function returns.
+
+### Struct fields
+
+```gust
+def Monitor
+    target: Pingable
+end
+
+m := Monitor(target: Server(name: "web-1", online: true))
+print(m.target.ping())
+```
+
+### Collections
+
+A `list[Pingable]` (or any collection with an interface element type) holds any mix of implementers:
+
+```gust
+def Service implements Pingable
+    name: string
+    healthy: bool
+end
+
+def Service.ping() -> bool
+    return healthy
+end
+
+def Service.status() -> string
+    return "svc:" + name
+end
+
+servers: list[Pingable] = [
+    Server(name: "web-1", online: true),
+    Service(name: "billing", healthy: false),
+]
+
+for dev in servers
+    check(dev)
+end
+```
+
+## Dispatch
+
+Every call on an interface-typed value is an indirect call through the vtable: `device.ping()` becomes a lookup of the `ping` slot followed by an indirect function-pointer call, passing the receiver. Property reads go through a getter slot the same way. This is what makes one function body polymorphic over every conforming type, and it is the only per-call overhead an interface adds.
+
+## Narrowing
+
+Widening — concrete struct to interface — is automatic wherever an interface type is expected. Narrowing back the other way, from an interface value to a specific concrete type, is **not** supported: an interface value carries only the receiver pointer and the method table, and there is no runtime type tag to recover the original struct type from. Writing `iface is Server` or `iface as Server` on an interface value does not give you the concrete struct back.
+
+When you need to branch on *which* concrete shape you hold and read its fields, model the alternatives as a [tagged union](/lang/unions) — a sum-type `enum` whose variants carry their own fields — and `match` on it. Reach for an interface when every member shares a *capability* you call the same way; reach for a tagged union when you need to recover the specific variant and its data.
+
+## What interfaces can't do
+
+- Interfaces store **no state of their own** — an interface value holds a pointer to the conforming value plus the method/getter table, not fields. Shared state lives on the conforming struct; a property requirement is satisfied by *its* field or getter.
+- There's no interface of interfaces — an interface's requirements refer to concrete methods and properties, and only a struct can `implements` one.
+- An interface value cannot be narrowed to a concrete type (see [Narrowing](#narrowing)).
+
+## Under the hood
+
+For each interface, the codegen emits a struct carrying a `void* _data` receiver plus one function pointer per method and one getter per property requirement:
+
+```c
+typedef struct { void* _data; bool (*ping)(void*); GStr* (*status)(void*); } Pingable;
+```
+
+For each struct implementing the interface, it emits *adapter* functions that cast `_data` back to the concrete struct type and forward to the real method. A constructor packs the receiver pointer and the adapters into one interface value at each widening site. When the value being widened is a temporary (a fresh `return` or a call result), the receiver is heap-boxed first so it outlives the expression.
+
+You can see the generated C with `gust emit`. The runtime cost is one indirect call per method invocation.
+
+## When to use an interface vs. a tagged union
+
+- **Interface** — you care about a *capability* (can this thing `ping`?) and want method-call syntax over any type that provides it, with the concrete type kept opaque.
+- **Tagged union** — you care about a *fixed set of shapes*, want to branch on which one you have, and need to read the variant's own fields. See [Tagged unions](/lang/unions).
+
+Pick the one that keeps the call site simplest.

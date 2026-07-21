@@ -1,0 +1,231 @@
+---
+title: json
+description: "The RFC 8259 parser and serializer for the JSON package"
+---
+
+```gust
+use json
+```
+
+The RFC 8259 parser and serializer for the JSON package. `parse` (and its
+encode-inverse alias `decode`) turn a JSON string into native Gust values — an
+object becomes a `dict[string, Any]`, an array a `list[Any]`, a string/number/
+boolean the matching primitive, and `null` becomes `none`. `encode` serializes an
+arbitrary Gust value back to compact JSON through its `__dict` conversion.
+
+**Examples**
+
+```gust
+use json
+
+def main() -> none
+    nums := json.parse("[1, 2, 3]")
+    print(json.encode(nums))   # [1,2,3]
+end
+```
+
+**On this page:** [`JsonParser`](#JsonParser) · [`encode`](#json.encode) · [`parse`](#json.parse) · [`decode`](#json.decode)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `JSON_MAX_DEPTH` | `integer` | `1000` |
+
+## `JsonParser`
+
+<a id="JsonParser" />
+Byte cursor over the JSON source.
+
+```gust
+def JsonParser
+
+    src: string
+    pos: integer
+    depth: integer
+
+end
+```
+
+**Fields**
+
+- `src: string` — The JSON text being parsed.
+- `pos: integer` — Current byte offset into `src`.
+- `depth: integer` — Current container nesting, capped at JSON_MAX_DEPTH.
+
+**Methods**
+
+<a id="JsonParser.fail" />
+```gust
+def JsonParser.fail() -> none
+```
+
+Abort the parse at the current cursor position.
+
+**Raises**
+
+- `ValueError` — Always, naming the byte offset of the failure.
+
+---
+
+<a id="JsonParser.skip_ws" />
+```gust
+def JsonParser.skip_ws() -> none
+```
+
+Advance the cursor past spaces, tabs, carriage returns, and newlines.
+
+---
+
+<a id="JsonParser.read_hex4" />
+```gust
+def JsonParser.read_hex4() -> integer
+```
+
+Read exactly four hex digits at the cursor and return their value,
+advancing past them.
+
+**Raises**
+
+- `ValueError` — If fewer than four hex digits follow the cursor.
+
+---
+
+<a id="JsonParser.read_unicode" />
+```gust
+def JsonParser.read_unicode() -> string
+```
+
+Decode a `\uXXXX` escape (the `\u` already consumed) into UTF-8,
+collapsing a high+low surrogate pair into one codepoint.
+
+**Raises**
+
+- `ValueError` — If the escape is not four hex digits.
+
+---
+
+<a id="JsonParser.parse_string" />
+```gust
+def JsonParser.parse_string() -> string
+```
+
+Parse a quoted string at the cursor (opening quote included) and
+return its decoded contents, handling the JSON escape set.
+
+**Raises**
+
+- `ValueError` — On an unterminated string or an invalid escape.
+
+---
+
+<a id="JsonParser.parse_number" />
+```gust
+def JsonParser.parse_number() -> Any
+```
+
+Parse a JSON number at the cursor. A literal with no fractional or
+exponent part becomes an integer; otherwise a float.
+
+---
+
+<a id="JsonParser.matches" />
+```gust
+def JsonParser.matches(word: string) -> bool
+```
+
+True if `word` occurs literally at the cursor.
+
+---
+
+<a id="JsonParser.parse_array" />
+```gust
+def JsonParser.parse_array() -> list[Any]
+```
+
+Parse a `[...]` array at the cursor into a `list[Any]`.
+
+**Raises**
+
+- `ValueError` — On malformed array syntax or nesting past `JSON_MAX_DEPTH`.
+
+---
+
+<a id="JsonParser.parse_object" />
+```gust
+def JsonParser.parse_object() -> dict[string, Any]
+```
+
+Parse a `{...}` object at the cursor into a `dict[string, Any]`.
+
+**Raises**
+
+- `ValueError` — On malformed object syntax or nesting past `JSON_MAX_DEPTH`.
+
+---
+
+<a id="JsonParser.parse_value" />
+```gust
+def JsonParser.parse_value() -> Any
+```
+
+Parse any JSON value at the cursor into a native Gust value,
+dispatching on the leading byte.
+
+**Raises**
+
+- `ValueError` — If the cursor is not at a valid JSON value.
+
+## Functions
+
+<a id="json.encode" />
+```gust
+def foreign encode(value: Any) -> string
+```
+
+Serialize any value to a compact JSON string. Primitives, lists, tuples,
+and dicts map to the corresponding JSON forms; a struct serializes as a JSON
+object through its `__dict` conversion, which selects and names the fields
+(define `__dict` on the struct to customize the shape). Dict and tuple keys
+render as strings. Object member order follows the source value.
+
+**Parameters**
+
+- `value: Any` — The value to serialize.
+
+---
+
+<a id="json.parse" />
+```gust
+def parse(s: string) -> Any
+```
+
+Parse `s` as JSON and return the root value as native Gust data: an
+object becomes a `dict[string, Any]`, an array a `list[Any]`, a scalar its
+matching primitive, and `null` becomes `none`.
+
+**Parameters**
+
+- `s: string` — The JSON text to parse.
+
+**Raises**
+
+- `ValueError` — On malformed input, naming the byte offset of the mismatch (including trailing content after an otherwise-complete value).
+
+---
+
+<a id="json.decode" />
+```gust
+def decode(s: string) -> Any
+```
+
+Parse `s` as JSON into native Gust values. The encode-inverse name for
+`parse`; both are identical.
+
+**Parameters**
+
+- `s: string` — The JSON text to parse.
+
+**Raises**
+
+- `ValueError` — On malformed input, naming the byte offset of the mismatch.

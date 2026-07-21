@@ -1,0 +1,153 @@
+---
+title: csv
+description: "A practical RFC 4180 CSV reader and writer"
+---
+
+```gust
+use csv
+```
+
+A practical RFC 4180 CSV reader and writer. `parse` turns CSV text into a list
+of rows (each a list of string fields); `format` renders rows back to CSV,
+quoting only the fields that need it. `parse_dicts` treats the first row as a
+header and yields one `dict` per record; `format_dicts` is its inverse.
+
+The reader handles quoted fields, escaped quotes (`""`), embedded newlines and
+delimiters inside quotes, and either `\n` or `\r\n` line endings. The delimiter
+defaults to a comma but any single character may be supplied via the `*_with`
+variants. Malformed input (an unterminated quoted field) raises `CsvError`.
+
+**Examples**
+
+```gust
+use csv
+
+def main() -> none
+    rows := csv.parse("name,age\nAda,36\n")
+    print(rows[1][0])          # Ada
+
+    records := csv.parse_dicts("name,age\nAda,36\n")
+    print(records[0]["age"])   # 36
+end
+```
+
+**On this page:** [`CsvError`](#CsvError) · [`parse`](#csv.parse) · [`parse_with`](#csv.parse_with) · [`parse_dicts`](#csv.parse_dicts) · [`format`](#csv.format) · [`format_with`](#csv.format_with) · [`format_dicts`](#csv.format_dicts)
+
+## Functions
+
+<a id="csv.parse" />
+```gust
+def parse(text: string) -> list[list[string]]
+```
+
+Parse comma-delimited CSV `text` into a list of rows.
+
+**Parameters**
+
+- `text: string` — The CSV document to parse.
+
+**Raises**
+
+- `CsvError` — when a quoted field is left unterminated.
+
+---
+
+<a id="csv.parse_with" />
+```gust
+def parse_with(text: string, delimiter: string) -> list[list[string]]
+```
+
+Parse CSV `text` using the first byte of `delimiter` as the field
+separator.
+
+**Parameters**
+
+- `text: string` — The CSV document to parse.
+- `delimiter: string` — The field separator; only its first byte is used.
+
+**Raises**
+
+- `CsvError` — when a quoted field is left unterminated.
+
+---
+
+<a id="csv.parse_dicts" />
+```gust
+def parse_dicts(text: string) -> list[dict[string, string]]
+```
+
+Parse comma-delimited CSV with a header row, returning one dict per
+record keyed by the header names. A short row leaves missing columns as the
+empty string; extra columns beyond the header are dropped.
+
+**Parameters**
+
+- `text: string` — The CSV document to parse, including a header row.
+
+**Raises**
+
+- `CsvError` — when a quoted field is left unterminated.
+
+---
+
+<a id="csv.format" />
+```gust
+def format(rows: list[list[string]]) -> string
+```
+
+Render `rows` as comma-delimited CSV. Each row becomes one `\n`-terminated
+line; fields are quoted only when necessary.
+
+**Parameters**
+
+- `rows: list[list[string]]` — The rows to render, each a list of string fields.
+
+---
+
+<a id="csv.format_with" />
+```gust
+def format_with(rows: list[list[string]], delimiter: string) -> string
+```
+
+Render `rows` as CSV using `delimiter` between fields.
+
+**Parameters**
+
+- `rows: list[list[string]]` — The rows to render, each a list of string fields.
+- `delimiter: string` — The field separator to emit between fields.
+
+---
+
+<a id="csv.format_dicts" />
+```gust
+def format_dicts(
+    records: list[dict[string, string]],
+    headers: list[string],
+) -> string
+```
+
+Render `records` as CSV with an explicit header row. Each record
+contributes the values for `headers` in order; a key absent from a record
+is written as the empty string.
+
+**Parameters**
+
+- `records: list[dict[string, string]]` — The records to render.
+- `headers: list[string]` — The column names, defining both the header row and the order in which each record's values are emitted.
+
+## Errors
+
+<a id="CsvError" />
+```gust
+error CsvError(message: string, line: integer)
+```
+
+Raised by the parser on malformed CSV. `message` describes the problem;
+`line` is the 1-based source line it was detected on.
+
+Fields:
+
+```gust
+message: human-readable description of the parse failure.
+line: the 1-based source line the error was detected on.
+```

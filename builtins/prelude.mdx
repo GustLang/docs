@@ -1,0 +1,63 @@
+---
+title: Prelude
+description: "Functions auto-imported into every program"
+---
+
+The prelude is loaded into every program automatically — no `use` required. It provides a handful of global functions; the standard error types live on the [Errors](/builtins/errors) page.
+
+## Functions
+
+<a id="eprint" />
+```gust
+def eprint(value: Any, newline: bool = true) -> none
+```
+
+Print a value to standard error — the diagnostic-output counterpart
+to `print`.
+
+**Parameters**
+
+- `value: Any` — The value to print, formatted as `print` would.
+- `newline: bool = true` — Append a trailing newline; pass `newline: false` to write the bare text.
+
+---
+
+<a id="input" />
+```gust
+def input(prompt: string) -> string
+```
+
+Read a line from stdin. If a prompt is given, print it first.
+Interactive terminals support basic editing: Left/Right, Backspace,
+Delete, Home/End, Ctrl-A, and Ctrl-E.
+
+**Parameters**
+
+- `prompt: string` — Text to print before reading; pass "" for no prompt.
+
+---
+
+<a id="round" />
+```gust
+def round(x: float, decimals: integer) -> float
+```
+
+Round a float to N decimal places.
+
+**Parameters**
+
+- `x: float` — The float to round.
+- `decimals: integer` — Number of decimal places to round to.
+
+---
+
+<a id="exit" />
+```gust
+def exit(code: integer) -> none
+```
+
+Terminate the process immediately with the given exit code.
+
+**Parameters**
+
+- `code: integer` — Process exit status to return to the parent.

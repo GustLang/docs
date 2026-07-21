@@ -1,0 +1,255 @@
+---
+title: Syntax basics
+description: Gust's tokens, keywords, literals, blocks, and the rules for where code can live
+---
+
+## File extension
+
+Source files use `.g`. Markup-bearing files use `.gml` — the only difference is that a `.gml` file lets you write inline `<tag>...</tag>` markup in value position. There is nothing else magic about either extension; the compiler just looks for them.
+
+## Lines and tokens
+
+Gust is line-oriented: a newline ends a statement, so you never write a trailing semicolon. Line boundaries inside balanced `()`, `[]`, and `{}` are ignored, which lets you spread a literal or call across several lines with no continuation character:
+
+```gust
+servers: list[Server] = [
+    Server(name: "s1", ip: "10.0.0.1", online: true),
+    Server(name: "s2", ip: "10.0.0.2", online: false),
+]
+```
+
+Blank lines are insignificant — consecutive newlines collapse to one. Spaces, tabs, and carriage returns between tokens are skipped.
+
+## Identifiers
+
+An identifier is a run of ASCII letters, digits, and underscores that does not start with a digit.
+
+Identifiers that **start with an uppercase letter** are treated as type names at call sites — `Server(...)` parses as struct or error construction, not a plain function call. If you need a callable named `Server`, rename it to start with a lowercase letter.
+
+Names that collide with a C keyword (`static`, `register`, `switch`, `default`, `goto`, …) are safe to use anywhere an identifier is allowed — as variables, fields, parameters, loop variables, catch bindings, or interface slots. The compiler escapes them on the way to C.
+
+## Keywords
+
+Reserved words cannot be used as identifiers. Every one of them is always tokenized as a keyword, so none can name a variable, function, field, or type.
+
+**Control flow and values**
+
+```gust
+if
+else
+for
+while
+in
+return
+break
+continue
+match
+case
+try
+catch
+raise
+spawn
+with
+pass
+is
+and
+or
+not
+as
+true
+false
+none
+```
+
+**Declarations**
+
+```gust
+def
+type
+interface
+error
+enum
+auto_enum
+foreign     # only ever written as `def foreign`
+implements
+extends
+private
+end
+```
+
+**Imports**
+
+```gust
+use
+from
+```
+
+Every block-opening keyword (`def`, `if`, `for`, `while`, `match`, `try`, `with`, `interface`, `enum`, `auto_enum`) is closed by a plain `end`. `pass` is an explicit empty body for a block that would otherwise be empty.
+
+`quote` is reserved by the lexer even though it is not in the keyword table: it opens a `quote ... end` quasi-quote template used for compile-time metaprogramming, so it too cannot name a variable or function.
+
+`constant` is the one **contextual** word. It is not reserved — the lexer treats it as an ordinary identifier — and is only meaningful in the constant-declaration form `NAME: constant[Type] = value`. You may still use `constant` as a variable name. `type`, by contrast, is fully reserved: `type := 5` is a syntax error.
+
+## The concurrency suffix
+
+Concurrency is opt-in through a `!` suffix on three keywords. The plain forms are sequential.
+
+```gust
+def! fetch() -> none
+    # runs on its own thread when called
+end
+
+for! item in work
+    handle(item)
+end
+
+while! running
+    tick()
+end
+```
+
+`def!` marks a function or method as asynchronous, `for!` and `while!` spawn the loop as a detached background thread. Write `def`/`for`/`while` with no `!` for ordinary sequential execution. The `spawn` keyword launches a single call in the background:
+
+```gust
+spawn work()
+```
+
+`spawn` takes an expression and ends at the newline — it has no `end`.
+
+## Comments and docstrings
+
+```gust
+# A single-line comment runs to the end of the line.
+```
+
+There are no block comments — stack `#` lines instead. Comments are for the *why* of non-obvious logic; to document a declaration, attach a docstring instead. A docstring is a triple-quoted string written as the first thing inside a module, function, struct, or other declaration:
+
+```gust
+def area(width: integer, height: integer) -> integer
+    """Return the rectangle area for the given side lengths."""
+    return width * height
+end
+```
+
+## Number literals
+
+```gust
+8080         # decimal integer
+3.14         # float
+-7           # unary minus applied to a literal
+1_000_000    # underscore separators (decimal integer or float)
+0xff         # hexadecimal integer (255)
+0b1010       # binary integer (10)
+0o755        # octal integer (493)
+0xDE_AD      # underscores work inside radix literals too
+0X1F  0B11  0O17   # prefixes are case-insensitive
+```
+
+Integer literals are 64-bit signed. A decimal literal larger than `9223372036854775807` is a compile error rather than a silent wrap. The `0x` / `0b` / `0o` prefixes select hexadecimal, binary, and octal; the prefix letter is case-insensitive, so `0X`, `0B`, and `0O` are equally valid. Every base accepts `_` separators between digits, and the underscores are dropped from the value. A base prefix with no digits after it (`0x` alone) is an error.
+
+A float is written with a `.` that has at least one digit on each side: write `1.0` and `0.5`, never `1.` or `.5`. Underscores may appear on either side of the point.
+
+Integer division uses `//` and yields an `integer`; a plain `/` always yields a `float`. See [Operators](/lang/operators) for the full set.
+
+## String literals
+
+```gust
+s1 := "hello"                       # regular string
+s2 := "line1\nline2\t\"quoted\""    # escapes: \n \t \r \0 \\ \"
+s3 := "byte \x41 = A"               # \xNN inserts one raw byte
+s4 := """
+a multi-line string
+preserves line breaks as-is
+"""
+s5 := f"Hello, {name}!"             # f-string interpolation
+s6 := f"result = {compute(x, y)}"   # any expression inside braces
+s7 := f"""multi-line {name}"""      # triple-quoted f-strings interpolate too
+s8 := f"\{literal\} {name}"         # \{ and \} produce literal braces
+s9 := r"\d+\s*"                     # raw string — backslashes are literal
+b1 := b"\x00\xff"                   # byte literal (bytes type)
+```
+
+Gust has six ways to write text, each producing either a `string` or a `bytes` value.
+
+**Regular strings** `"..."` cannot span lines. They honor the escapes `\n`, `\t`, `\r`, `\0`, `\"`, `\\`, and `\xNN` — where `NN` is exactly two hex digits and inserts that raw byte. A newline inside a `"..."` string is a lexing error that points you at the triple-quoted form.
+
+**Triple-quoted strings** `"""..."""` span as many lines as you like and keep every line break verbatim. Only `\"` and `\\` are recognized as escapes — every other backslash sequence is kept as written, which is what makes triple-quoted strings convenient for docstrings and embedded snippets. To place a literal `"""` inside one, escape each quote: `\"\"\"`.
+
+**f-strings** `f"..."` re-parse the contents of each `{...}` as a Gust expression and splice its value in. The braces may hold any expression, including a call. Escape a literal brace with `\{` or `\}`. All the regular-string escapes (`\n`, `\xNN`, …) still apply.
+
+**Triple-quoted f-strings** `f"""..."""` combine multi-line text with `{...}` interpolation; literal newlines pass through and braces interpolate exactly as in a single-line f-string.
+
+**Raw strings** `r"..."` keep backslashes literal — `r"\d+"` is the three characters `\`, `d`, `+`, exactly what a regex pattern wants. A backslash before any character (including `"`) passes both characters through unchanged, and only an unescaped `"` ends the literal. Raw strings do not span lines.
+
+**Byte literals** `b"..."` produce a `bytes` value instead of a `string`. They decode `\n`, `\t`, `\r`, `\0`, `\\`, `\"`, and `\xNN`, and embedded NUL bytes survive. A raw source byte of 128 or higher is rejected — use `\xNN` for arbitrary octets. See [Types](/lang/types#bytes).
+
+## Booleans and none
+
+```gust
+true    false    none
+```
+
+`true` and `false` are the two `bool` values. `none` is the single value of type `none`; it commonly serves as a function's "no result" return type and as a member of a union such as `string | none`.
+
+## Operators and delimiters
+
+The symbolic tokens fall into a few families. The two-character operators are recognized before their single-character prefixes:
+
+```gust
+:=                      # declare-and-assign (walrus)
+=                       # assign
++=  -=  *=  /=  %=       # compound assignment
+==  !=  <  >  <=  >=      # comparison
++  -  *  /  //  %         # arithmetic (// is integer division)
+|  &  ^  ~  <<  >>        # bitwise or, and, xor, not, shifts
+->                       # return-type arrow in a def
+.  :  ,  !  @             # member access, annotation colon, comma, bang, decorator
+( )  [ ]  { }            # grouping, indexing/lists, blocks/dicts
+```
+
+The word operators `and`, `or`, `not`, `is`, `in`, and `as` are keywords rather than symbols. The parser also builds two compound relations from keyword pairs — `is not` and `not in` — so you can write them inline. Full precedence and per-operator behavior live on the [Operators page](/lang/operators).
+
+## Blocks and indentation
+
+Every block opens with a keyword and closes with a plain `end`:
+
+```gust
+def greet(name: string) -> string
+    return "Hello, " + name
+end
+
+for item in items
+    print(item)
+end
+
+while going
+    step()
+end
+
+try
+    risky()
+catch SomeError as e
+    print(e.message)
+end
+```
+
+Indentation is a style choice, not a semantic one. Four spaces is the convention, and `gust format` enforces it. Only the `end` keywords delimit a block, so you can nest as deeply as you like and the compiler never counts columns.
+
+## Where code can live
+
+The top level of a `.g` file can contain only:
+
+- `use` imports
+- `def` functions, methods, foreign C-interop declarations, and struct declarations
+- `type` tagged-union declarations
+- `interface` declarations
+- `error` declarations
+- `enum` / `auto_enum` declarations
+- `@decorator`-annotated declarations (for example `@static`, `@inline`)
+- `NAME: constant[Type] = value` constants
+
+Everything else — variable declarations, expressions, `if`, and loops — must live inside a `def`. This is intentional: Gust has no global mutable state.
+
+## Formatter
+
+`gust format file.g` normalizes spacing, indentation, blank lines between declarations, and trailing-comma behavior in collection literals. Commit the formatted output rather than a hand-tweaked version. See [Formatter](/tooling/formatter).

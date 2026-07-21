@@ -1,0 +1,468 @@
+---
+title: Language tour
+description: A whirlwind pass over every major Gust feature in one sitting
+---
+
+A whirlwind pass over every major feature. Each section links to the full reference page, so treat this as a map rather than a manual. Every block closes with a plain `end`, and nothing runs in parallel unless you ask.
+
+## Variables
+
+```gust
+name := "velance"          # inferred: string
+port: integer = 8080       # explicit type
+pi := 3.14                 # inferred: float
+online := true             # inferred: bool
+
+port = 9090                # reassignment
+port += 10                 # compound assignment
+```
+
+`:=` introduces a new binding. `=` reassigns an existing one. The compound forms `+=`, `-=`, `*=`, `/=`, `//=`, `%=`, and the bitwise variants all desugar to a read-modify-write. Top-level mutable globals are not allowed — use a [`constant`](/lang/constants) or keep state inside a function. See [variables](/lang/variables).
+
+## Primitive types
+
+`string`, `integer` (64-bit), `float` (64-bit), `bool`, `none`, `bytes`, and `Any`.
+
+```gust
+n: integer = 42
+x: float   = 3.14
+ok: bool   = true
+nothing: none = none
+```
+
+Cast between them with `as`, which dispatches through the type's cast dunders:
+
+```gust
+n := 42
+s := n as string          # "42"
+i := "8080" as integer    # 8080
+b := 0 as bool            # false
+```
+
+A bad cast raises `ValueError` at runtime, so catch it when the input is untrusted. See [types](/lang/types).
+
+## Strings
+
+Strings support indexing, slicing, concatenation with `+`, membership with `in`, and a wide method surface. Interpolate with an `f`-string:
+
+```gust
+who := "world"
+print(f"hello, {who}!")             # hello, world!
+
+print("HELLO".lowercase())          # hello
+print("  trim  ".trim())            # trim
+print("a,b,c".split(","))           # ["a", "b", "c"]
+print("gustgust".replace("gust", "x"))
+print("abc".contains("b"))          # true
+```
+
+See [strings](/lang/strings) for the complete method list and escape rules.
+
+## Collections
+
+Lists, dicts, and tuples cover the built-in containers:
+
+```gust
+servers: list[string] = ["s1", "s2"]
+servers.append("s3")
+print(servers.length)               # 3
+print(servers[0])                   # s1
+print(servers[0:2])                 # slice
+
+status: dict[string, string] = {
+    "web": "online",
+    "db":  "offline",
+}
+status["cache"] = "online"
+
+pair: tuple[string, integer] = ("web", 8080)
+```
+
+Comprehensions build lists from an iterable, with an optional filter:
+
+```gust
+squares := [n * n for n in range(5)]
+evens   := [n for n in range(10) if n % 2 == 0]
+```
+
+Collections can also hold `Any` for heterogeneous data. See [collections](/lang/collections).
+
+## Control flow
+
+```gust
+if ms > 500
+    print("slow")
+else if ms > 200
+    print("okay")
+else
+    print("fast")
+end
+
+label := "on" if online else "off"    # conditional expression
+
+for s in servers
+    if s == "db"
+        continue
+    end
+    print(s)
+end
+
+for i in range(3)
+    print(i)
+end
+
+while count < 10
+    count += 1
+    if count == 5
+        break
+    end
+end
+```
+
+A `with` block runs a resource's `__exit` however the block is left — fall-through, `return`, `break`, or a raised error:
+
+```gust
+with lock
+    critical_section()
+end
+```
+
+See [control flow](/lang/control-flow).
+
+## Functions
+
+```gust
+def add(a: integer, b: integer) -> integer
+    return a + b
+end
+
+def divide(a: integer, b: integer) -> tuple[integer, integer]
+    return (a // b, a % b)
+end
+
+q, r := divide(10, 3)          # tuple unpacking
+```
+
+Named arguments work at call sites for structs and, optionally, for functions:
+
+```gust
+user := User(name: "ada", age: 29)
+```
+
+Functions are also values. A lambda is a `def(...) -> R … end` expression, and it can capture surrounding variables:
+
+```gust
+add := def(x: integer, y: integer) -> integer
+    return x + y
+end
+print(add(2, 3))               # 5
+```
+
+A type parameter in brackets makes a function generic:
+
+```gust
+def identity[T](x: T) -> T
+    return x
+end
+print(identity[integer](5))
+```
+
+See [functions](/lang/functions).
+
+## Structs and methods
+
+```gust
+def Server
+    name: string
+    ip:   string
+    online: bool
+end
+
+def Server.status() -> string
+    return "online" if online else "offline"   # fields are in scope
+end
+
+s := Server(name: "web-1", ip: "10.0.0.1", online: true)
+print(s.status())
+```
+
+Fields are accessed bare inside methods — no `self.` prefix. A struct is generic when it carries a type parameter:
+
+```gust
+def Box[T]
+    value: T
+end
+b := Box[string](value: "hi")
+```
+
+A `dict[string, Any]` casts *to* a struct field-by-field, and a struct casts *back to* a dict:
+
+```gust
+data: dict[string, Any] = {"x": 3, "y": 4}
+p := data as Point                  # fills Point(x: 3, y: 4)
+back := p as dict[string, Any]      # {"x": 3, "y": 4}
+```
+
+See [structs](/lang/structs).
+
+## Subclassing
+
+`extends` gives a struct the parent's fields and methods, and a child method overrides the parent's through the vtable:
+
+```gust
+def Animal
+    name: string
+end
+
+def Animal.speak() -> string
+    return "..."
+end
+
+def Dog extends Animal
+    breed: string
+end
+
+def Dog.speak() -> string
+    return "woof"
+end
+
+a: Animal = Dog(name: "rex", breed: "lab")
+print(a.speak())                    # woof
+```
+
+An upcast value narrows back with `is` and `as`:
+
+```gust
+if a is Dog
+    print((a as Dog).breed)
+end
+```
+
+## Interfaces
+
+Method contracts, dispatched through a vtable:
+
+```gust
+interface Pingable
+    def ping() -> bool
+    def status() -> string
+end
+
+def Server implements Pingable
+    name: string
+    online: bool
+end
+
+def Server.ping() -> bool
+    return online end
+
+def Server.status() -> string
+    return "ok" if online else "down" end
+
+def check(x: Pingable) -> none
+    if x.ping()
+        print(x.status())
+    end
+end
+```
+
+`implements` is optional — any struct with the matching methods satisfies the interface — but it makes intent explicit and lets the analyzer catch drift. See [interfaces](/lang/interfaces).
+
+## Enums
+
+A backed enum maps variants to integer or string values; `auto_enum` numbers them 0, 1, 2… for you:
+
+```gust
+auto_enum Status: integer
+    online
+    offline
+    maintenance
+end
+
+enum Priority: integer
+    low    = 10
+    medium = 20
+    high   = 30
+end
+
+enum HttpMethod: string
+    get  = "GET"
+    post = "POST"
+end
+```
+
+A backed enum is assignable wherever its backing primitive is expected, with no cast.
+
+An `enum` with **no backing type** and `case` variants is a sum type (tagged union). Each variant can carry its own fields:
+
+```gust
+enum Shape
+    case Circle(radius: float)
+    case Rect(width: integer, height: integer)
+    case Empty
+end
+
+c := Circle(2.0)
+r := Rect(3, 4)
+```
+
+See [enums](/lang/enums).
+
+## Pattern matching
+
+```gust
+match code
+    case 200
+        return "ok"
+    case 301, 302
+        return "redirect"
+    case 404
+        return "not found"
+    else
+        return f"status {code}"
+end
+```
+
+`match` works over integers, strings, booleans, named constants, and enum variants. Arms list multiple values with commas. Matching a sum-type enum destructures the variant's fields into fresh bindings:
+
+```gust
+def area(s: Shape) -> float
+    match s
+        case Circle(r)
+            return 3.14159 * r * r
+        case Rect(w, h)
+            return (w * h) as float
+        case Empty
+            return 0.0
+    end
+end
+```
+
+A `case` can also test a runtime type. See [pattern matching](/lang/match).
+
+## Unions and optionals
+
+A union type accepts any of several types; `T | none` is the optional form:
+
+```gust
+def find(xs: list[integer], target: integer) -> integer | none
+    for x in xs
+        if x == target
+            return x
+        end
+    end
+    return none
+end
+```
+
+Narrow with `is` / `is not` and unwrap with `as`. Inside a branch that has ruled out `none`, the value is already narrowed:
+
+```gust
+found := find([1, 2, 3], 2)
+if found is none
+    print("missing")
+else
+    print(found)            # narrowed to integer here
+end
+```
+
+See [unions](/lang/unions).
+
+## Errors
+
+```gust
+error LatencyError(message: string, server: string)
+
+def ping(s: string, ms: integer) -> string
+    if ms > 500
+        raise LatencyError(message: "too slow", server: s)
+    end
+    return s
+end
+
+try
+    ok := ping("s1", 700)
+    print(ok)
+catch LatencyError as err
+    print(f"{err.server} slow: {err.message}")
+end
+```
+
+The prelude ships standard error types: `ValueError`, `IOError`, `IndexError`, `KeyError`, `RuntimeError`. A bare `raise` inside a `catch` re-throws. See [error handling](/lang/errors).
+
+## Decorators
+
+A decorator annotates a declaration with `@name`. Built-in compiler markers include `@inline`, `@no_tco`, `@static`, and `@test`:
+
+```gust
+@inline
+def square(n: integer) -> integer
+    return n * n
+end
+```
+
+You can also write your own wrapping decorators and compile-time derive macros. See [decorators](/lang/decorators).
+
+## Concurrency — explicit, opt-in
+
+Nothing runs in parallel unless you ask. Add a `!` suffix to a `def`, `for`, or `while` and the compiler spawns and joins threads for you.
+
+A `def!` runs consecutive independent calls in its body on parallel threads, joined before the next dependent use:
+
+```gust
+def! fan_out() -> none
+    a := fetch("10.0.0.1")
+    b := fetch("10.0.0.2")    # a and b spawn in parallel
+    print(a, b)               # joined here
+end
+```
+
+A `for!` spawns each iteration on its own thread, all joined at loop end:
+
+```gust
+for! s in servers
+    process(s)
+end
+```
+
+A `while!` runs the whole loop as a detached background thread (fire-and-forget; locals are captured by value at spawn time).
+
+Plain `def`, `for`, and `while` are strictly sequential — that is the default:
+
+```gust
+migrate("v1")
+migrate("v2")
+migrate("v3")
+```
+
+No `async`, `await`, or `go`, and no executor plumbing. See [concurrency](/lang/concurrency).
+
+## Imports
+
+```gust
+use math
+use time
+
+use platform from os
+
+def main() -> none
+    print(math.sqrt(2.0))
+    print(time.now_ms())
+    print(os.platform())
+end
+```
+
+Import a whole package with `use <pkg>`, a single name with `use <name> from <pkg>`, and rename with `use <pkg> as <alias>`. Standard library packages are linked automatically. See [imports](/lang/imports) and the [standard library](/stdlib).
+
+## Constants
+
+```gust
+MAX_PORT:  constant[integer] = 9090
+APP_NAME:  constant[string]  = "gust"
+```
+
+Top-level only, immutable, typed. See [constants](/lang/constants).
+
+---
+
+That's Gust in one sitting. When you're ready for depth, start with the [language reference overview](/lang/overview).

@@ -1,0 +1,161 @@
+---
+title: Rules
+description: "Every formatter, error, and warning code Gust can emit, with its severity and how it is repaired."
+---
+
+Gust reports findings with stable codes. `F###` codes are formatter passes applied by `gust format`, `G####` codes are analyzer errors, and `W####` codes are analyzer warnings. A code marked in the **Fix** column is auto-repaired — `gust format` for `F` codes, `gust check --fix` for fixable `W` codes. Run `gust explain <code>` for the long-form text of any `G` / `W` code.
+
+These tables list every code at a glance; follow a section in the sidebar for the full description of each rule. Generated from the rule registry and the formatter pass list — see `gustc/rules/` and `gustc/formatter/`.
+
+## Formatter rules (F-codes)
+
+| Code | Name | Severity | Fix |
+|------|------|----------|-----|
+| `F001` | operator-spacing | fix | `gust format` |
+| `F002` | colon-comma-spacing | fix | `gust format` |
+| `F003` | bracket-spacing | fix | `gust format` |
+| `F004` | indentation | fix | `gust format` |
+| `F005` | toplevel-blank-lines | fix | `gust format` |
+| `F006` | struct-blank-lines | fix | `gust format` |
+| `F007` | sum-type-blank-lines | fix | `gust format` |
+| `F008` | enum-blank-lines | fix | `gust format` |
+| `F009` | expression-collapsing | fix | `gust format` |
+| `F010` | magic-trailing-comma | fix | `gust format` |
+| `F011` | trailing-comma | fix | `gust format` |
+| `F012` | import-sort | fix | `gust format` |
+| `F013` | import-section-separation | fix | `gust format` |
+| `F014` | import-item-sort | fix | `gust format` |
+| `F015` | import-expansion | fix | `gust format` |
+| `F016` | trailing-whitespace | fix | `gust format` |
+| `F017` | trailing-blank-lines | fix | `gust format` |
+| `F018` | line-length | warning | — |
+| `F019` | use-paren-collapse | fix | `gust format` |
+| `F020` | import-combine | fix | `gust format` |
+| `F021` | docstring-closer-split | fix | `gust format` |
+| `F022` | long-line-split | fix | `gust format` |
+
+## Analyzer errors (G-codes)
+
+| Code | Name | Severity | Fix |
+|------|------|----------|-----|
+| `G0000` | generic | error | — |
+| `G0101` | arg-type-mismatch | error | — |
+| `G0102` | assign-type-mismatch | error | — |
+| `G0103` | return-type-mismatch | error | — |
+| `G0104` | condition-not-bool | error | — |
+| `G0105` | generic-inference-failure | error | — |
+| `G0106` | struct-field-default-mismatch | error | — |
+| `G0107` | missing-struct-field | error | — |
+| `G0108` | collection-literal-mismatch | error | — |
+| `G0109` | incomplete-type | error | — |
+| `G0110` | unknown-field | error | — |
+| `G0201` | unknown-identifier | error | — |
+| `G0202` | unknown-type | error | — |
+| `G0203` | shadowing-outer-binding | error | — |
+| `G0204` | ambiguous-struct-reference | error | — |
+| `G0205` | reserved-type-name | error | — |
+| `G0206` | import-not-visible | error | — |
+| `G0207` | unsupported-dict-key | error | — |
+| `G0301` | wrong-arg-count | error | — |
+| `G0401` | interface-conformance | error | — |
+| `G0402` | operator-dunder-missing | error | — |
+| `G0403` | cast-dunder-missing | error | — |
+| `G0404` | with-context-protocol | error | — |
+| `G0501` | mutate-constant | error | — |
+| `G0502` | private-access | error | — |
+| `G0503` | invalid-assignment-target | error | — |
+| `G0601` | duplicate-definition | error | — |
+| `G0602` | invalid-error-layout | error | — |
+| `G0603` | field-method-conflict | error | — |
+| `G0604` | missing-return-type | error | — |
+| `G0605` | missing-main | error | — |
+| `G0606` | reserved-decorator-name | error | — |
+| `G0607` | static-method-decorator | error | — |
+| `G0608` | untrusted-unsafe-decorator | error | — |
+| `G0609` | invalid-extends | error | — |
+| `G0610` | extends-cycle | error | — |
+| `G0611` | inherited-field-shadowing | error | — |
+| `G0612` | override-signature-mismatch | error | — |
+| `G0613` | invalid-super | error | — |
+| `G0614` | post-init-signature | error | — |
+| `G0701` | import-error | error | — |
+| `G0702` | unknown-package-member | error | — |
+| `G0703` | invalid-inspect-target | error | — |
+| `G0801` | break-outside-loop | error | — |
+| `G0802` | invalid-error-usage | error | — |
+| `G0803` | invalid-match-structure | error | — |
+| `G0804` | invalid-match-pattern | error | — |
+| `G0805` | non-exhaustive-match | error | — |
+| `G0806` | missing-return-path | error | — |
+| `G0901` | unpack-mismatch | error | — |
+
+## Analyzer warnings (W-codes)
+
+| Code | Name | Severity | Fix |
+|------|------|----------|-----|
+| `W0101` | fn-not-snake-case | warning | — |
+| `W0102` | method-not-snake-case | warning | — |
+| `W0103` | param-not-snake-case | warning | — |
+| `W0104` | var-not-snake-case | warning | — |
+| `W0105` | type-not-pascal-case | warning | — |
+| `W0106` | enum-not-pascal-case | warning | — |
+| `W0107` | enum-member-not-snake | warning | — |
+| `W0108` | constant-not-screaming | warning | — |
+| `W0109` | error-no-error-suffix | warning | — |
+| `W0110` | ambiguous-name | warning | — |
+| `W0201` | builtin-variable-shadowing | warning | — |
+| `W0202` | builtin-argument-shadowing | warning | — |
+| `W0203` | builtin-attribute-shadowing | warning | — |
+| `W0204` | builtin-import-shadowing | warning | — |
+| `W0205` | stdlib-module-shadowing | warning | — |
+| `W0301` | unused-variable | warning | — |
+| `W0302` | unused-import | warning | — |
+| `W0303` | unused-function-argument | warning | — |
+| `W0304` | unused-method-argument | warning | — |
+| `W0305` | unused-private-function | warning | — |
+| `W0306` | unused-gust-ignore | warning | `gust check --fix` |
+| `W0307` | invalid-rule-code | warning | — |
+| `W0401` | unreachable-after-return | warning | — |
+| `W0402` | unnecessary-return-none | warning | `gust check --fix` |
+| `W0403` | unnecessary-assign | warning | `gust check --fix` |
+| `W0404` | superfluous-else-return | warning | — |
+| `W0405` | superfluous-else-raise | warning | — |
+| `W0406` | superfluous-else-continue | warning | — |
+| `W0407` | superfluous-else-break | warning | — |
+| `W0408` | needless-else | warning | — |
+| `W0413` | collapsible-else-if | warning | — |
+| `W0501` | yoda-conditions | warning | `gust check --fix` |
+| `W0502` | if-else-block-instead-of-dict-get | warning | — |
+| `W0503` | split-static-string | warning | — |
+| `W0504` | dict-get-with-none-default | warning | `gust check --fix` |
+| `W0506` | unnecessary-cast-to-int | warning | — |
+| `W0507` | collapsible-if | warning | `gust check --fix` |
+| `W0508` | needless-bool | warning | — |
+| `W0509` | if-else-block-instead-of-if-exp | warning | `gust check --fix` |
+| `W0510` | if-with-same-arms | warning | — |
+| `W0511` | if-else-block-instead-of-dict-lookup | warning | — |
+| `W0512` | in-dict-keys | warning | `gust check --fix` |
+| `W0513` | negate-equal-op | warning | `gust check --fix` |
+| `W0514` | negate-not-equal-op | warning | `gust check --fix` |
+| `W0515` | double-negation | warning | `gust check --fix` |
+| `W0516` | if-expr-with-true-false | warning | — |
+| `W0517` | if-expr-with-false-true | warning | — |
+| `W0518` | if-expr-with-twisted-arms | warning | — |
+| `W0519` | expr-and-not-expr | warning | — |
+| `W0520` | expr-or-not-expr | warning | — |
+| `W0521` | expr-or-true | warning | — |
+| `W0522` | expr-and-false | warning | — |
+| `W0523` | true-false-comparison | warning | — |
+| `W0524` | self-comparison | warning | — |
+| `W0525` | self-assignment | warning | — |
+| `W0526` | useless-import-alias | warning | `gust check --fix` |
+| `W0527` | unnecessary-range-start | warning | — |
+| `W0601` | commented-out-code | warning | — |
+| `W0602` | missing-newline-at-end-of-file | warning | — |
+| `W0603` | invalid-escape-sequence | warning | — |
+| `W0604` | blank-line-with-whitespace | warning | `gust check --fix` |
+| `W0605` | tab-indentation | warning | `gust check --fix` |
+| `W0701` | any-type-weakening | warning | — |
+| `W0802` | useless-try-except | warning | — |
+
+

@@ -1,0 +1,127 @@
+---
+title: Standard library
+description: "Gust's batteries-included standard library — importable packages plus the built-in type methods"
+---
+
+Each package is a `.g` declaration file paired with a C implementation that links into your binary automatically. Import with `use <pkg>`; members are accessed as `pkg.name`. The [Builtins](/builtins/prelude) section covers the prelude and the methods on the built-in types.
+
+## Importing
+
+```gust
+use math
+use time
+
+def main() -> none
+    print(math.sqrt(2.0))
+    print(time.now_ms())
+end
+```
+
+## Core
+
+| Package | Description |
+|---------|-------------|
+| [`math`](/stdlib/math) | Numeric limits, constants, and mathematical functions: the integer and float range bounds, the constants π, τ, e, infinity, and NaN, absolute value, rounding and truncation, sign and comparison helpers, division remainders, powers and roots, exponentials and logarithms, trigonometric and hyperbolic functions, angle conversion, float classification, and integer helpers such as `gcd`, `lcm`, and `factorial` |
+| [`convert`](/stdlib/convert) | Integer base conversions: format an integer as a hex, octal, or binary string (with the conventional `0x` / `0o` / `0b` prefix) and parse such strings back to integers, honoring an optional sign and prefix |
+| [`time`](/stdlib/time) | DateTime values: a calendar date and time of day paired with a Unix millisecond timestamp and a timezone label |
+| [`uuid`](/stdlib/uuid) | Universally Unique Identifiers (RFC 4122 / RFC 9562) |
+
+## System
+
+| Package | Description |
+|---------|-------------|
+| [`os`](/stdlib/os) | System-level utilities: the operating-system and hardware identity (platform, OS version, architecture, hostname, byte order), process identity (pid, ppid, uid, username, executable path, command-line arguments), standard-stream I/O, executable lookup on `$PATH`, and a per-compile arena allocator for batch drivers |
+| [`fs`](/stdlib/fs) | Filesystem and path operations: querying and changing the working directory, building and splitting paths, file and directory reads/writes/creation/removal, recursive walking and copying, globbing, temp files and directories, and a `Path` wrapper that exposes these as method-style helpers (`.read()`, `.write()`, `.parent()`, `.ext()`, and more) |
+| [`exitcode`](/stdlib/exitcode) | Standard process exit codes, named as constants |
+| [`signal`](/stdlib/signal) | Unix signal handling |
+| [`profile`](/stdlib/profile) | A deterministic section profiler |
+| [`mmap`](/stdlib/mmap) | Memory-mapped regions through the POSIX `mmap` call |
+| [`ioctl`](/stdlib/ioctl) | Device control through the POSIX `ioctl` call |
+
+## Text & data
+
+| Package | Description |
+|---------|-------------|
+| [`regex`](/stdlib/regex) | Backtracking regular-expression engine backing the `regex` package |
+| [`highlight`](/stdlib/highlight) | Syntax highlighting |
+| [`url`](/stdlib/url) | URL percent-encoding, percent-decoding, and parsing |
+| [`buffer`](/stdlib/buffer) | A growable string builder |
+| [`hashmap`](/stdlib/hashmap) | `IntMap`: an integer-keyed hash map with integer values |
+| [`ansi`](/stdlib/ansi) | ANSI terminal escape sequences for colored and styled output |
+| [`mime`](/stdlib/mime) | MIME media-type helpers |
+
+## Serialization
+
+| Package | Description |
+|---------|-------------|
+| [`json`](/stdlib/json) | The RFC 8259 parser and serializer for the JSON package |
+| [`toml`](/stdlib/toml) | `encode` serializes a `dict[string, Any]` back into TOML text, the inverse of `parse` |
+| [`yaml`](/stdlib/yaml) | Line-cursor block parser |
+| [`csv`](/stdlib/csv) | A practical RFC 4180 CSV reader and writer |
+| [`compression`](/stdlib/compression) | DEFLATE-family compression backed by the system zlib |
+
+## Cryptography
+
+| Package | Description |
+|---------|-------------|
+| [`cryptography.sha`](/stdlib/cryptography/sha) | SHA-2 family hashes plus the legacy SHA-1, implemented in pure Gust (no C, no external library) so they build everywhere the language does — including the freestanding Pico target |
+| [`cryptography.hmac`](/stdlib/cryptography/hmac) | HMAC (keyed-hash message authentication code, RFC 2104), implemented in pure Gust on top of `cryptography.sha` |
+| [`cryptography.kdf`](/stdlib/cryptography/kdf) | Key derivation functions, implemented in pure Gust over `cryptography.hmac` (HMAC-SHA-256) |
+| [`cryptography.random`](/stdlib/cryptography/random) | Random number generation, in two flavors that must not be confused: |
+| [`cryptography.aes`](/stdlib/cryptography/aes) | Authenticated AES encryption (AES-GCM), backed by the system OpenSSL (`libcrypto`) |
+| [`cryptography.bcrypt`](/stdlib/cryptography/bcrypt) | bcrypt password hashing, backed by the system libxcrypt (`crypt_rn` / `crypt_gensalt_rn` with the `$2b$` prefix) |
+| [`cryptography.ed25519`](/stdlib/cryptography/ed25519) | Ed25519 digital signatures, backed by the system OpenSSL (`libcrypto`) |
+| [`cryptography.x25519`](/stdlib/cryptography/x25519) | X25519 Elliptic-Curve Diffie-Hellman key exchange, backed by the system OpenSSL (`libcrypto`) |
+| [`cryptography.ssl`](/stdlib/cryptography/ssl) | TLS/SSL for byte-stream sockets, layered over the `socket` package |
+
+## Networking
+
+| Package | Description |
+|---------|-------------|
+| [`socket`](/stdlib/socket) | Thin TCP socket primitives over POSIX sockets, with no external dependencies |
+| [`websockets`](/stdlib/websockets) | Minimal RFC 6455 WebSocket support for plain `ws://` connections |
+| [`http`](/stdlib/http) | The `Headers` view over a request's header set: a small read-only wrapper around the parsed `name -> value` map (keys lowercased) that does case-insensitive lookups and treats `_` as `-`, so `req.headers["content_type"]` and `req.headers["Content-Type"]` resolve to the same header |
+
+## Database
+
+| Package | Description |
+|---------|-------------|
+| [`database`](/stdlib/database) | Driver-agnostic database access — the shared contract every SQL driver speaks |
+| [`database.sqlite`](/stdlib/database/sqlite) | SQLite driver for the `database` package — an embedded, file-backed SQL engine |
+| [`database.postgres`](/stdlib/database/postgres) | PostgreSQL driver for the `database` package — a client for a PostgreSQL server |
+
+## Interaction & media
+
+| Package | Description |
+|---------|-------------|
+| [`cli.app`](/stdlib/cli/app) | Command-line argument parsing and command dispatch |
+| [`cli.ui`](/stdlib/cli/ui) | Terminal key decoder: the byte-to-keycode state machine behind `read_key()` and `read_key_timeout()` |
+| [`images`](/stdlib/images) | Self-contained image processing with no external runtime dependency, backed by the public-domain stb headers vendored in this package |
+| [`barcode`](/stdlib/barcode) | A pure-Gust 1D (linear) barcode encoder |
+
+## Embedded
+
+| Package | Description |
+|---------|-------------|
+| [`i2c`](/stdlib/i2c) | Cross-platform I2C bus access through one neutral, handle-based API with a backend per platform: |
+| [`cec`](/stdlib/cec) | HDMI-CEC (Consumer Electronics Control) bus access — the low-speed control channel on the HDMI wire that lets connected devices power each other on and off, switch inputs, and pass remote-control keys |
+| [`pin`](/stdlib/pin) | Cross-platform GPIO line access through one neutral, handle-based API with a backend per platform: |
+| [`framebuffer`](/stdlib/framebuffer) | Direct pixel access to a Linux framebuffer device (`/dev/fb<index>`), the surface behind an HDMI, DSI, or SPI-fbdev display when no window system owns the screen |
+| [`drm`](/stdlib/drm) | Tear-free display output through the Linux kernel mode-setting interface (DRM/KMS, `/dev/dri/card<index>`) |
+| [`bluetooth`](/stdlib/bluetooth) | A cross-platform Bluetooth Low Energy API covering both roles: |
+
+## Metaprogramming
+
+| Package | Description |
+|---------|-------------|
+| [`ast`](/stdlib/ast) | AST nodes |
+| [`derive`](/stdlib/derive) | Authoring surface for compile-time derive macros |
+| [`imports`](/stdlib/imports) | Package / module resolution shared by the Gust compiler and by user tooling (build scripts, linters, package managers, language servers) |
+| [`inspect`](/stdlib/inspect) | Compile-time introspection over your program's own declarations |
+| [`autodoc`](/stdlib/autodoc) | A reference documentation generator built entirely on top of the compile-time `inspect` package |
+
+## Testing
+
+| Package | Description |
+|---------|-------------|
+| [`testing`](/stdlib/testing) | The test context `T` handed to every `@test` function, plus the two control errors the harness uses to unwind a test early |

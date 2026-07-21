@@ -1,0 +1,3104 @@
+---
+title: ast
+description: "AST nodes"
+---
+
+```gust
+use ast
+```
+
+AST nodes.
+
+Every Gust syntactic form maps to an ADT variant (for expression and
+statement shapes) or a plain struct (for declaration-level nodes where
+the field set tends to grow). Walk a tree by matching on the variant:
+
+**Examples**
+
+```gust
+match expr
+    case IntLit(value, span)
+        print(value)
+    case Ident(name, line, col)
+        print(name)
+    else
+        pass
+end
+```
+
+Because a variant pattern may bind a prefix of a variant's fields, an arm
+that ignores the trailing `span` still matches.
+
+**On this page:** [`SrcSpan`](#SrcSpan) · [`NamedArg`](#NamedArg) · [`ElseIf`](#ElseIf) · [`CatchClause`](#CatchClause) · [`MatchArm`](#MatchArm) · [`FieldDef`](#FieldDef) · [`Import`](#Import) · [`ErrorDef`](#ErrorDef) · [`Param`](#Param) · [`FuncSignature`](#FuncSignature) · [`InterfaceDef`](#InterfaceDef) · [`EnumMemberDef`](#EnumMemberDef) · [`EnumDef`](#EnumDef) · [`StructDef`](#StructDef) · [`FuncDecl`](#FuncDecl) · [`Decorator`](#Decorator) · [`FuncDef`](#FuncDef) · [`MethodDef`](#MethodDef) · [`VariantDef`](#VariantDef) · [`TypeDef`](#TypeDef) · [`ConstDef`](#ConstDef) · [`GenericInst`](#GenericInst) · [`GenericStructInst`](#GenericStructInst) · [`Program`](#Program) · [`Lexer`](#Lexer) · [`MarkupGen`](#MarkupGen) · [`Parser`](#Parser) · [`Token`](#Token) · [`type_to_string`](#ast.type_to_string) · [`generic_mangle`](#ast.generic_mangle) · [`no_span`](#ast.no_span) · [`span_is_real`](#ast.span_is_real) · [`span_tok`](#ast.span_tok) · [`span_join`](#ast.span_join) · [`span_contains`](#ast.span_contains) · [`span_size`](#ast.span_size) · [`expr_span`](#ast.expr_span) · [`clone_type`](#ast.clone_type) · [`clone_named_arg`](#ast.clone_named_arg) · [`clone_fstring_part`](#ast.clone_fstring_part) · [`clone_comp_clause`](#ast.clone_comp_clause) · [`clone_expr`](#ast.clone_expr) · [`reanchor_expr`](#ast.reanchor_expr) · [`reanchor_named_arg`](#ast.reanchor_named_arg) · [`reanchor_fstring_part`](#ast.reanchor_fstring_part) · [`reanchor_comp_clause`](#ast.reanchor_comp_clause) · [`stmt_span`](#ast.stmt_span) · [`ch_is_lower`](#ast.ch_is_lower) · [`ch_is_upper`](#ast.ch_is_upper) · [`ch_is_digit`](#ast.ch_is_digit) · [`ch_is_alpha`](#ast.ch_is_alpha) · [`ch_is_ident_start`](#ast.ch_is_ident_start) · [`ch_is_ident`](#ast.ch_is_ident) · [`is_alnum_ch`](#ast.is_alnum_ch) · [`is_hex_ch`](#ast.is_hex_ch) · [`is_bin_ch`](#ast.is_bin_ch) · [`is_oct_ch`](#ast.is_oct_ch) · [`digit_val`](#ast.digit_val) · [`parse_int_base`](#ast.parse_int_base) · [`decimal_overflows_i64`](#ast.decimal_overflows_i64) · [`decode_string_escape`](#ast.decode_string_escape) · [`hex_nibble`](#ast.hex_nibble) · [`is_quote_block_opener`](#ast.is_quote_block_opener) · [`is_radix_digit`](#ast.is_radix_digit) · [`lower_event_handler`](#ast.lower_event_handler) · [`parse`](#ast.parse) · [`tok_span`](#ast.tok_span) · [`generic_type_form_hint`](#ast.generic_type_form_hint) · [`compound_op_kind`](#ast.compound_op_kind) · [`binop_prec`](#ast.binop_prec) · [`first_is_upper`](#ast.first_is_upper) · [`is_primary_literal`](#ast.is_primary_literal) · [`find_close_brace`](#ast.find_close_brace) · [`is_none_type`](#ast.is_none_type) · [`is_literal`](#ast.is_literal) · [`is_keyword`](#ast.is_keyword) · [`is_operator`](#ast.is_operator) · [`keyword_kind`](#ast.keyword_kind) · [`op_spelling`](#ast.op_spelling)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `FR_BRACKET` | `integer` | `1` |
+| `FR_BLOCK` | `integer` | `2` |
+| `PARSE_MAX_DEPTH` | `integer` | `2000` |
+| `PARSE_MAX_BLOCK_DEPTH` | `integer` | `300` |
+| `PARSE_MAX_CHAIN_LINKS` | `integer` | `500` |
+| `TT_LITERAL_BEG` | `integer` | `0` |
+| `TT_INT_LIT` | `integer` | `1` |
+| `TT_FLOAT_LIT` | `integer` | `2` |
+| `TT_STRING_LIT` | `integer` | `3` |
+| `TT_FSTRING` | `integer` | `4` |
+| `TT_MULTILINE_STRING` | `integer` | `5` |
+| `TT_BYTES_LIT` | `integer` | `6` |
+| `TT_LITERAL_END` | `integer` | `7` |
+| `TT_IDENT` | `integer` | `8` |
+| `TT_KEYWORD_BEG` | `integer` | `9` |
+| `TT_DEF` | `integer` | `10` |
+| `TT_END` | `integer` | `11` |
+| `TT_IF` | `integer` | `12` |
+| `TT_ELSE` | `integer` | `13` |
+| `TT_FOR` | `integer` | `14` |
+| `TT_WHILE` | `integer` | `15` |
+| `TT_BLOCKING` | `integer` | `16` |
+| `TT_IN` | `integer` | `17` |
+| `TT_RETURN` | `integer` | `18` |
+| `TT_TRUE` | `integer` | `19` |
+| `TT_FALSE` | `integer` | `20` |
+| `TT_NONE` | `integer` | `21` |
+| `TT_AND` | `integer` | `22` |
+| `TT_OR` | `integer` | `23` |
+| `TT_NOT` | `integer` | `24` |
+| `TT_TRY` | `integer` | `25` |
+| `TT_CATCH` | `integer` | `26` |
+| `TT_RAISE` | `integer` | `27` |
+| `TT_USE` | `integer` | `28` |
+| `TT_INTERFACE` | `integer` | `29` |
+| `TT_ERROR` | `integer` | `30` |
+| `TT_ENUM` | `integer` | `31` |
+| `TT_AUTO_ENUM` | `integer` | `32` |
+| `TT_AS` | `integer` | `33` |
+| `TT_IS` | `integer` | `34` |
+| `TT_BREAK` | `integer` | `35` |
+| `TT_CONTINUE` | `integer` | `36` |
+| `TT_MATCH` | `integer` | `37` |
+| `TT_CASE` | `integer` | `38` |
+| `TT_PRIVATE` | `integer` | `39` |
+| `TT_FROM` | `integer` | `40` |
+| `TT_IMPLEMENTS` | `integer` | `41` |
+| `TT_FOREIGN` | `integer` | `42` |
+| `TT_TYPE` | `integer` | `43` |
+| `TT_PASS` | `integer` | `44` |
+| `TT_SPAWN` | `integer` | `45` |
+| `TT_EXTENDS` | `integer` | `46` |
+| `TT_WITH` | `integer` | `47` |
+| `TT_KEYWORD_END` | `integer` | `48` |
+| `TT_IS_NOT` | `integer` | `85` |
+| `TT_NOT_IN` | `integer` | `86` |
+| `TT_OPERATOR_BEG` | `integer` | `50` |
+| `TT_WALRUS` | `integer` | `51` |
+| `TT_ASSIGN` | `integer` | `52` |
+| `TT_OP_ASSIGN` | `integer` | `53` |
+| `TT_EQ` | `integer` | `54` |
+| `TT_NEQ` | `integer` | `55` |
+| `TT_LT` | `integer` | `56` |
+| `TT_GT` | `integer` | `57` |
+| `TT_LTE` | `integer` | `58` |
+| `TT_GTE` | `integer` | `59` |
+| `TT_PLUS` | `integer` | `60` |
+| `TT_MINUS` | `integer` | `61` |
+| `TT_STAR` | `integer` | `62` |
+| `TT_SLASH` | `integer` | `63` |
+| `TT_FLOORDIV` | `integer` | `64` |
+| `TT_PERCENT` | `integer` | `65` |
+| `TT_PIPE` | `integer` | `66` |
+| `TT_AMP` | `integer` | `67` |
+| `TT_CARET` | `integer` | `68` |
+| `TT_TILDE` | `integer` | `69` |
+| `TT_SHL` | `integer` | `70` |
+| `TT_SHR` | `integer` | `71` |
+| `TT_DOT` | `integer` | `72` |
+| `TT_COLON` | `integer` | `73` |
+| `TT_ARROW` | `integer` | `74` |
+| `TT_BANG` | `integer` | `75` |
+| `TT_AT` | `integer` | `76` |
+| `TT_COMMA` | `integer` | `77` |
+| `TT_LPAREN` | `integer` | `78` |
+| `TT_RPAREN` | `integer` | `79` |
+| `TT_LBRACKET` | `integer` | `80` |
+| `TT_RBRACKET` | `integer` | `81` |
+| `TT_LBRACE` | `integer` | `82` |
+| `TT_RBRACE` | `integer` | `83` |
+| `TT_OPERATOR_END` | `integer` | `84` |
+| `TT_NEWLINE` | `integer` | `100` |
+| `TT_EOF` | `integer` | `101` |
+| `TT_QUOTE` | `integer` | `102` |
+| `TT_MARKUP` | `integer` | `103` |
+| `KEYWORD_KINDS` | `dict[string, integer]` | `{"def": TT_DEF, "end": TT_END, "if": TT_IF, "else": TT_ELSE,…}` |
+
+## `SrcSpan`
+
+<a id="SrcSpan" />
+A source location: the half-open character range a node occupies,
+given as 1-based `(line, col)` pairs. `end_col` is one past the last
+character, so on a single line `end_col - start_col` is the length.
+
+```gust
+def SrcSpan
+
+    start_line: integer
+    start_col: integer
+    end_line: integer
+    end_col: integer
+
+end
+```
+
+**Fields**
+
+- `start_line: integer`
+- `start_col: integer`
+- `end_line: integer`
+- `end_col: integer`
+
+## `NamedArg`
+
+<a id="NamedArg" />
+A keyword argument or struct-init field: a `name: value` pair, with
+the source `line`/`col` of the name for diagnostics.
+
+```gust
+def NamedArg
+
+    name: string
+    value: ref[Expr]
+    line: integer
+    col: integer
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `value: ref[Expr]`
+- `line: integer`
+- `col: integer`
+
+## `ElseIf`
+
+<a id="ElseIf" />
+One `else if` branch of an `IfStmt`: a guard condition and its body.
+
+```gust
+def ElseIf
+
+    cond: ref[Expr]
+    body: list[Stmt]
+
+end
+```
+
+**Fields**
+
+- `cond: ref[Expr]`
+- `body: list[Stmt]`
+
+## `CatchClause`
+
+<a id="CatchClause" />
+One `catch ErrorType as var` branch of a `TryStmt`: the error type to
+match, the binding name for the caught error, and the handler body.
+
+```gust
+def CatchClause
+
+    error_type: string
+    var_name: string
+    body: list[Stmt]
+    line: integer
+
+end
+```
+
+**Fields**
+
+- `error_type: string`
+- `var_name: string`
+- `body: list[Stmt]`
+- `line: integer`
+
+## `MatchArm`
+
+<a id="MatchArm" />
+One arm of a `MatchStmt`: the patterns it matches (multiple for an
+`a | b` alternation), the arm body, and an optional guard expression.
+
+```gust
+def MatchArm
+
+    patterns: list[Expr]
+    body: list[Stmt]
+    has_guard: bool
+    guard: ref[Expr]
+    line: integer
+
+end
+```
+
+**Fields**
+
+- `patterns: list[Expr]`
+- `body: list[Stmt]`
+- `has_guard: bool`
+- `guard: ref[Expr]`
+- `line: integer`
+
+## `FieldDef`
+
+<a id="FieldDef" />
+A struct/error field declaration: its name, declared type, and an
+optional default-value expression. `is_private` marks a field that is
+only accessible within its defining package (same model as a `private`
+function/constant), defaulting to public.
+
+```gust
+def FieldDef
+
+    name: string
+    ftype: ref[TypeNode]
+    has_default: bool
+    default_expr: ref[Expr]
+    is_private: bool
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `ftype: ref[TypeNode]`
+- `has_default: bool`
+- `default_expr: ref[Expr]`
+- `is_private: bool`
+
+## `Import`
+
+<a id="Import" />
+A `use` declaration: the imported package `path`, an optional `alias`
+(`use pkg as alias`), and `from_names` for the `use (a, b) from pkg`
+selective form. `source_file` records the `.g` file the import came from.
+
+`is_path` marks a path-based import (`use "../foo"`): until the package
+loader resolves it, `path` holds the raw filesystem path string (relative
+to `source_file`) rather than a dotted package name. The loader rewrites
+`path` to the clean package name (`alias`) once resolved, so codegen and
+ownership treat it like an ordinary name import; `is_path` stays true as
+provenance so import lint rules know the `as` alias names the package.
+
+```gust
+def Import
+
+    path: string
+    alias: string
+    line: integer
+    from_names: list[string]
+    source_file: string
+    is_path: bool
+
+end
+```
+
+**Fields**
+
+- `path: string`
+- `alias: string`
+- `line: integer`
+- `from_names: list[string]`
+- `source_file: string`
+- `is_path: bool`
+
+## `ErrorDef`
+
+<a id="ErrorDef" />
+An `error Name(fields...)` declaration. The first field must be
+`message: string`. `is_private` reflects a leading-underscore name.
+
+```gust
+def ErrorDef
+
+    name: string
+    fields: list[FieldDef]
+    line: integer
+    is_private: bool
+    docstring: string
+    package: string
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `fields: list[FieldDef]`
+- `line: integer`
+- `is_private: bool`
+- `docstring: string`
+- `package: string`
+
+## `Param`
+
+<a id="Param" />
+A function/method parameter: its name, declared type, and an optional
+default-value expression.
+
+```gust
+def Param
+
+    name: string
+    ptype: ref[TypeNode]
+    has_default: bool
+    default_value: ref[Expr]
+    is_inout: bool
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `ptype: ref[TypeNode]`
+- `has_default: bool`
+- `default_value: ref[Expr]`
+- `is_inout: bool`
+
+## `FuncSignature`
+
+<a id="FuncSignature" />
+A method requirement an interface declares: name, parameters, optional
+return type, and an optional docstring. When `has_body` is set the
+requirement carries a *default* implementation (`body`) — inherited by any
+conforming struct that does not define its own method of the same name.
+
+```gust
+def FuncSignature
+
+    name: string
+    params: list[Param]
+    has_return: bool
+    return_type: ref[TypeNode]
+    docstring: string
+    has_body: bool
+    body: list[Stmt]
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `params: list[Param]`
+- `has_return: bool`
+- `return_type: ref[TypeNode]`
+- `docstring: string`
+- `has_body: bool`
+- `body: list[Stmt]` — Default-method body. Empty unless `has_body`; the parser desugars it at parse time, so it is final and may be shared read-only by every struct that inherits the default.
+
+## `InterfaceDef`
+
+<a id="InterfaceDef" />
+An interface declaration: the set of method signatures (and property
+requirements) a conforming type must satisfy. Dispatched via a vtable.
+
+```gust
+the same name/type (the common case) or a 0-arg getter method.
+Lowered as extra vtable getter slots; `iface.prop` (no parens)
+dispatches through them.
+```
+
+```gust
+def InterfaceDef
+
+    name: string
+    methods: list[FuncSignature]
+    line: integer
+    is_private: bool
+    docstring: string
+    properties: list[FieldDef]
+    package: string
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `methods: list[FuncSignature]`
+- `line: integer`
+- `is_private: bool`
+- `docstring: string`
+- `properties: list[FieldDef]` — Property requirements — bare `name: T` lines in the interface body. A conformer satisfies each via a struct field of
+- `package: string`
+
+## `EnumMemberDef`
+
+<a id="EnumMemberDef" />
+One member of an enum: its name and an optional explicit value
+expression (absent when the enum auto-assigns values).
+
+```gust
+def EnumMemberDef
+
+    name: string
+    has_value: bool
+    value: ref[Expr]
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `has_value: bool`
+- `value: ref[Expr]`
+
+## `EnumDef`
+
+<a id="EnumDef" />
+An `enum` / `auto_enum` declaration: its members, the `backing_type`
+of the underlying value, and `auto_values` (true when members are
+auto-numbered rather than given explicit values).
+
+```gust
+def EnumDef
+
+    name: string
+    backing_type: string
+    auto_values: bool
+    members: list[EnumMemberDef]
+    line: integer
+    is_private: bool
+    docstring: string
+    package: string
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `backing_type: string`
+- `auto_values: bool`
+- `members: list[EnumMemberDef]`
+- `line: integer`
+- `is_private: bool`
+- `docstring: string`
+- `package: string`
+
+## `StructDef`
+
+<a id="StructDef" />
+A struct declaration: its fields, the interfaces it declares conformance
+to (`iface_list`), the parent struct it `extends` (`parent`, "" when none),
+and any generic `type_params` (non-empty marks it a template that is
+monomorphized at codegen time).
+
+```gust
+def StructDef
+
+    name: string
+    fields: list[FieldDef]
+    line: integer
+    is_private: bool
+    iface_list: list[string]
+    type_params: list[string]
+    docstring: string
+    parent: string
+    decorators: list[Decorator]
+    package: string
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `fields: list[FieldDef]`
+- `line: integer`
+- `is_private: bool`
+- `iface_list: list[string]`
+- `type_params: list[string]`
+- `docstring: string`
+- `parent: string` — Name of the parent struct in a `def Sub extends Parent` declaration, or "" for a struct with no parent.
+- `decorators: list[Decorator]` — Decorators collected from `@name` / `@name(args...)` lines before `def`.
+- `package: string` — Package this struct was merged from ("" for user-defined structs in the entry program). Stamped by `merge_package_ast`; the collision pass uses it to mangle a cross-package name clash to `{package}_{name}`.
+
+## `FuncDecl`
+
+<a id="FuncDecl" />
+A bodiless function declaration — a `def foreign` whose implementation
+is provided in a linked `.c`, or a package function surfaced by name only.
+`package` records its owning package for symbol mangling.
+
+```gust
+def FuncDecl
+
+    name: string
+    params: list[Param]
+    has_return: bool
+    return_type: ref[TypeNode]
+    package: string
+    line: integer
+    is_private: bool
+    is_foreign: bool
+    type_params: list[string]
+    docstring: string
+    decorators: list[Decorator]
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `params: list[Param]`
+- `has_return: bool`
+- `return_type: ref[TypeNode]`
+- `package: string`
+- `line: integer`
+- `is_private: bool`
+- `is_foreign: bool`
+- `type_params: list[string]`
+- `docstring: string`
+- `decorators: list[Decorator]` — Decorators on the declaration. A `@c_name("sym")` here forces the linked C symbol, bypassing package name-mangling so the decl can bind a fixed external symbol (e.g. a libc function).
+
+## `Decorator`
+
+<a id="Decorator" />
+A single `@name` or `@name(args...)` decorator attached to a function or
+method. `args` holds the (possibly empty) factory-call argument expressions.
+The decorated function is always passed first, with `args` appended:
+`@retry(3)` lowers to `retry(_impl_fn, 3)`, so a factory is one ordinary
+function taking the function plus its arguments.
+
+```gust
+def Decorator
+
+    name: string
+    args: list[Expr]
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `args: list[Expr]`
+
+## `FuncDef`
+
+<a id="FuncDef" />
+A free function definition with a body. `type_params` (non-empty)
+marks a generic template; `is_async` marks a `def!`.
+
+```gust
+def FuncDef
+
+    name: string
+    params: list[Param]
+    has_return: bool
+    return_type: ref[TypeNode]
+    body: list[Stmt]
+    line: integer
+    is_private: bool
+    type_params: list[string]
+    docstring: string
+    is_async: bool
+    package: string
+    decorators: list[Decorator]
+    source_file: string
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `params: list[Param]`
+- `has_return: bool`
+- `return_type: ref[TypeNode]`
+- `body: list[Stmt]`
+- `line: integer`
+- `is_private: bool`
+- `type_params: list[string]`
+- `docstring: string`
+- `is_async: bool` — Set for `def!` — inside this body, consecutive independent calls spawn in parallel (the former auto-parallelizer, now opt-in).
+- `package: string` — Package this function was merged from (empty string for user-defined functions in the entry program). Stamped by `Analyzer.merge_package_ast`; codegen uses it to mangle the C symbol to `{package}_{name}` so cross-package calls link.
+- `decorators: list[Decorator]` — Decorators collected from `@name` / `@name(args...)` lines before `def`.
+- `source_file: string` — The `.g` file this function was parsed from. Lets codegen resolve a qualified-call alias (`cli.foo`) against the imports of the *defining* file rather than the whole merged program, so two files aliasing the same name to different packages don't collide.
+
+## `MethodDef`
+
+<a id="MethodDef" />
+A method definition `def Struct.method(...)`: like `FuncDef` but bound
+to a receiver struct (`struct_name`). `is_async` marks a `def!` method.
+
+```gust
+def MethodDef
+
+    struct_name: string
+    method_name: string
+    params: list[Param]
+    has_return: bool
+    return_type: ref[TypeNode]
+    body: list[Stmt]
+    line: integer
+    is_private: bool
+    type_params: list[string]
+    docstring: string
+    is_async: bool
+    decorators: list[Decorator]
+    package: string
+    is_foreign: bool
+    source_file: string
+
+end
+```
+
+**Fields**
+
+- `struct_name: string`
+- `method_name: string`
+- `params: list[Param]`
+- `has_return: bool`
+- `return_type: ref[TypeNode]`
+- `body: list[Stmt]`
+- `line: integer`
+- `is_private: bool`
+- `type_params: list[string]`
+- `docstring: string`
+- `is_async: bool` — Set for `def! Name.method(...)`. Same semantics as FuncDef.
+- `decorators: list[Decorator]` — Decorators collected from `@name` / `@name(args...)` lines before `def`.
+- `package: string` — Package this method was merged from ("" for user code). Stamped by `merge_package_ast`; the collision pass uses it to retarget the method onto its struct's mangled name `{package}_{struct_name}`.
+- `is_foreign: bool` — `def foreign Struct.method(...)` — the implementation lives in a linked `.c`; `body` is empty and codegen emits only a prototype, letting the C symbol `Struct_method(Struct* self, ...)` supply the definition. The receiver crosses the FFI boundary as the struct value, so the C side reads its fields directly (no char*↔GStr* param adapter).
+- `source_file: string` — The `.g` file this method was parsed from — see `FuncDef.source_file`.
+
+## `VariantDef`
+
+<a id="VariantDef" />
+One variant (`case`) of an ADT `TypeDef`: its name and the fields it
+carries.
+
+```gust
+def VariantDef
+
+    name: string
+    fields: list[FieldDef]
+    line: integer
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `fields: list[FieldDef]`
+- `line: integer`
+
+## `TypeDef`
+
+<a id="TypeDef" />
+A sum-type declaration `enum Name` with its `case` variants. Non-empty
+`type_params` marks a generic sum-type template.
+
+```gust
+def TypeDef
+
+    name: string
+    variants: list[VariantDef]
+    line: integer
+    is_private: bool
+    type_params: list[string]
+    docstring: string
+    package: string
+
+end
+```
+
+**Fields**
+
+- `name: string`
+- `variants: list[VariantDef]`
+- `line: integer`
+- `is_private: bool`
+- `type_params: list[string]`
+- `docstring: string`
+- `package: string`
+
+## `ConstDef`
+
+<a id="ConstDef" />
+A top-level constant declaration `NAME: constant[Type] = value`: its
+name, declared type, and the value expression.
+
+```gust
+def ConstDef
+
+    name: string
+    ctype: ref[TypeNode]
+    value: ref[Expr]
+    line: integer
+    is_private: bool
+    docstring: string
+    package: string
+
+end
+```
+
+**Fields**
+
+- `name: string` — The declared constant name.
+- `ctype: ref[TypeNode]` — Its declared type.
+- `value: ref[Expr]` — The initializer expression.
+- `line: integer` — Source line of the declaration.
+- `is_private: bool` — Whether the declaration is `private`.
+- `docstring: string` — The declaration's docstring, if any.
+- `package: string` — The owning package, stamped at merge time (empty for a user-program constant). Lets codegen emit `<package>_<name>` when two packages define a same-named constant, avoiding a C-level duplicate-symbol clash.
+
+## `GenericInst`
+
+<a id="GenericInst" />
+A single generic-function instantiation. `callee` is the template
+function name; `type_args` is the concrete type tag for each
+`type_params[i]` slot, in declaration order. Populated by the analyzer
+and consumed by codegen's monomorphization pass.
+
+```gust
+def GenericInst
+
+    callee: string
+    type_args: list[string]
+
+end
+```
+
+**Fields**
+
+- `callee: string`
+- `type_args: list[string]`
+
+## `GenericStructInst`
+
+<a id="GenericStructInst" />
+A single generic-struct instantiation, the struct counterpart to
+`GenericInst`. The analyzer registers one entry per distinct
+`Box[integer]`-shaped construction; codegen's specialize_generic_structs
+driver consumes the list to clone the struct template with substituted
+fields and to specialize every method defined on the template.
+
+```gust
+def GenericStructInst
+
+    struct_name: string
+    type_args: list[string]
+
+end
+```
+
+**Fields**
+
+- `struct_name: string`
+- `type_args: list[string]`
+
+## `Program`
+
+<a id="Program" />
+The root AST container for a compiled program: every parsed top-level
+declaration grouped by kind (imports, errors, interfaces, enums, structs,
+ADT types, constants, functions, methods, package functions). It also
+carries analyzer-populated side tables — generic instantiations, package
+ownership / privacy / source-file metadata, the entry
+source path, and the module docstring — that codegen reads directly.
+
+```gust
+def Program
+
+    imports: list[Import]
+    errors: list[ErrorDef]
+    interfaces: list[InterfaceDef]
+    enums: list[EnumDef]
+    structs: list[StructDef]
+    types: list[TypeDef]
+    constants: list[ConstDef]
+    functions: list[FuncDef]
+    methods: list[MethodDef]
+    package_funcs: list[FuncDecl]
+    generic_insts: list[GenericInst]
+    generic_struct_insts: list[GenericStructInst]
+    symbol_owner_keys: list[string]
+    symbol_owner_values: list[string]
+    private_symbols: list[string]
+    symbol_source_file_keys: list[string]
+    symbol_source_file_values: list[string]
+    source_path: string
+    docstring: string
+    package_doc_keys: list[string]
+    package_doc_values: list[string]
+
+end
+```
+
+**Fields**
+
+- `imports: list[Import]`
+- `errors: list[ErrorDef]`
+- `interfaces: list[InterfaceDef]`
+- `enums: list[EnumDef]`
+- `structs: list[StructDef]`
+- `types: list[TypeDef]`
+- `constants: list[ConstDef]`
+- `functions: list[FuncDef]`
+- `methods: list[MethodDef]`
+- `package_funcs: list[FuncDecl]`
+- `generic_insts: list[GenericInst]` — Concrete generic-function instantiations discovered by the analyzer. Codegen walks this list to emit one specialization per entry and to rewrite matching call sites to the mangled symbol.
+- `generic_struct_insts: list[GenericStructInst]` — Concrete generic-struct instantiations. Same shape as `generic_insts` but keyed on StructDef.name instead of FuncDef.
+- `symbol_owner_keys: list[string]` — Package ownership / privacy metadata copied from the analyzer so codegen can answer `dir(pkg)` / private-member questions without re-running semantic analysis.
+- `symbol_owner_values: list[string]`
+- `private_symbols: list[string]`
+- `symbol_source_file_keys: list[string]` — Per-symbol source-file table, copied from the analyzer. Keys mirror `symbol_owner_keys` (bare names for free symbols, `Struct.method` for methods); values are the `.g` file a merged-package decl came from. Entry-program decls are absent (they belong to `source_path`). Lets codegen answer `inspect.file(...)`.
+- `symbol_source_file_values: list[string]`
+- `source_path: string` — Source path of the entry file. Used for compile-time predefines `__file__` / `__name__`; populated by the driver before codegen.
+- `docstring: string` — Module docstring — a leading file-scope docstring (before any declaration), or "" when absent. Readable at runtime via the bare `__doc__` predefine (alongside `__file__` / `__name__`).
+- `package_doc_keys: list[string]` — Per-package module docstring, keyed by package name. Populated by `merge_package_ast` from each merged package file's leading docstring (the entry program's own doc stays in `docstring`). Lets codegen answer `inspect.doc(pkgalias)` — the package's one-line description for an `autodoc` page header.
+- `package_doc_values: list[string]`
+
+## `Lexer`
+
+<a id="Lexer" />
+Tokenizer state: the source text being scanned plus the running
+cursor. `source`/`filename` are the input; `pos` is the byte offset into
+`source`, with `line`/`col` tracking the 1-based source position; `out`
+accumulates emitted tokens; `frames` is the newline-significance stack
+(see `FR_BRACKET`/`FR_BLOCK`) that supersedes a plain bracket counter so
+newlines stay significant inside a bracketed lambda body; and the
+`failed`/`error_*` fields record the first lexing error and where it
+occurred.
+
+```gust
+def Lexer
+
+    source: string
+    filename: string
+    pos: integer
+    line: integer
+    col: integer
+    out: list[Token]
+    frames: list[integer]
+    failed: bool
+    error_msg: string
+    error_line: integer
+    error_col: integer
+
+end
+```
+
+**Fields**
+
+- `source: string`
+- `filename: string`
+- `pos: integer`
+- `line: integer`
+- `col: integer`
+- `out: list[Token]`
+- `frames: list[integer]`
+- `failed: bool`
+- `error_msg: string`
+- `error_line: integer`
+- `error_col: integer`
+
+**Methods**
+
+<a id="Lexer.frame_top" />
+```gust
+def Lexer.frame_top() -> integer
+```
+
+The kind of the innermost open frame (`FR_BRACKET`/`FR_BLOCK`), or 0 when
+no frame is open (top level).
+
+---
+
+<a id="Lexer.bracket_depth" />
+```gust
+def Lexer.bracket_depth() -> integer
+```
+
+The number of brackets still open at the cursor — the count of
+`FR_BRACKET` frames on the stack. Used after `tokenize` to tell whether
+input is incomplete (e.g. the REPL's continuation prompt).
+
+---
+
+<a id="Lexer.newlines_suppressed" />
+```gust
+def Lexer.newlines_suppressed() -> bool
+```
+
+Whether a source newline is currently insignificant — true only when the
+innermost open frame is a bracket. A block frame (a bracketed lambda body)
+keeps newlines significant, as does top level.
+
+---
+
+<a id="Lexer.update_block_frames" />
+```gust
+def Lexer.update_block_frames(kw: integer, at_line_start: bool) -> none
+```
+
+Maintain the `FR_BLOCK` stack as block keywords stream past, so the
+matching `end` of a bracketed lambda re-enables newline suppression at the
+right point.
+
+A `def` seen while already inside a bracket or block frame opens a lambda
+body (a nested named def is not legal, so any such `def` has a matching
+`end`); a block opener (`if`/`for`/`while`/`match`/`try`/`blocking`) at the
+start of a line *within* a lambda body opens a nested block; and any `end`
+closes the innermost block frame. Top-level declarations push nothing — the
+stack stays empty there, so interface method signatures (which have no
+`end`) and ordinary `for`/`if` blocks never unbalance it.
+
+**Parameters**
+
+- `kw` — The keyword token kind just emitted.
+- `at_line_start` — Whether that keyword was the first token on its line.
+
+---
+
+<a id="Lexer.fail" />
+```gust
+def Lexer.fail(msg: string) -> none
+```
+
+Record a lexing error: set the failed flag and capture `msg` together
+with the current line/column. Only the first failure is meaningful since
+the tokenize loop stops once `failed` is set.
+
+---
+
+<a id="Lexer.at_end" />
+```gust
+def Lexer.at_end() -> bool
+```
+
+True when the cursor has consumed all of `source`.
+
+---
+
+<a id="Lexer.peek_ch" />
+```gust
+def Lexer.peek_ch() -> string
+```
+
+Return the character at the cursor without advancing, or "" at end of
+input.
+
+---
+
+<a id="Lexer.peek_at" />
+```gust
+def Lexer.peek_at(offset: integer) -> string
+```
+
+Return the character `offset` positions ahead of the cursor without
+advancing, or "" if that position is past end of input.
+
+---
+
+<a id="Lexer.advance_ch" />
+```gust
+def Lexer.advance_ch() -> string
+```
+
+Consume and return the character at the cursor, advancing `pos`. On a
+newline, bump `line` and reset `col` to 1; otherwise advance `col`.
+
+---
+
+<a id="Lexer.skip_whitespace" />
+```gust
+def Lexer.skip_whitespace() -> none
+```
+
+Advance the cursor past any run of spaces, tabs, and carriage returns.
+Stops at a newline (newlines are significant tokens) or end of input.
+
+---
+
+<a id="Lexer.skip_comment" />
+```gust
+def Lexer.skip_comment() -> none
+```
+
+Advance the cursor to the end of a `#` line comment, stopping at the
+next newline (which is left unconsumed) or end of input.
+
+---
+
+<a id="Lexer.read_string_body" />
+```gust
+def Lexer.read_string_body() -> string
+```
+
+Read the contents of a double-quoted string after the opening quote,
+consuming the closing quote, and return the decoded value. Handles `\x..`
+hex escapes and the single-char escapes from `decode_string_escape`. Calls
+`fail` on an unterminated string or escape.
+
+---
+
+<a id="Lexer.read_hex_escape" />
+```gust
+def Lexer.read_hex_escape(context: string) -> string
+```
+
+Read a `\xNN` escape (cursor on the `x`) and return the single byte it
+encodes. `context` names the enclosing literal for error messages. Calls
+`fail` and returns "" if the two hex digits are missing or invalid.
+
+---
+
+<a id="Lexer.read_multiline_string_body" />
+```gust
+def Lexer.read_multiline_string_body() -> string
+```
+
+Read the contents of a triple-quoted ("""...""") string after the
+opening delimiter, consuming the closing triple quote, and return the
+decoded text. Only `\"` and `\\` are recognized as escapes — they let a
+docstring embed a literal quote or `"""` (`\"\"\"`) without closing
+the string; every other character (including other backslash sequences) is
+kept verbatim. Calls `fail` if unterminated.
+
+---
+
+<a id="Lexer.read_raw_string_body" />
+```gust
+def Lexer.read_raw_string_body() -> string
+```
+
+Read a raw string after r" — backslashes are literal.
+
+A backslash before any character (including ")
+passes both characters through verbatim, and only an un-escaped " ends
+the literal. So `r"\d+"` yields the 2-char string `\d+`, which is
+what regex patterns want.
+
+---
+
+<a id="Lexer.skip_string_literal" />
+```gust
+def Lexer.skip_string_literal() -> none
+```
+
+Advance the cursor past a double-quoted string literal — single- or
+triple-quoted, honoring backslash escapes in the single-quoted form — so a
+raw scan (a `quote … end` body or a markup region) never miscounts a
+delimiter, keyword, or brace that appears inside string text. Assumes the
+cursor is on the opening quote and leaves it just past the closing quote.
+
+---
+
+<a id="Lexer.skip_quote_hole" />
+```gust
+def Lexer.skip_quote_hole() -> none
+```
+
+Consume a `${ … }` interpolation hole inside a quote body, brace-depth
+aware and skipping strings, so block keywords that are part of the hole's
+*expression* (a ternary `if/else`, a comprehension `for`) are never counted
+toward the quote's `end`. Assumes the cursor is on the `$` of `${`.
+
+---
+
+<a id="Lexer.read_quote_body" />
+```gust
+def Lexer.read_quote_body(open_line: integer, open_col: integer) -> string
+```
+
+Read a `quote … end` template body after the `quote` keyword, consuming
+the matching `end`, and return the raw body text (interpolation `${…}` holes
+left intact for the parser). Tracks block depth so an inner `def … end` /
+`if … end` is not mistaken for the quote's terminator, and skips string
+literals and `#` comments so keywords inside them never count. Calls `fail`
+on a body with no closing `end`, pointing at the opener (`open_line`/
+`open_col`) rather than end-of-file.
+
+---
+
+<a id="Lexer.markup_open_ahead" />
+```gust
+def Lexer.markup_open_ahead() -> bool
+```
+
+True when the char after `<` begins a markup element: a tag name
+(identifier start) or `>` (a `<>` fragment).
+
+---
+
+<a id="Lexer.markup_can_start" />
+```gust
+def Lexer.markup_can_start() -> bool
+```
+
+True when a `<` here opens markup rather than a less-than operator.
+Markup is only valid in value position, so it cannot follow a token that
+ends a value (identifier, literal, or a closing `)`/`]`/`}`). At the start
+of input, or after any other token (`=`, `(`, `,`, `return`, a newline,
+…), `<` opens markup.
+
+---
+
+<a id="Lexer.skip_markup_hole" />
+```gust
+def Lexer.skip_markup_hole() -> none
+```
+
+Skip a balanced `{ … }` expression hole, tracking nested braces and
+skipping string literals so braces inside them don't unbalance the hole.
+Leaves the cursor just past the closing `}`.
+
+---
+
+<a id="Lexer.read_markup_body" />
+```gust
+def Lexer.read_markup_body() -> string
+```
+
+Capture a whole markup region verbatim, starting at the opening `<`
+and ending just past the close of the root element/fragment, and return the
+raw text. Tracks element nesting so nested tags don't end the region early,
+and skips attribute strings and `{ … }` holes so `<`/`>` inside them don't
+count. The parser re-parses this raw text into `gml` constructor calls.
+
+---
+
+<a id="Lexer.read_fstring_body" />
+```gust
+def Lexer.read_fstring_body() -> string
+```
+
+Read the contents of an f-string after the opening quote, consuming the
+closing quote, and return the value. Same as `read_string_body` but also
+accepts `\{` and `\}` escapes: the backslash is preserved verbatim so the
+parser can distinguish an escaped literal brace from an interpolation
+delimiter (it unescapes `\{`/`\}` back to `{`/`}` while splitting parts).
+Calls `fail` on an unterminated string or escape.
+
+---
+
+<a id="Lexer.read_multiline_fstring_body" />
+```gust
+def Lexer.read_multiline_fstring_body() -> string
+```
+
+Read the contents of a triple-quoted f-string (f"""...""") after
+the opening delimiter, consuming the closing triple quote, and return the raw
+interpolation body. Same escape handling as `read_fstring_body` — `\{` and
+`\}` are preserved verbatim so the parser can distinguish escaped braces from
+interpolation delimiters. Literal newlines pass through unchanged. Calls `fail`
+if unterminated.
+
+---
+
+<a id="Lexer.read_bytes_body" />
+```gust
+def Lexer.read_bytes_body() -> string
+```
+
+Read the contents of a byte literal (b"...") after the opening quote,
+consuming the closing quote, and return the decoded byte payload. Decodes
+escapes eagerly (including `\xNN`) so the token holds the actual bytes.
+Rejects non-ASCII source bytes (use `\xNN` for raw octets) and unknown
+escapes via `fail`; also fails on an unterminated literal.
+
+The payload is accumulated with string concatenation rather than a
+`Buffer`: the buffer's append path is `strlen`-based and would silently
+truncate at the first embedded NUL (so `b"\x00\xff"` came back length 1).
+`+` on GStr is length-based, so embedded NULs survive.
+
+---
+
+<a id="Lexer.read_radix_digits" />
+```gust
+def Lexer.read_radix_digits(base: integer) -> string
+```
+
+Consume and return a run of digits valid for `base`, allowing `_`
+separators between digits (the underscores are dropped from the result).
+Stops at the first character that is neither a valid digit nor a separator
+followed by one.
+
+---
+
+<a id="Lexer.read_number" />
+```gust
+def Lexer.read_number(
+    first_char: string,
+    start_line: integer,
+    start_col: integer,
+) -> Token
+```
+
+Read a numeric literal whose first digit `first_char` has already been
+consumed, and return the resulting token tagged at `start_line`/`start_col`.
+A leading `0x`/`0b`/`0o` prefix selects a base-16/2/8 integer (decoded to a
+decimal TT_INT_LIT value); otherwise reads a decimal number, allowing `_`
+separators and a single `.` followed by a digit to make it a TT_FLOAT_LIT.
+Calls `fail` if a base prefix has no digits.
+
+---
+
+<a id="Lexer.read_identifier_from_pos" />
+```gust
+def Lexer.read_identifier_from_pos() -> string
+```
+
+Consume and return a run of identifier characters (letters, digits,
+underscore) starting at the cursor. Assumes the caller already verified the
+first character is a valid identifier start.
+
+---
+
+<a id="Lexer.emit" />
+```gust
+def Lexer.emit(
+    kind: integer,
+    value: string,
+    at_line: integer,
+    at_col: integer,
+) -> none
+```
+
+Append a token of the given `kind` and `value`, positioned at
+`at_line`/`at_col`, to the output list.
+
+---
+
+<a id="Lexer.last_is_newline" />
+```gust
+def Lexer.last_is_newline() -> bool
+```
+
+True when the most recently emitted token is a newline (used to collapse
+consecutive blank lines into a single TT_NEWLINE). False if no tokens have
+been emitted yet.
+
+---
+
+<a id="Lexer.try_two_char" />
+```gust
+def Lexer.try_two_char(
+    two: string,
+    start_line: integer,
+    start_col: integer,
+) -> bool
+```
+
+If the two-character lookahead `two` is a known two-char operator
+(`:=`, `==`, `!=`, `<=`, `>=`, `->`, `<<`, `>>`, `//`, or a compound
+assignment like `+=`), consume both characters, emit the matching token at
+`start_line`/`start_col`, and return true. Otherwise consume nothing and
+return false.
+
+---
+
+<a id="Lexer.try_single_char" />
+```gust
+def Lexer.try_single_char(
+    ch: string,
+    start_line: integer,
+    start_col: integer,
+) -> bool
+```
+
+If `ch` is a known single-character operator or punctuation token
+(`= < > + - * / % . : | & ^ ~ , ! @`), consume it, emit the matching token
+at `start_line`/`start_col`, and return true. Otherwise consume nothing and
+return false.
+
+---
+
+<a id="Lexer.try_delim" />
+```gust
+def Lexer.try_delim(ch: string, start_line: integer, start_col: integer) -> bool
+```
+
+If `ch` is a bracketing delimiter (`( ) [ ] { }`), consume it, push or
+pop a `FR_BRACKET` frame (an opener pushes; a closer pops when the innermost
+frame is a bracket) so newlines stay suppressed inside brackets, emit the
+matching token at `start_line`/`start_col`, and return true. Otherwise
+consume nothing and return false.
+
+---
+
+<a id="Lexer.tokenize" />
+```gust
+def Lexer.tokenize() -> list[Token]
+```
+
+Scan the entire source and return the list of tokens. Drives the main
+loop: skips whitespace and comments; recognizes newlines (suppressed inside
+brackets and collapsed when consecutive), string/f-string/byte/raw-string
+literals, triple-quoted strings, numbers, identifiers/keywords, and two-,
+single-, and delimiter operators. Always appends a final TT_NEWLINE (unless
+one was just emitted) followed by TT_EOF. Stops early and returns the tokens
+collected so far if a lexing error sets `failed`; an unrecognized character
+triggers `fail`.
+
+## `MarkupGen`
+
+<a id="MarkupGen" />
+Transpiler that turns a captured markup region (`<div>…</div>`) into
+Gust source that calls the `gml` constructors. `src` is the raw markup;
+`pos` is the scan cursor. The generated source is parsed by
+`Parser.parse_markup_body`, so expression holes — and any markup nested
+inside them — go back through the normal lexer/parser.
+
+```gust
+def MarkupGen
+
+    src: string
+    pos: integer
+    pending_events: list[string]
+    renderer: string
+    pending_cond: string
+    pending_cond_kind: string
+    buffered: bool
+    buf_node: string
+    buf_kind: string
+    buf_cond: string
+
+end
+```
+
+**Fields**
+
+- `src: string`
+- `pos: integer`
+- `pending_events: list[string]` — `<renderer>.on(...)` sources for `@event` handlers seen on the component tag currently being scanned by `gen_component_args`; `gen_component` drains this right after, to wrap the component in `<renderer>.with_attrs` (fallthrough).
+- `renderer: string` — The markup renderer package name (`gml` by default) every generated constructor call is qualified with — threaded down from the Parser so the desugar target is configurable rather than the literal `"gml"`.
+- `pending_cond: string` — Structural-conditional directive captured off the element tag currently being scanned (`:if` / `:else-if` / `:else`). `pending_cond_kind` is "" / "if" / "else-if" / "else"; `pending_cond` is the boolean expression source (empty for `:else`). `gen_attrs`/`gen_component_args` capture it instead of emitting an attribute, then the enclosing `gen_children` reads it (right after the element is generated) to weave the if/else-if/else chain.
+- `pending_cond_kind: string`
+- `buffered: bool` — One-element pushback slot for `gen_if_chain`: when the chain scanner reads one sibling too far (a following element that is NOT `:else-if`/`:else`), it parks the already-generated element in `buf_node`/`buf_kind`/`buf_cond` for `gen_children` to place.
+- `buf_node: string`
+- `buf_kind: string`
+- `buf_cond: string`
+
+**Methods**
+
+<a id="MarkupGen.at_end" />
+```gust
+def MarkupGen.at_end() -> bool
+```
+
+True when the cursor has consumed all of `src`.
+
+---
+
+<a id="MarkupGen.peek" />
+```gust
+def MarkupGen.peek() -> string
+```
+
+Character at the cursor, or "" at end.
+
+---
+
+<a id="MarkupGen.peek2" />
+```gust
+def MarkupGen.peek2() -> string
+```
+
+Character one past the cursor, or "" at end.
+
+---
+
+<a id="MarkupGen.skip_ws" />
+```gust
+def MarkupGen.skip_ws() -> none
+```
+
+Advance past any run of whitespace.
+
+---
+
+<a id="MarkupGen.read_name" />
+```gust
+def MarkupGen.read_name() -> string
+```
+
+Read a tag or attribute name (identifier chars plus `-`, `:`, `.`).
+
+---
+
+<a id="MarkupGen.read_attr_string" />
+```gust
+def MarkupGen.read_attr_string() -> string
+```
+
+Read a double-quoted attribute value, returning the raw inner text
+(quotes consumed, escapes left intact).
+
+---
+
+<a id="MarkupGen.read_hole" />
+```gust
+def MarkupGen.read_hole() -> string
+```
+
+Read a `{ … }` expression hole, returning its raw inner source. Tracks
+nested braces and skips string literals so their braces don't unbalance
+the hole. Cursor ends just past the closing `}`.
+
+---
+
+<a id="MarkupGen.consume_close" />
+```gust
+def MarkupGen.consume_close() -> none
+```
+
+Consume a closing tag `</tag>` (or `</>`) through its `>`.
+
+---
+
+<a id="MarkupGen.capture_cond_value" />
+```gust
+def MarkupGen.capture_cond_value(kind: string) -> none
+```
+
+Capture a structural conditional directive (`:if` / `:else-if` / `:else`).
+The cursor sits just past the directive name; read its `={expr}` / `="expr"`
+value (none for `:else`) into `pending_cond` / `pending_cond_kind` so the
+enclosing `gen_children` can weave the chain. The directive is NOT emitted as
+an attribute.
+
+---
+
+<a id="MarkupGen.gen_attrs" />
+```gust
+def MarkupGen.gen_attrs() -> string
+```
+
+Generate the attribute-list source `gml.attr_flat([seg, ...])`, stopping
+at `>` or `/>`. Each attribute lowers to a `list[Attr]` *segment* (the
+attribute analogue of how `gen_children` builds `list[Node]` segments), and
+`attr_flat` concatenates them — so a conditional binding can contribute a
+0-element segment and disappear. Quoted values are static strings (`[attr(...)]`);
+a bare name becomes a boolean-style empty attribute. An `@event={handler}`
+attribute (e.g. `@click={increment}`) lowers to `[gml.on("event", (handler))]`,
+wiring a live DOM listener under wasm.
+
+A `:`-prefixed name (or any `{expr}` hole) is a *bound* attribute — Vue's
+`v-bind:` shorthand — whose value is a Gust expression rather than a literal.
+It lowers to `gml.attr_bind("name", (expr))`, which dispatches on the value's
+runtime type to mirror Vue's `:attr` semantics: `bool` → HTML
+boolean-presence (present-empty if true, omitted if false), `string | none` →
+omit-when-none, plain `string` → always present. The special case `class` is
+collected (static `class="..."` and bound `:class` on the same element) and
+merged through `gml.cn`, so the two combine exactly like Vue. The bound class
+value may be the Vue object form
+
+&lt;div class="static" :class="&#123; active: isActive, 'text-danger': hasError &#125;">
+
+(each `name: expr` entry becomes a conditional class), or any string-typed
+expression in a hole: `:class={some_string}`.
+
+The reserved names `:if` / `:else-if` / `:else` are *structural* directives
+(Gust's spelling of Vue's `v-if` family), not attributes: each is captured
+into `pending_cond` / `pending_cond_kind` and woven by `gen_children` into an
+if/else-if/else ternary chain over sibling elements (see `gen_if_chain`),
+emitting nothing here.
+
+---
+
+<a id="MarkupGen.take_element" />
+```gust
+def MarkupGen.take_element() -> string
+```
+
+Generate the next element segment, drawing from the pushback slot first.
+Sets `pending_cond_kind` / `pending_cond` to the element's structural
+directive (if any), exactly as `gen_element` does.
+
+---
+
+<a id="MarkupGen.gen_if_chain" />
+```gust
+def MarkupGen.gen_if_chain(first_node: string, first_cond: string) -> string
+```
+
+Build one if/else-if/else chain segment from a `:if` element and the
+sibling `:else-if` / `:else` elements that immediately follow it (whitespace
+between them is allowed). Lowers to a nested ternary that evaluates to a
+one-element `list[Node]` for the chosen branch, or an empty `list[Node]` when
+no branch matches and there is no `:else` — so an unmatched conditional
+contributes no children. A trailing element that is not `:else-if` / `:else`
+ends the chain and is parked in the pushback slot for the caller to place.
+
+---
+
+<a id="MarkupGen.gen_children" />
+```gust
+def MarkupGen.gen_children() -> string
+```
+
+Generate the children source `gml.flat([seg, ...])`, where each segment
+is a `list[Node]`: a nested element, a text run (`gml.t`), or a hole. A
+`{expr}` hole is text (`gml.t(expr)`); `{@ expr}` embeds a single Node;
+`{* expr}` splices a `list[Node]`. A `:if` element (with its trailing
+`:else-if` / `:else` siblings) becomes one conditional segment. Stops at the
+closing `</`.
+
+---
+
+<a id="MarkupGen.gen_element" />
+```gust
+def MarkupGen.gen_element() -> string
+```
+
+Generate the source for one element or `<>` fragment at the cursor.
+On return, `pending_cond_kind` / `pending_cond` carry this element's own
+structural directive (`:if` / `:else-if` / `:else`) for the caller — they are
+saved across child generation, which would otherwise clobber them.
+
+---
+
+<a id="MarkupGen.gen_component" />
+```gust
+def MarkupGen.gen_component(tag: string) -> string
+```
+
+Generate the source for one component element `<Tag ...>...</Tag>` (or
+self-closing `<Tag .../>`) at the cursor: a constructor call with the
+attributes as named arguments, the children (when present) as a
+`children:` argument, and a trailing `.render()` to lower to a `vdom.Node`.
+The component's struct must declare a `children: vdom.Node` field to accept
+projected content.
+
+---
+
+<a id="MarkupGen.gen_component_args" />
+```gust
+def MarkupGen.gen_component_args() -> string
+```
+
+Generate component constructor arguments `name: value, ...` for an
+uppercase (component) tag, stopping at `>` or `/>`. Mirrors `gen_attrs`
+but emits named struct-constructor arguments instead of `gml.attr`
+entries: a quoted or unquoted value is a string, `{expr}` is the bare
+expression, and a bare name becomes the boolean prop `name: true`.
+
+---
+
+<a id="MarkupGen.gen_node" />
+```gust
+def MarkupGen.gen_node() -> string
+```
+
+Entry point: generate source for the single root node in `src`. A `:if`
+on the root (with no sibling to fall through to) renders the element when the
+condition holds and an empty fragment otherwise.
+
+## `Parser`
+
+<a id="Parser" />
+Mutable state for one recursive-descent parse: the token stream and a
+cursor into it (`pos`), the source `filename` for diagnostics, an
+`allow_decls` flag enabling bodyless declarations (decl/stub mode), a
+`failed`/`error_msg` pair holding the first error, and a `depth` counter
+guarding expression/type recursion against native stack overflow.
+
+```gust
+def Parser
+
+    tokens: list[Token]
+    pos: integer
+    filename: string
+    allow_decls: bool
+    failed: bool
+    error_msg: string
+    depth: integer
+    block_depth: integer
+    renderer: string
+
+end
+```
+
+**Fields**
+
+- `tokens: list[Token]`
+- `pos: integer`
+- `filename: string`
+- `allow_decls: bool`
+- `failed: bool`
+- `error_msg: string`
+- `depth: integer`
+- `block_depth: integer`
+- `renderer: string`
+
+**Methods**
+
+<a id="Parser.parse_markup_expr" />
+```gust
+def Parser.parse_markup_expr(src: string) -> Expr
+```
+
+Lex and parse generated markup source `src` as a standalone expression.
+The sub-lexer uses a `.gml` filename so markup nested inside expression
+holes is recognized again.
+
+---
+
+<a id="Parser.parse_markup_body" />
+```gust
+def Parser.parse_markup_body(raw: string, sp: SrcSpan) -> Expr
+```
+
+Desugar a captured markup region into renderer constructor calls.
+Transpiles the raw markup to Gust source, then parses it back into an
+`Expr`. Requires the file to `use <renderer>` (the renderer package named
+by `[markup] renderer`, default `gml`).
+
+---
+
+<a id="Parser.cur" />
+```gust
+def Parser.cur() -> Token
+```
+
+The token at the current cursor position, without advancing.
+
+---
+
+<a id="Parser.peek" />
+```gust
+def Parser.peek(offset: integer) -> Token
+```
+
+The token `offset` positions ahead of the cursor, without advancing.
+Indices past the end clamp to the final (EOF) token.
+
+---
+
+<a id="Parser.advance" />
+```gust
+def Parser.advance() -> Token
+```
+
+Return the current token and move the cursor forward by one.
+
+---
+
+<a id="Parser.span_since" />
+```gust
+def Parser.span_since(start: Token) -> SrcSpan
+```
+
+A source span from token `start` through the last-consumed token
+(`tokens[pos - 1]`). Call after the construct's tokens have all been
+consumed so the end position covers the final token.
+
+---
+
+<a id="Parser.span_to_here" />
+```gust
+def Parser.span_to_here(start_sp: SrcSpan) -> SrcSpan
+```
+
+A span running from `start_sp`'s start through the last-consumed
+token. Used where the start is an already-parsed sub-expression's span
+rather than a captured token (e.g. index / slice on a target expr).
+
+---
+
+<a id="Parser.fail" />
+```gust
+def Parser.fail(msg: string) -> none
+```
+
+Record `msg` as the parse error and set the failed flag. Only the first
+error is kept; subsequent calls are ignored.
+
+---
+
+<a id="Parser.expect" />
+```gust
+def Parser.expect(kind: integer, what: string) -> Token
+```
+
+Consume and return the current token if it is of `kind`; otherwise
+record a "expected &#123;what&#125;, got ..." failure and return the offending token
+without advancing.
+
+---
+
+<a id="Parser.expect_newline" />
+```gust
+def Parser.expect_newline() -> none
+```
+
+Consume a newline token, or record a failure if the current token is
+not a newline.
+
+---
+
+<a id="Parser.expect_elem_bracket" />
+```gust
+def Parser.expect_elem_bracket(type_name: string) -> none
+```
+
+Consume the `[` that opens a builtin generic's element list. On a
+missing bracket, record an actionable G0109 'incomplete type' failure
+naming the expected form, rather than the generic "expected '[', got
+'&lt;token>'" that `expect` would emit. `list`/`dict`/`tuple`/`ref` are never
+valid bare, so the unwritten element list is always the user's mistake.
+
+---
+
+<a id="Parser.expect_end" />
+```gust
+def Parser.expect_end(ctx: string) -> none
+```
+
+Consume the `end` keyword closing a block. On mismatch records a
+failure naming `ctx` (the construct being closed), distinguishing a
+premature EOF ("missing 'end'") from a wrong token.
+
+---
+
+<a id="Parser.try_match" />
+```gust
+def Parser.try_match(kind: integer) -> bool
+```
+
+If the current token is of `kind`, consume it and return true;
+otherwise leave the cursor untouched and return false.
+
+---
+
+<a id="Parser.at_decl_boundary" />
+```gust
+def Parser.at_decl_boundary() -> bool
+```
+
+True when the current token begins a new top-level construct, so
+the previous signature can be treated as bodyless in decl mode.
+
+---
+
+<a id="Parser.consume_docstring" />
+```gust
+def Parser.consume_docstring() -> string
+```
+
+If the current token is a triple-quoted string, consume it (plus the
+following newline and any blank lines) and return its text; otherwise
+return "". The trailing newline is optional — foreign-decl and type-def
+paths accept its absence.
+
+---
+
+<a id="Parser.skip_newlines" />
+```gust
+def Parser.skip_newlines() -> none
+```
+
+Advance past any run of consecutive newline tokens.
+
+---
+
+<a id="Parser.expect_name" />
+```gust
+def Parser.expect_name() -> string
+```
+
+Consume and return an identifier's text. Keywords are also accepted as
+names (their spelling is returned), so e.g. a method may be named after a
+keyword. Records a failure if the current token is neither.
+
+---
+
+<a id="Parser.parse_type" />
+```gust
+def Parser.parse_type() -> TypeNode
+```
+
+Parse a full type annotation, returning a `TypeNode`. Handles union
+types `A | B | ...` by collecting `|`-separated single types into a
+`UnionType`; otherwise returns the single type. Bounded by the recursion
+depth guard.
+
+---
+
+<a id="Parser.parse_single_type" />
+```gust
+def Parser.parse_single_type() -> TypeNode
+```
+
+Parse one (non-union) type and return its `TypeNode`. Recognizes the
+`none` keyword, the built-in generic forms `list[T]`, `dict[K, V]`,
+`tuple[T, ...]` (min 2), `ref[T]`, and `Function(params...)[Return]`, and
+otherwise a possibly dotted name (`pkg.Name`) as a `SimpleType`.
+
+---
+
+<a id="Parser.parse_expr" />
+```gust
+def Parser.parse_expr() -> Expr
+```
+
+Parse a full expression and return its `Expr` node. The entry point of
+the precedence-climbing chain; delegates to `parse_ternary` and applies
+the recursion-depth guard around the whole expression.
+
+---
+
+<a id="Parser.parse_ternary" />
+```gust
+def Parser.parse_ternary() -> Expr
+```
+
+Parse a conditional expression `value if cond else other`, the lowest
+precedence level. Returns a `TernaryExpr` when the `if`/`else` form is
+present, otherwise the bare value from `parse_or`.
+
+---
+
+<a id="Parser.bump_depth" />
+```gust
+def Parser.bump_depth() -> bool
+```
+
+Increment expression-nesting depth; report + signal overflow so a
+precedence loop can `break`. Centralizes the guard every binary-operator
+loop shares.
+
+---
+
+<a id="Parser.parse_or" />
+```gust
+def Parser.parse_or() -> Expr
+```
+
+Parse a left-associative chain of `or` (logical-or precedence, below
+`and`). Returns a `BinOp` tree, or the operand from `parse_and` if no
+`or` appears.
+
+---
+
+<a id="Parser.parse_and" />
+```gust
+def Parser.parse_and() -> Expr
+```
+
+Parse a left-associative chain of `and` (logical-and precedence, above
+`or` and below `not`). Returns a `BinOp` tree, or the operand from
+`parse_not` if no `and` appears.
+
+---
+
+<a id="Parser.parse_not" />
+```gust
+def Parser.parse_not() -> Expr
+```
+
+Parse a unary `not` (logical-negation precedence, above `and` and below
+comparison). Right-recurses for stacked `not not ...`, returning a
+`UnaryOp`; otherwise delegates to `parse_comparison`.
+
+---
+
+<a id="Parser.starts_container_type" />
+```gust
+def Parser.starts_container_type() -> bool
+```
+
+True when the cursor is at a subscripted builtin container type
+(`list[`, `dict[`, `tuple[`) — the type-test forms parsed as a
+`TypePattern` after `is` or in a match arm. A bare `list`/`dict`/`tuple`
+with no `[` is deliberately excluded: those are not complete types.
+
+---
+
+<a id="Parser.parse_comparison" />
+```gust
+def Parser.parse_comparison() -> Expr
+```
+
+Parse comparison-level expressions (precedence above the symbolic binary
+operators, below `not`): the symbolic operator chain from `parse_binary`,
+then the word relations `is` / `is not`, `in`, and `not in`. Builds a
+left-associative `BinOp` tree, or returns the operand from `parse_binary`
+when no relation appears.
+
+---
+
+<a id="Parser.parse_binary" />
+```gust
+def Parser.parse_binary(min_prec: integer) -> Expr
+```
+
+Parse a left-associative chain of symbolic binary operators whose
+precedence is at least `min_prec`, climbing the `binop_prec` table in a
+single loop. The operand base is `parse_cast`; recursing on the right with
+`prec + 1` is what makes each precedence level left-associative. Replaces
+the former per-level ladder (`parse_bit_or` … `parse_multiplication`), so
+adding an operator is a one-line `binop_prec` edit.
+
+---
+
+<a id="Parser.parse_cast" />
+```gust
+def Parser.parse_cast() -> Expr
+```
+
+Parse `expr as Type` casts (cast precedence, between multiplication
+below and unary above), left-associatively chaining repeated `as`. Returns
+a `TypeCast` or the operand from `parse_unary`.
+
+---
+
+<a id="Parser.parse_cast_target" />
+```gust
+def Parser.parse_cast_target() -> TypeNode
+```
+
+Parse the type after `as`. Unlike a type annotation, a bare `dict` or
+`list` is accepted here and defaults its element types to `dict[string, Any]`
+/ `list[Any]`: a struct-to-dict cast reads the value's own fields, so the
+element types are implied by the source rather than written at the cast.
+
+---
+
+<a id="Parser.parse_unary" />
+```gust
+def Parser.parse_unary() -> Expr
+```
+
+Parse a unary prefix `-` (negation) or `~` (bitwise-not) (unary
+precedence, between cast below and postfix above). Right-recurses for
+stacked prefixes, returning a `UnaryOp`; otherwise delegates to
+`parse_postfix`.
+
+---
+
+<a id="Parser.parse_postfix" />
+```gust
+def Parser.parse_postfix() -> Expr
+```
+
+Parse the postfix-suffix level (highest precedence, above unary): a
+primary expression followed by any chain of `.field`, `.method(args)`,
+package-qualified struct literals `pkg.Name(field: ...)`, and
+`[index]` / `[slice]`. Returns the built-up `FieldAccess` / `MethodCall` /
+`StructInit` / `IndexAccess` / `SliceExpr` tree, or the bare primary.
+
+---
+
+<a id="Parser.parse_index_or_slice" />
+```gust
+def Parser.parse_index_or_slice(target: Expr) -> Expr
+```
+
+Parse the contents between `[` and `]` applied to `target` (the opening
+bracket is already consumed; the caller consumes the closing one). Returns
+an `IndexAccess` for `[expr]` or a `SliceExpr` for `[start:stop]` (either
+bound optional). A second colon (`[a:b:c]` step form) is rejected with a
+precise diagnostic.
+
+---
+
+<a id="Parser.parse_arg_list" />
+```gust
+def Parser.parse_arg_list(args: list[Expr], named: list[NamedArg]) -> none
+```
+
+Parse a comma-separated call-argument list up to (but not consuming)
+the closing `)`, appending positional arguments to `args` and `name:
+value` keyword arguments to `named`. Tolerates a trailing comma and
+interior newlines.
+
+---
+
+<a id="Parser.parse_named_args" />
+```gust
+def Parser.parse_named_args() -> list[NamedArg]
+```
+
+Parse an all-keyword argument list (`name: value, ...`) up to the
+closing `)`, returning the `NamedArg`s. Used for struct literals and
+`raise`, where every argument must be named. Tolerates a trailing comma
+and interior newlines.
+
+---
+
+<a id="Parser.int_literal_expr" />
+```gust
+def Parser.int_literal_expr(digits: string, line: integer, sp: SrcSpan) -> Expr
+```
+
+Build an `IntLit` from a decimal digit-string, rejecting values that
+exceed the signed 64-bit range instead of silently wrapping them (the
+`integer` type is `int64_t`).
+
+---
+
+<a id="Parser.parse_primary" />
+```gust
+def Parser.parse_primary() -> Expr
+```
+
+Parse a primary (atomic) expression: literals (int, float, string,
+f-string, multiline string, bytes, bool, none), identifiers and the call
+forms they introduce (`range(...)`, plain calls, struct literals
+`Name(field: ...)`), list and dict literals and their comprehensions,
+parenthesized expressions, and tuple literals. Returns the corresponding
+`Expr`, or records "expected a value" on an unexpected token.
+
+---
+
+<a id="Parser.parse_primary_literal" />
+```gust
+def Parser.parse_primary_literal(t: Token) -> Expr
+```
+
+Parse a literal primary — an integer, float, string, f-string, `quote`
+template, markup region, multiline string, bytes, boolean, or `none` —
+consuming the single leading token `t` and returning its `Expr` node.
+
+---
+
+<a id="Parser.parse_primary_lambda" />
+```gust
+def Parser.parse_primary_lambda(t: Token) -> Expr
+```
+
+Parse an anonymous function (lambda) in expression position, given its
+leading `def` token `t`. Two body forms are accepted:
+
+```gust
+Block form (a newline follows the signature):
+    def(params) [-> Ret]
+        stmt; stmt; ...
+    end
+
+Inline form (no newline — the single-expression case used inside a
+call's parentheses, where the lexer suppresses newlines):
+    def(params) -> Ret  expr  end      # expr is an implicit return
+    def(params)         expr  end      # void: expr for side effects
+```
+
+The statement parser routes a leading `def` to a top-level/method
+definition, so a `def` reaching here is always a lambda value.
+
+---
+
+<a id="Parser.parse_primary_ident" />
+```gust
+def Parser.parse_primary_ident(t: Token) -> Expr
+```
+
+Parse an identifier-led primary, given its leading name token `t`: a bare
+identifier, a `range(...)` expression, a plain call `name(args)`, or a struct
+literal `Name(field: ...)`.
+
+---
+
+<a id="Parser.parse_primary_list" />
+```gust
+def Parser.parse_primary_list(t: Token) -> Expr
+```
+
+Parse a bracketed primary, given its leading `[` token `t`: an empty list,
+a list comprehension `[expr for ...]`, or a list literal `[a, b, ...]`.
+
+---
+
+<a id="Parser.parse_primary_dict" />
+```gust
+def Parser.parse_primary_dict(t: Token) -> Expr
+```
+
+Parse a brace-led primary, given its leading `{` token `t`: an empty dict,
+a dict comprehension `{k: v for ...}`, or a dict literal `{k: v, ...}`.
+
+---
+
+<a id="Parser.parse_primary_group" />
+```gust
+def Parser.parse_primary_group(t: Token) -> Expr
+```
+
+Parse a parenthesized primary, given its leading `(` token `t`: either a
+grouped expression `(expr)` or a tuple literal `(a, b, ...)`.
+
+---
+
+<a id="Parser.parse_comp_clauses" />
+```gust
+def Parser.parse_comp_clauses() -> list[CompClause]
+```
+
+Parse the trailing clauses of a comprehension: a sequence of `for var in
+iter` (`CompFor`) and `if cond` (`CompIf`) clauses. Returns the clause
+list and tolerates an optional trailing comma before the closing bracket.
+
+---
+
+<a id="Parser.parse_inline_fstring_expr" />
+```gust
+def Parser.parse_inline_fstring_expr(
+    src: string,
+    base_line: integer,
+    base_col: integer,
+) -> Expr
+```
+
+Lex and parse `src` (the text of a single `{...}` interpolation) as a
+standalone expression, returning its `Expr`. Lexer or parser errors, or
+trailing tokens, are surfaced as failures on this parser.
+
+`base_line`/`base_col` locate `src`'s first character in the enclosing
+file. The sub-lexer's token positions are rebased onto them before
+parsing, so both the error messages and the resulting expression's spans
+point into the real source rather than a `<fstring>:1` placeholder.
+
+---
+
+<a id="Parser.parse_fstring_body" />
+```gust
+def Parser.parse_fstring_body(raw: string, sp: SrcSpan) -> Expr
+```
+
+Parse the raw body `raw` of an f-string into a `FStringExpr` over span
+`sp`, splitting it into literal-text parts (`FSText`) and interpolated
+expression parts (`FSExpr`, each parsed via `parse_inline_fstring_expr`).
+`\{` and `\}` are emitted by the lexer for escaped literal braces and are
+unescaped here to a bare `{`/`}` in the text (never treated as an
+interpolation delimiter). An unmatched `{` is reported as a failure.
+
+---
+
+<a id="Parser.parse_quote_body" />
+```gust
+def Parser.parse_quote_body(raw: string, sp: SrcSpan) -> Expr
+```
+
+Lower a `quote … end` template into a `derive.raw(...)` call. The body is
+split into literal-text runs and `${ expr }` interpolation holes; the result
+is the concatenation `"<text0>" + (<hole0> as string) + "<text1>" + …`,
+wrapped in `derive.raw`. Each hole is rendered with `as string`, so a hole
+may be a `derive.Code` (via its `__string`), a string, or any value with a
+string form. Requires `use derive` in scope.
+
+---
+
+<a id="Parser.is_body_stop" />
+```gust
+def Parser.is_body_stop() -> bool
+```
+
+True when the current token ends a statement body — `end`, `else`,
+`catch`, `case`, or EOF — so `parse_body` should stop.
+
+---
+
+<a id="Parser.parse_body" />
+```gust
+def Parser.parse_body() -> list[Stmt]
+```
+
+Parse a block body: statements until a body-stop token (see
+`is_body_stop`), skipping blank lines. Returns the statement list, bailing
+out early if a parse failure occurs.
+
+---
+
+<a id="Parser.parse_statement" />
+```gust
+def Parser.parse_statement() -> Stmt
+```
+
+Parse a single statement and return its `Stmt` node. Dispatches on the
+leading token to `return`, `if`, `for`, `while`, `try`,
+`match`, `raise`, `break`, `continue`, `pass`, the variable-declaration
+forms (`a, b := ...` multi, `name := ...` inferred, `name: T = ...`
+annotated), and otherwise an expression used as assignment (`=`), compound
+assignment (`OP=`), or a bare expression statement. A `:=` whose left side
+is not a plain name is reported with a targeted error.
+
+---
+
+<a id="Parser.parse_if_stmt" />
+```gust
+def Parser.parse_if_stmt() -> Stmt
+```
+
+Parse an `if ... [else if ...]* [else ...] end` chain, returning an
+`IfStmt` with the condition, then-body, list of `ElseIf` clauses, and
+optional else-body.
+
+---
+
+<a id="Parser.parse_for_stmt" />
+```gust
+def Parser.parse_for_stmt() -> Stmt
+```
+
+Parse a `for [!] vars in iter ... end` loop, returning a `ForStmt`. An
+optional `!` after `for` marks the loop async; `vars` may be one or more
+comma-separated names (for tuple unpacking).
+
+---
+
+<a id="Parser.parse_while_stmt" />
+```gust
+def Parser.parse_while_stmt() -> Stmt
+```
+
+Parse a `while [!] cond ... end` loop, returning a `WhileStmt`. An
+optional `!` after `while` marks the loop async (spawned as a detached
+background thread).
+
+---
+
+<a id="Parser.parse_with_stmt" />
+```gust
+def Parser.parse_with_stmt() -> Stmt
+```
+
+Parse a `with context [as name] ... end` block, returning a `WithStmt`.
+
+The context is entered at the top of the block (its `__enter` runs) and
+exited however the block is left — falling off the end, `return`, `break`,
+`continue`, or a raise. An optional `as name` binds `__enter`'s result for
+the body. The context is parsed at unary precedence so a trailing `as` binds
+the name rather than being read as a type cast.
+
+---
+
+<a id="Parser.parse_try_stmt" />
+```gust
+def Parser.parse_try_stmt() -> Stmt
+```
+
+Parse a `try ... catch Type [as var] ... end` block, returning a
+`TryStmt` with the protected body and a list of `CatchClause`s (each an
+error type, optional bound variable, and handler body).
+
+---
+
+<a id="Parser.parse_match_stmt" />
+```gust
+def Parser.parse_match_stmt() -> Stmt
+```
+
+Parse a `match scrutinee ... case pat[, pat]* [if guard] ... [else ...]
+end` block, returning a `MatchStmt`. Each `case` becomes a `MatchArm` with
+its patterns, optional guard, and body. Requires at least one `case` or an
+`else`.
+
+---
+
+<a id="Parser.parse_match_pattern" />
+```gust
+def Parser.parse_match_pattern() -> Expr
+```
+
+Parse one `case` pattern as an `Expr`. Handles a leading `-` for a
+negative numeric literal (wrapping the atom in a `UnaryOp`); otherwise
+delegates to `parse_match_pattern_atom`.
+
+---
+
+<a id="Parser.parse_match_pattern_atom" />
+```gust
+def Parser.parse_match_pattern_atom() -> Expr
+```
+
+Parse a single (non-negated) match pattern as an `Expr`: a literal (int,
+float, string, bool, none), a variant pattern (`Name(binds...)` or a bare
+uppercase `Name` for a unit variant), or a possibly-dotted name/field path
+(`Ident` / `EnumName.Member`).
+
+---
+
+<a id="Parser.parse_raise_stmt" />
+```gust
+def Parser.parse_raise_stmt() -> Stmt
+```
+
+Parse a `raise` statement, returning a `RaiseStmt`. A bare `raise`
+(re-raise inside a catch) carries no type; `raise ErrorName(field: ...)`
+carries the error type name and its named arguments.
+
+---
+
+<a id="Parser.parse_type_params" />
+```gust
+def Parser.parse_type_params() -> list[string]
+```
+
+Parse an optional generic type-parameter list `[T, U, ...]`, returning
+the parameter names. Returns an empty list when no `[` follows.
+
+---
+
+<a id="Parser.parse_return_type" />
+```gust
+def Parser.parse_return_type() -> TypeNode
+```
+
+Parse an optional `-> Type` return annotation, returning the `TypeNode`
+(or `NoneType` when absent). Multiple returns are written `tuple[T1, T2,
+...]`; the parenthesized `-> (A, B, ...)` form is rejected so a tuple type
+is spelled the same way everywhere (params, fields, and returns).
+
+---
+
+<a id="Parser.parse_param_list" />
+```gust
+def Parser.parse_param_list() -> list[Param]
+```
+
+Parse a function/method parameter list (`name: Type [= default], ...`)
+up to the closing `)`, returning the `Param`s. Each parameter is a name
+with a type annotation and an optional default-value expression.
+
+---
+
+<a id="Parser.parse_const_def" />
+```gust
+def Parser.parse_const_def() -> ConstDef
+```
+
+Parse a top-level constant declaration `[private] NAME: constant[Type] =
+value`, returning a `ConstDef`. Verifies the `constant` type keyword and
+captures the inner type, value expression, and privacy.
+
+---
+
+<a id="Parser.parse_dotted_path" />
+```gust
+def Parser.parse_dotted_path() -> list[string]
+```
+
+Parse a dotted module path `a.b.c`, returning the segment names as a
+list.
+
+---
+
+<a id="Parser.finish_import_from" />
+```gust
+def Parser.finish_import_from(ln: integer, names: list[string]) -> Import
+```
+
+Parse the package source after `from` in a selective import — either a
+quoted path (`from "../foo"`) or a dotted name (`from foo.bar`) — and
+build the `Import` carrying the already-parsed `names`.
+
+---
+
+<a id="Parser.parse_import" />
+```gust
+def Parser.parse_import() -> Import
+```
+
+Parse a `use` import statement, returning an `Import`. Handles the
+parenthesized selective form `use (A, B, ...) from pkg`, the comma/`from`
+selective form `use A, B from pkg`, and the whole-module form `use a.b.c
+[as alias]`. The package source may be a dotted name or, for a path
+import, a quoted filesystem path (`use "../foo"`, `use (A) from "./bar"`).
+Records the path, alias, any selected names, and the `is_path` flag.
+
+---
+
+<a id="Parser.parse_error_def" />
+```gust
+def Parser.parse_error_def() -> ErrorDef
+```
+
+Parse an `error [private] Name(field: Type, ...)` declaration, returning
+an `ErrorDef` with its field definitions and privacy. The field list is
+optional. A leading triple-quoted string immediately after `(` is the
+error's docstring (fields are documented via a `Fields:` section inside it,
+mirroring the struct convention); newlines inside the field list are
+permitted so the declaration can span multiple lines.
+
+---
+
+<a id="Parser.parse_iface_name" />
+```gust
+def Parser.parse_iface_name() -> string
+```
+
+Parse an interface name in a struct's `implements` clause, accepting an
+optional package qualifier (`gml.Component`). Interfaces register under
+their bare name, so the qualifier is dropped and the final segment
+returned.
+
+---
+
+<a id="Parser.parse_interface_def" />
+```gust
+def Parser.parse_interface_def() -> InterfaceDef
+```
+
+Parse an `interface [private] Name ... end` declaration, returning an
+`InterfaceDef`. The body holds property requirements (`name: T`, stored as
+`FieldDef`s) and method signatures (`def name(params) -> ret`, stored as
+`FuncSignature`s), plus an optional docstring.
+
+---
+
+<a id="Parser.parse_enum_def" />
+```gust
+def Parser.parse_enum_def(prog: Program, auto_values: bool) -> none
+```
+
+Parse an `enum`/`auto_enum` declaration and append it to `prog`. A
+backing clause selects the form:
+
+```gust
+enum Name: integer ... end   backed enum, bare `Member [= value]` lines
+                             → an `EnumDef` on `prog.enums`
+enum Name ... case ... end   sum type, `case Name(fields)` variants
+                             → a `TypeDef` on `prog.types`
+```
+
+`auto_values` selects `auto_enum` (always backed; members may omit explicit
+values). The two forms are mutually exclusive: a backed enum rejects `case`
+variants, and a sum type rejects `= value` (see `parse_case_variants`).
+
+---
+
+<a id="Parser.parse_def_or_struct" />
+```gust
+def Parser.parse_def_or_struct(decorators: list[Decorator]) -> TopLevel
+```
+
+Parse a `def`-introduced top-level construct, dispatching on what
+follows: `def foreign` (→ `TLForeign`), `Name.method(...)`
+(→ `TLMethod`), `name(...)` (a function → `TLFunction`, or a bodyless
+declaration → `TLForeign` in decl mode), or otherwise a struct definition
+(→ `TLStruct`, including `implements` interface list and fields). Absorbs
+the optional `!` async marker and `private` modifier, and attaches any
+`decorators` already collected by the caller.
+
+---
+
+<a id="Parser.parse_case_variants" />
+```gust
+def Parser.parse_case_variants(name: string) -> list[VariantDef]
+```
+
+Parse the `case Name(field: Type, ...)` lines of a sum-type `enum` body,
+stopping at `end` or EOF, and return one `VariantDef` per `case`. Fields
+are optional (`case North` is a bare unit variant). A `= value` after a
+variant is rejected: backing values belong only on a backed enum.
+
+---
+
+<a id="Parser.parse_foreign_construct" />
+```gust
+def Parser.parse_foreign_construct(
+    def_line: integer,
+    is_private: bool,
+    decorators: list[Decorator],
+) -> TopLevel
+```
+
+Parse a `def foreign ...` declaration (the `foreign` keyword is current on
+entry). Two forms are accepted, distinguished by a `.` after the name:
+
+- `def foreign name(params) -> ret` → a free foreign function (`TLForeign`
+  wrapping a `FuncDecl`).
+- `def foreign Struct.method(params) -> ret` → a foreign method
+  (`TLMethod` wrapping a bodyless `MethodDef` with `is_foreign` set). The
+  C symbol `Struct_method(Struct* self, ...)` supplies the implementation.
+
+Both share an optional docstring, and are terminated by `end`.
+
+---
+
+<a id="Parser.parse" />
+```gust
+def Parser.parse() -> Program
+```
+
+Parse a whole source file into a `Program`. Consumes an optional leading
+module docstring, then loops over top-level constructs — imports,
+error/interface/enum declarations, decorated `def`s (routed by
+variant into functions/methods/structs/types/package funcs), and constant
+definitions — appending each to the appropriate `Program` table. Stops at
+EOF or the first failure.
+
+## `Token`
+
+<a id="Token" />
+A single lexical token: its `kind` (one of the `TT_*` constants), the
+matched source text in `value`, and the 1-based `line`/`col` of its start.
+
+```gust
+def Token
+
+    kind: integer
+    value: string
+    line: integer
+    col: integer
+
+end
+```
+
+**Fields**
+
+- `kind: integer`
+- `value: string`
+- `line: integer`
+- `col: integer`
+
+## Functions
+
+<a id="ast.type_to_string" />
+```gust
+def type_to_string(t: TypeNode) -> string
+```
+
+Render a `TypeNode` back to its source-like string spelling (e.g.
+`list[integer]`, `dict[string, integer]`, `A | B`). Unrecognized or
+`none` nodes render as `"none"`.
+
+---
+
+<a id="ast.generic_mangle" />
+```gust
+def generic_mangle(name: string, arg_tags: list[string]) -> string
+```
+
+`Signal` + `["integer"]` → `Signal__integer`: the C symbol of a generic
+struct/function instantiation. Non-alphanumeric characters in composite
+argument tags become `_`. Shared by the analyzer and codegen so an explicit
+generic type annotation (`Signal[integer]`) and an inferred construction
+(`signal(0)`) name the same monomorphized type. Mirrors codegen's
+`mangle_generic_name`.
+
+---
+
+<a id="ast.no_span" />
+```gust
+def no_span() -> SrcSpan
+```
+
+The sentinel span for synthetic nodes with no source location.
+
+---
+
+<a id="ast.span_is_real" />
+```gust
+def span_is_real(s: SrcSpan) -> bool
+```
+
+True when `s` carries a genuine source location (not the sentinel).
+
+---
+
+<a id="ast.span_tok" />
+```gust
+def span_tok(line: integer, col: integer, len: integer) -> SrcSpan
+```
+
+A single-token span starting at (line, col) covering `len` chars.
+
+---
+
+<a id="ast.span_join" />
+```gust
+def span_join(a: SrcSpan, b: SrcSpan) -> SrcSpan
+```
+
+A span running from the start of `a` to the end of `b`. If either is
+the sentinel, the other is returned so synthetic children don't poison a
+real parent span.
+
+---
+
+<a id="ast.span_contains" />
+```gust
+def span_contains(sp: SrcSpan, line: integer, col: integer) -> bool
+```
+
+True when the 1-based `(line, col)` position falls inside `sp`. The
+range is inclusive at both ends so a cursor resting immediately after an
+identifier still resolves to it — the leniency a language server needs so
+an end-of-word click is not a miss.
+
+---
+
+<a id="ast.span_size" />
+```gust
+def span_size(sp: SrcSpan) -> integer
+```
+
+A coarse magnitude for `sp`, used to prefer the tightest span that
+contains a cursor. A multi-line span always outranks a single-line one so
+the innermost node wins.
+
+---
+
+<a id="ast.expr_span" />
+```gust
+def expr_span(e: Expr) -> SrcSpan
+```
+
+The source span of `e`. `Ident` derives its span from its stored
+`line`/`col` + name length; `VariantPattern` (a pattern-only node) and
+anything synthetic return the sentinel. Every other variant returns its
+stored `span`.
+
+---
+
+<a id="ast.clone_type" />
+```gust
+def clone_type(t: TypeNode) -> TypeNode
+```
+
+Deep-copy a `TypeNode`, rebuilding every nested node so the result
+shares no cells with the original.
+
+---
+
+<a id="ast.clone_named_arg" />
+```gust
+def clone_named_arg(a: NamedArg) -> NamedArg
+```
+
+Deep-copy a `NamedArg`, cloning its value expression.
+
+---
+
+<a id="ast.clone_fstring_part" />
+```gust
+def clone_fstring_part(p: FStringPart) -> FStringPart
+```
+
+Deep-copy an f-string part, cloning the interpolated expression of an
+`FSExpr` segment.
+
+---
+
+<a id="ast.clone_comp_clause" />
+```gust
+def clone_comp_clause(c: CompClause) -> CompClause
+```
+
+Deep-copy a comprehension clause, cloning its iterable or condition
+expression.
+
+---
+
+<a id="ast.clone_expr" />
+```gust
+def clone_expr(e: Expr) -> Expr
+```
+
+Deep-copy an expression subtree, rebuilding every variant (leaves
+included) so the copy shares no cells with the original.
+
+---
+
+<a id="ast.reanchor_expr" />
+```gust
+def reanchor_expr(e: Expr, sp: SrcSpan) -> Expr
+```
+
+Rebuild `e` with every node's source span replaced by `sp`. Markup
+desugaring re-lexes generated source under a synthetic `<markup>` filename,
+so the resulting nodes carry spans pointing at the generated text (line 1),
+not the user's file. Re-anchoring the whole subtree to the original markup
+region's span makes diagnostics (e.g. an unknown component type) point at
+the real `<tag>` site instead. Per-node precision within the region is not
+recovered — the region maps to one span.
+
+---
+
+<a id="ast.reanchor_named_arg" />
+```gust
+def reanchor_named_arg(a: NamedArg, sp: SrcSpan) -> NamedArg
+```
+
+Re-anchor a `NamedArg`'s value and location to span `sp` (see
+`reanchor_expr`).
+
+---
+
+<a id="ast.reanchor_fstring_part" />
+```gust
+def reanchor_fstring_part(p: FStringPart, sp: SrcSpan) -> FStringPart
+```
+
+Re-anchor an f-string part's interpolated expression to span `sp`.
+
+---
+
+<a id="ast.reanchor_comp_clause" />
+```gust
+def reanchor_comp_clause(c: CompClause, sp: SrcSpan) -> CompClause
+```
+
+Re-anchor a comprehension clause's expression to span `sp`.
+
+---
+
+<a id="ast.stmt_span" />
+```gust
+def stmt_span(s: Stmt) -> SrcSpan
+```
+
+The source span of statement `s`. The statement-level mirror of
+`expr_span`: every `Stmt` variant carries a trailing `span`, so a uniform
+accessor gives statement diagnostics and language-server ranges the same
+column precision expressions already have.
+
+---
+
+<a id="ast.ch_is_lower" />
+```gust
+def ch_is_lower(ch: string) -> bool
+```
+
+True when `ch` is a lowercase ASCII letter [a-z]; false for "" or any longer string.
+
+---
+
+<a id="ast.ch_is_upper" />
+```gust
+def ch_is_upper(ch: string) -> bool
+```
+
+True when `ch` is an uppercase ASCII letter [A-Z]; false for "" or any longer string.
+
+---
+
+<a id="ast.ch_is_digit" />
+```gust
+def ch_is_digit(ch: string) -> bool
+```
+
+True when `ch` is an ASCII decimal digit [0-9]; false for "" or any longer string.
+
+---
+
+<a id="ast.ch_is_alpha" />
+```gust
+def ch_is_alpha(ch: string) -> bool
+```
+
+True when `ch` is an ASCII letter [a-zA-Z]; false for "" or any longer string.
+
+---
+
+<a id="ast.ch_is_ident_start" />
+```gust
+def ch_is_ident_start(ch: string) -> bool
+```
+
+[a-zA-Z_] — a character that may begin an identifier.
+
+---
+
+<a id="ast.ch_is_ident" />
+```gust
+def ch_is_ident(ch: string) -> bool
+```
+
+[a-zA-Z0-9_] — a character that may continue an identifier.
+
+---
+
+<a id="ast.is_alnum_ch" />
+```gust
+def is_alnum_ch(ch: string) -> bool
+```
+
+True when `ch` may appear inside an identifier (letters, digits, or
+underscore).
+
+---
+
+<a id="ast.is_hex_ch" />
+```gust
+def is_hex_ch(ch: string) -> bool
+```
+
+True when `ch` is a hexadecimal digit (0-9, a-f, or A-F).
+
+---
+
+<a id="ast.is_bin_ch" />
+```gust
+def is_bin_ch(ch: string) -> bool
+```
+
+True when `ch` is a binary digit (0 or 1).
+
+---
+
+<a id="ast.is_oct_ch" />
+```gust
+def is_oct_ch(ch: string) -> bool
+```
+
+True when `ch` is an octal digit (0-7). Returns false for the empty
+string.
+
+---
+
+<a id="ast.digit_val" />
+```gust
+def digit_val(ch: string) -> integer
+```
+
+Return the numeric value 0-15 of a single hex digit `ch` (case-
+insensitive), or -1 if `ch` is not a hex digit.
+
+---
+
+<a id="ast.parse_int_base" />
+```gust
+def parse_int_base(digits: string, base: integer) -> integer
+```
+
+Parse the digit-string `digits` as an integer in the given `base`,
+accumulating most-significant digit first. `digits` is assumed to contain
+only valid digits for `base`.
+
+---
+
+<a id="ast.decimal_overflows_i64" />
+```gust
+def decimal_overflows_i64(digits: string) -> bool
+```
+
+True when the decimal digit-string `digits` denotes a value larger
+than the maximum signed 64-bit integer (9223372036854775807) — i.e. it
+would silently wrap when accumulated into an `integer`. `digits` is
+assumed to be decimal digits only (the lexer strips `_` separators).
+
+---
+
+<a id="ast.decode_string_escape" />
+```gust
+def decode_string_escape(esc: string) -> string
+```
+
+Decode a single-character escape `esc` (the char after a backslash) to
+the string it represents, e.g. "n" -> newline. Shared escape table for
+regular and f-string bodies. Unknown escapes fall through unchanged so the
+source spelling is preserved for downstream error messages. `\x..` is not a
+single-char escape and is handled by the caller before consulting this
+table.
+
+---
+
+<a id="ast.hex_nibble" />
+```gust
+def hex_nibble(ch: string) -> integer
+```
+
+Return 0-15 for a hex digit, or -1 for anything else.
+
+---
+
+<a id="ast.is_quote_block_opener" />
+```gust
+def is_quote_block_opener(word: string) -> bool
+```
+
+True for the keywords that open a block closed by `end` — used by
+`read_quote_body` to find the `end` that closes the quote (not an inner
+block). `quote` itself nests.
+
+---
+
+<a id="ast.is_radix_digit" />
+```gust
+def is_radix_digit(ch: string, base: integer) -> bool
+```
+
+True when `ch` is a valid digit for `base` (16 -> hex, 2 -> binary, any
+other value -> octal).
+
+---
+
+<a id="ast.lower_event_handler" />
+```gust
+def lower_event_handler(renderer: string, ev: string, h: string) -> string
+```
+
+Lower an `@event={handler}` markup binding to a renderer call.
+
+Taking the event is **opt-in, per handler**. If `handler` is an inline
+lambda declaring a typed parameter (`def(e: events.KeyboardEvent) -> none
+…`), it opts in: this lowers to `&lt;renderer>.on_event(...)` wrapping a
+handle-taking adapter that projects the fired event into the annotated type
+(via the generated `to_<type>` projector) and calls the handler. An argless
+handler — a bare function name (`increment`) or `def() -> none …` — lowers to
+`<renderer>.on(...)` and is invoked with no event. So simple handlers stay
+simple; only those that declare a parameter receive the event.
+
+---
+
+<a id="ast.parse" />
+```gust
+def parse(source: string, filename: string) -> Program
+```
+
+Parse Gust `source` into a `Program` AST. `filename` is recorded on the
+resulting tree and used in any parse-error diagnostics; pass the real path
+when you have one, or a placeholder like `"<source>"` otherwise. Performs
+lexing and parsing only — no semantic analysis — so the returned tree
+reflects pure syntax.
+
+---
+
+<a id="ast.tok_span" />
+```gust
+def tok_span(t: Token) -> SrcSpan
+```
+
+The span of a single token `t`.
+
+---
+
+<a id="ast.generic_type_form_hint" />
+```gust
+def generic_type_form_hint(type_name: string) -> string
+```
+
+The example spelling shown when a builtin generic type is written
+without its `[...]` element list — used by `expect_elem_bracket` to make
+the G0109 message actionable rather than a bare "expected '['".
+
+---
+
+<a id="ast.compound_op_kind" />
+```gust
+def compound_op_kind(spelling: string) -> integer
+```
+
+Map a compound-assignment token spelling (`+=`, `-=`, `*=`, `/=`, `%=`)
+to the binary operator kind its desugaring applies.
+
+---
+
+<a id="ast.binop_prec" />
+```gust
+def binop_prec(kind: integer) -> integer
+```
+
+Binding precedence of an infix binary operator token kind — a higher
+number binds tighter. Returns 0 for any kind that is not an infix binary
+operator, which is how the climbing loop knows to stop. The symbolic
+comparison operators share the lowest rank; the multiplicative operators
+the highest. The word relations (`is` / `in`) are handled outside the
+table, in `parse_comparison`.
+
+---
+
+<a id="ast.first_is_upper" />
+```gust
+def first_is_upper(s: string) -> bool
+```
+
+True if `s` is non-empty and its first character is uppercase. Used to
+distinguish type/struct/variant names from ordinary identifiers.
+
+---
+
+<a id="ast.is_primary_literal" />
+```gust
+def is_primary_literal(kind: integer) -> bool
+```
+
+True when `kind` begins a literal primary expression: the six value
+literals plus `true` / `false` / `none` and the `quote` / markup template
+kinds, each of which `parse_primary_literal` consumes as a single token.
+
+---
+
+<a id="ast.find_close_brace" />
+```gust
+def find_close_brace(raw: string, start: integer) -> integer
+```
+
+Scan `raw` from index `start` for the `}` that closes a `{`-opened
+f-string interpolation, honoring nested braces. Returns the index of the
+matching `}`, or -1 if none is found.
+
+---
+
+<a id="ast.is_none_type" />
+```gust
+def is_none_type(t: TypeNode) -> bool
+```
+
+True if `t` is the sentinel `NoneType` (no return type), used to derive
+a signature's `has_return` flag.
+
+---
+
+<a id="ast.is_literal" />
+```gust
+def is_literal(kind: integer) -> bool
+```
+
+True when `kind` is a literal token (integer, float, string, f-string,
+multiline string, or bytes). `TT_IDENT` is deliberately excluded.
+
+---
+
+<a id="ast.is_keyword" />
+```gust
+def is_keyword(kind: integer) -> bool
+```
+
+True when `kind` is a reserved word (`def` … `spawn`, including the
+word-operators `and` / `or` / `not` / `is` / `in` / `as`).
+
+---
+
+<a id="ast.is_operator" />
+```gust
+def is_operator(kind: integer) -> bool
+```
+
+True when `kind` is a symbolic operator or delimiter (assignment,
+comparison, arithmetic, bitwise, shift, punctuation, or a bracket).
+
+---
+
+<a id="ast.keyword_kind" />
+```gust
+def keyword_kind(word: string) -> integer
+```
+
+Map a reserved word to its `TT_*` token kind, or return 0 when `word`
+is not a keyword (and should be treated as an identifier).
+
+---
+
+<a id="ast.op_spelling" />
+```gust
+def op_spelling(kind: integer) -> string
+```
+
+Source spelling of an operator token kind (`TT_PLUS` → `"+"`, `TT_IS_NOT`
+→ `"is not"`). Covers every kind that can appear as a `BinOp.op` or
+`UnaryOp.op`, so diagnostics and codegen can recover the written form.
+Unknown kinds return `""`.

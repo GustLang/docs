@@ -1,0 +1,376 @@
+---
+title: barcode
+description: "A pure-Gust 1D (linear) barcode encoder"
+---
+
+```gust
+use barcode
+```
+
+A pure-Gust 1D (linear) barcode encoder.
+
+Every encoder turns a payload string into a `Barcode` — a symbology name, the
+human-readable text, and a *module string*: one character per module where `1`
+is a dark bar and `0` is a light space. From that single representation a
+`Barcode` renders to plain bits, terminal ASCII, an SVG document, or a Netpbm
+(PBM) bitmap, so the same encoded value can be displayed, embedded in a web
+page, or saved as an openable image without any external dependency.
+
+Supported symbologies:
+
+```gust
+Code 39   — `code39`: digits, upper-case letters and `-. $/+%`, optionally
+            with a mod-43 check character. Self-checking, widely scanned.
+Code 128  — `code128`: full printable ASCII (code set B); an all-digit even
+            length payload is packed two-per-symbol with code set C.
+EAN-13    — `ean13`: 12 digits plus a computed check digit.
+EAN-8     — `ean8`: 7 digits plus a computed check digit.
+UPC-A     — `upca`: 11 digits plus a computed check digit (an EAN-13 with a
+            leading zero).
+```
+
+Malformed input — an unsupported character, a wrong digit count, or a bad
+check digit — raises `BarcodeError`.
+
+**Examples**
+
+```gust
+use barcode
+bc := barcode.ean13("978014300723")
+print(bc.to_ascii())
+bc.save("svg", "book.svg")
+```
+
+**On this page:** [`Barcode`](#Barcode) · [`BarcodeError`](#BarcodeError) · [`encode`](#barcode.encode) · [`code39`](#barcode.code39) · [`code39_checked`](#barcode.code39_checked) · [`code128`](#barcode.code128) · [`ean13`](#barcode.ean13) · [`upca`](#barcode.upca) · [`ean8`](#barcode.ean8)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `MODULE_DARK_BYTE` | `integer` | `49` |
+| `ASCII_DIGIT_ZERO` | `integer` | `48` |
+| `CODE39_VALUES` | `string` | `"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-. $/+%"` |
+| `CODE39_PATTERNS` | `dict[string, string]` | `{"0": "nnnwwnwnn", "1": "wnnwnnnnw", "2": "nnwwnnnnw", "3":…}` |
+| `CODE128_PATTERNS` | `list[string]` | `["212222", "222122", "222221", "121223", "121322", "131222",…]` |
+| `EAN_L` | `list[string]` | `["0001101", "0011001", "0010011", "0111101", "0100011", "011…]` |
+| `EAN_G` | `list[string]` | `["0100111", "0110011", "0011011", "0100001", "0011101", "011…]` |
+| `EAN_R` | `list[string]` | `["1110010", "1100110", "1101100", "1000010", "1011100", "100…]` |
+| `EAN13_PARITY` | `list[string]` | `["000000", "001011", "001101", "001110", "010011", "011001",…]` |
+
+## `Barcode`
+
+<a id="Barcode" />
+A finished linear barcode.
+
+```gust
+def Barcode
+
+    symbology: string
+    text: string
+    modules: string
+
+end
+```
+
+**Fields**
+
+- `symbology: string` — the encoding used, e.g. "code128".
+- `text: string` — the human-readable interpretation (HRI) of the payload.
+- `modules: string` — one character per module, `1` for a dark bar and `0` for a light space. This is the canonical form every renderer draws from.
+
+**Methods**
+
+<a id="Barcode.module_count" />
+```gust
+def Barcode.module_count() -> integer
+```
+
+The number of modules (bars plus spaces) in the symbol.
+
+---
+
+<a id="Barcode.to_bits" />
+```gust
+def Barcode.to_bits() -> string
+```
+
+The raw module string: `1` per dark bar, `0` per light space.
+
+---
+
+<a id="Barcode.to_ascii" />
+```gust
+def Barcode.to_ascii() -> string
+```
+
+Render the symbol as three rows of block characters for terminal
+display, with a four-module quiet zone on each side.
+
+---
+
+<a id="Barcode.to_ascii_with" />
+```gust
+def Barcode.to_ascii_with(height: integer, quiet_zone: integer) -> string
+```
+
+Render the symbol as `height` rows of block characters.
+
+**Parameters**
+
+- `height` — number of text rows to draw the bars over.
+- `quiet_zone` — light margin, in modules, added to each side.
+
+---
+
+<a id="Barcode.to_svg" />
+```gust
+def Barcode.to_svg() -> string
+```
+
+Render the symbol as an SVG document: 2px modules, 100px tall, a
+10-module quiet zone, with the text printed underneath.
+
+---
+
+<a id="Barcode.to_svg_with" />
+```gust
+def Barcode.to_svg_with(
+    module_width: integer,
+    height: integer,
+    quiet_zone: integer,
+    show_text: bool,
+) -> string
+```
+
+Render the symbol as a standalone SVG document.
+
+**Parameters**
+
+- `module_width` — width in pixels of a single module.
+- `height` — height in pixels of the bars.
+- `quiet_zone` — light margin, in modules, added to each side.
+- `show_text` — when true, print the human-readable text below the bars.
+
+---
+
+<a id="Barcode.to_pbm" />
+```gust
+def Barcode.to_pbm() -> string
+```
+
+Render the symbol as a plain (P1) Netpbm bitmap: each module 2px wide,
+40px tall, with a 10-module quiet zone. PBM is a text format every image
+viewer can open.
+
+---
+
+<a id="Barcode.to_pbm_with" />
+```gust
+def Barcode.to_pbm_with(
+    scale: integer,
+    height: integer,
+    quiet_zone: integer,
+) -> string
+```
+
+Render the symbol as a plain (P1) Netpbm bitmap.
+
+In PBM a `1` pixel is black and `0` is white, matching the module string.
+
+**Parameters**
+
+- `scale` — width in pixels of a single module.
+- `height` — image height in pixels.
+- `quiet_zone` — light margin, in modules, added to each side.
+
+---
+
+<a id="Barcode.render" />
+```gust
+def Barcode.render(format: string) -> string
+```
+
+Render the symbol to a string in the named `format`, using each
+renderer's defaults.
+
+**Parameters**
+
+- `format` — one of "svg", "pbm", "ascii" (alias "txt"/"text"), or "bits" (case-insensitive).
+
+**Raises**
+
+- `BarcodeError` — when `format` is not a recognized render format.
+
+---
+
+<a id="Barcode.save" />
+```gust
+def Barcode.save(format: string, path: string) -> none
+```
+
+Render the symbol in `format` and write it to `path`.
+
+**Parameters**
+
+- `format` — see `render` — "svg", "pbm", "ascii" (alias "txt"/"text"), or "bits".
+- `path` — the file to write.
+
+**Raises**
+
+- `BarcodeError` — when `format` is not a recognized render format.
+- `IOError` — when the file cannot be written.
+
+**Examples**
+
+```gust
+barcode.ean13("400638133393").save("svg", "book.svg")
+```
+
+<Warning>
+Overwrites any existing file at `path`.
+</Warning>
+
+## Functions
+
+<a id="barcode.encode" />
+```gust
+def encode(symbology: string, data: string) -> Barcode
+```
+
+Encode `data` using the named `symbology`.
+
+**Parameters**
+
+- `symbology: string` — one of "code39", "code128", "ean13", "ean8", "upca" (case-insensitive).
+- `data: string` — the payload to encode.
+
+**Raises**
+
+- `BarcodeError` — when `symbology` is unknown, or `data` is not encodable in it.
+
+---
+
+<a id="barcode.code39" />
+```gust
+def code39(data: string) -> Barcode
+```
+
+Encode `data` as Code 39 without a check character.
+
+Lower-case letters are upper-cased. Supported characters are the digits,
+`A`-`Z`, space, and `-. $/+%`.
+
+**Parameters**
+
+- `data: string` — the payload to encode.
+
+**Raises**
+
+- `BarcodeError` — when `data` contains a character Code 39 cannot encode.
+
+---
+
+<a id="barcode.code39_checked" />
+```gust
+def code39_checked(data: string) -> Barcode
+```
+
+Encode `data` as Code 39 with a trailing mod-43 check character.
+
+**Parameters**
+
+- `data: string` — the payload to encode.
+
+**Raises**
+
+- `BarcodeError` — when `data` contains a character Code 39 cannot encode.
+
+---
+
+<a id="barcode.code128" />
+```gust
+def code128(data: string) -> Barcode
+```
+
+Encode `data` as Code 128.
+
+An all-digit payload of even length is packed two digits per symbol using
+code set C; any other payload uses code set B and must contain only
+printable ASCII (byte values 32-126).
+
+**Parameters**
+
+- `data: string` — the payload to encode.
+
+---
+
+<a id="barcode.ean13" />
+```gust
+def ean13(data: string) -> Barcode
+```
+
+Encode 12 digits as EAN-13; the 13th (check) digit is computed and
+appended. Passing 13 digits is accepted only if the final digit already
+matches the computed check.
+
+**Parameters**
+
+- `data: string` — the 12-digit payload (or 13 digits with a valid check digit).
+
+**Raises**
+
+- `BarcodeError` — when `data` is not 12 or 13 digits, or the supplied 13th check digit is wrong.
+
+---
+
+<a id="barcode.upca" />
+```gust
+def upca(data: string) -> Barcode
+```
+
+Encode 11 digits as UPC-A; the 12th (check) digit is computed and
+appended. UPC-A is an EAN-13 with a leading zero, so the bars are an
+EAN-13 of `"0" + data`.
+
+**Parameters**
+
+- `data: string` — the 11-digit payload (or 12 digits with a valid check digit).
+
+**Raises**
+
+- `BarcodeError` — when `data` is not 11 or 12 digits, or the supplied 12th check digit is wrong.
+
+---
+
+<a id="barcode.ean8" />
+```gust
+def ean8(data: string) -> Barcode
+```
+
+Encode 7 digits as EAN-8; the 8th (check) digit is computed and
+appended. Passing 8 digits is accepted only if the final digit already
+matches the computed check.
+
+**Parameters**
+
+- `data: string` — the 7-digit payload (or 8 digits with a valid check digit).
+
+**Raises**
+
+- `BarcodeError` — when `data` is not 7 or 8 digits, or the supplied 8th check digit is wrong.
+
+## Errors
+
+<a id="BarcodeError" />
+```gust
+error BarcodeError(message: string, symbology: string)
+```
+
+Raised when a payload cannot be encoded.
+
+Fields:
+
+```gust
+message: human-readable description of the problem.
+symbology: the symbology that rejected the input, e.g. "ean13".
+```

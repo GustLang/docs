@@ -1,0 +1,311 @@
+---
+title: cryptography.sha
+description: "SHA-2 family hashes plus the legacy SHA-1, implemented in pure Gust (no C, no external library) so they build everywhere the language does — including the freestanding Pico target"
+---
+
+```gust
+use cryptography.sha
+```
+
+SHA-2 family hashes plus the legacy SHA-1, implemented in pure Gust (no C, no
+external library) so they build everywhere the language does — including the
+freestanding Pico target. The 32-bit-word hashes work entirely in 32-bit lanes
+(masking every result with `& 0xFFFFFFFF`) to stay clear of the host integer's
+sign bit; the 64-bit-word hashes carry each word as a [hi, lo] pair of 32-bit
+lanes, since the host's signed 64-bit integer can't express unsigned 64-bit
+arithmetic cleanly.
+
+Provided: SHA-256 and SHA-224 (32-bit words), SHA-512 and SHA-384 (64-bit
+words), plus the legacy SHA-1. Each hash is offered as a raw digest (`*_digest`
+over a byte list), a `bytes` digest (`sha256`/`sha512`/`sha1`/…), and a
+lowercase-hex string (`*_hex`). SHA-256 is the modern default for integrity,
+commitments, and HMAC; SHA-1 is kept only for protocols that still mandate it
+(e.g. the RFC 6455 WebSocket handshake) and must not be used for new security
+work.
+
+**Examples**
+
+```gust
+use cryptography.sha
+
+def main() -> none
+    digest := sha.sha256_hex("hello")
+    print(digest)   # 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+end
+```
+
+**On this page:** [`sha256_digest`](#cryptography.sha.sha256_digest) · [`sha224_digest`](#cryptography.sha.sha224_digest) · [`sha256`](#cryptography.sha.sha256) · [`sha256_bytes`](#cryptography.sha.sha256_bytes) · [`sha256_hex`](#cryptography.sha.sha256_hex) · [`sha224`](#cryptography.sha.sha224) · [`sha224_hex`](#cryptography.sha.sha224_hex) · [`sha1_digest`](#cryptography.sha.sha1_digest) · [`sha1`](#cryptography.sha.sha1) · [`sha1_hex`](#cryptography.sha.sha1_hex) · [`sha1_base64`](#cryptography.sha.sha1_base64) · [`sha512_digest`](#cryptography.sha.sha512_digest) · [`sha384_digest`](#cryptography.sha.sha384_digest) · [`sha512`](#cryptography.sha.sha512) · [`sha512_bytes`](#cryptography.sha.sha512_bytes) · [`sha512_hex`](#cryptography.sha.sha512_hex) · [`sha384`](#cryptography.sha.sha384) · [`sha384_hex`](#cryptography.sha.sha384_hex)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `SHA256_K` | `list[integer]` | `[1116352408, 1899447441, 3049323471, 3921009573, 961987163,…]` |
+| `SHA512_K` | `list[list[integer]]` | `[[1116352408, 3609767458], [1899447441, 602891725], [3049323…]` |
+
+## Functions
+
+<a id="cryptography.sha.sha256_digest" />
+```gust
+def sha256_digest(msg: list[integer]) -> list[integer]
+```
+
+Compute the SHA-256 digest of `msg` (byte values 0-255) and return it as
+a list of 32 byte values.
+
+**Parameters**
+
+- `msg: list[integer]` — The message to hash, as a list of byte values.
+
+---
+
+<a id="cryptography.sha.sha224_digest" />
+```gust
+def sha224_digest(msg: list[integer]) -> list[integer]
+```
+
+Compute the SHA-224 digest of `msg` (byte values 0-255) and return it as
+a list of 28 byte values. SHA-224 is SHA-256 with a different IV, truncated
+to its first seven words.
+
+**Parameters**
+
+- `msg: list[integer]` — The message to hash, as a list of byte values.
+
+---
+
+<a id="cryptography.sha.sha256" />
+```gust
+def sha256(data: string) -> bytes
+```
+
+SHA-256 of `data` (read as raw bytes), as a 32-byte digest.
+
+**Parameters**
+
+- `data: string` — The string to hash.
+
+---
+
+<a id="cryptography.sha.sha256_bytes" />
+```gust
+def sha256_bytes(data: bytes) -> bytes
+```
+
+SHA-256 of raw `data`, as a 32-byte digest. Binary-safe — use this when
+the input may contain `0x00`.
+
+**Parameters**
+
+- `data: bytes` — The bytes to hash.
+
+---
+
+<a id="cryptography.sha.sha256_hex" />
+```gust
+def sha256_hex(data: string) -> string
+```
+
+SHA-256 of `data` as a 64-character lowercase hex string.
+
+**Parameters**
+
+- `data: string` — The string to hash.
+
+---
+
+<a id="cryptography.sha.sha224" />
+```gust
+def sha224(data: string) -> bytes
+```
+
+SHA-224 of `data` (read as raw bytes), as a 28-byte digest.
+
+**Parameters**
+
+- `data: string` — The string to hash.
+
+---
+
+<a id="cryptography.sha.sha224_hex" />
+```gust
+def sha224_hex(data: string) -> string
+```
+
+SHA-224 of `data` as a 56-character lowercase hex string.
+
+**Parameters**
+
+- `data: string` — The string to hash.
+
+---
+
+<a id="cryptography.sha.sha1_digest" />
+```gust
+def sha1_digest(msg: list[integer]) -> list[integer]
+```
+
+Compute the SHA-1 digest of `msg` (byte values 0-255) and return it as a
+list of 20 byte values.
+
+**Parameters**
+
+- `msg: list[integer]` — The message to hash, as a list of byte values.
+
+<Warning>
+SHA-1 is broken for collision resistance and must not be used for new
+security work. It remains only for protocols that mandate it (e.g. the
+RFC 6455 WebSocket handshake); prefer `sha256_digest` otherwise.
+</Warning>
+
+---
+
+<a id="cryptography.sha.sha1" />
+```gust
+def sha1(data: string) -> bytes
+```
+
+SHA-1 of `data` (read as raw bytes), as a 20-byte digest.
+
+**Parameters**
+
+- `data: string` — The string to hash.
+
+<Warning>
+SHA-1 is broken for collision resistance and must not be used for new
+security work. It remains only for protocols that mandate it (e.g. the
+RFC 6455 WebSocket handshake); prefer `sha256` otherwise.
+</Warning>
+
+---
+
+<a id="cryptography.sha.sha1_hex" />
+```gust
+def sha1_hex(data: string) -> string
+```
+
+SHA-1 of `data` as a 40-character lowercase hex string.
+
+**Parameters**
+
+- `data: string` — The string to hash.
+
+<Warning>
+SHA-1 is broken for collision resistance and must not be used for new
+security work. It remains only for protocols that mandate it (e.g. the
+RFC 6455 WebSocket handshake); prefer `sha256_hex` otherwise.
+</Warning>
+
+---
+
+<a id="cryptography.sha.sha1_base64" />
+```gust
+def sha1_base64(data: string) -> string
+```
+
+SHA-1 of `data` encoded as standard base64 — the form RFC 6455 uses for
+`Sec-WebSocket-Accept`.
+
+**Parameters**
+
+- `data: string` — The string to hash.
+
+<Warning>
+SHA-1 is broken for collision resistance and must not be used for new
+security work. It remains only for protocols that mandate it (e.g. the
+RFC 6455 WebSocket handshake); prefer `sha256` otherwise.
+</Warning>
+
+---
+
+<a id="cryptography.sha.sha512_digest" />
+```gust
+def sha512_digest(msg: list[integer]) -> list[integer]
+```
+
+Compute the SHA-512 digest of `msg` (byte values 0-255) and return it as
+a list of 64 byte values.
+
+**Parameters**
+
+- `msg: list[integer]` — The message to hash, as a list of byte values.
+
+---
+
+<a id="cryptography.sha.sha384_digest" />
+```gust
+def sha384_digest(msg: list[integer]) -> list[integer]
+```
+
+Compute the SHA-384 digest of `msg` (byte values 0-255) and return it as
+a list of 48 byte values. SHA-384 is SHA-512 with a different IV, truncated
+to its first six words.
+
+**Parameters**
+
+- `msg: list[integer]` — The message to hash, as a list of byte values.
+
+---
+
+<a id="cryptography.sha.sha512" />
+```gust
+def sha512(data: string) -> bytes
+```
+
+SHA-512 of `data` (read as raw bytes), as a 64-byte digest.
+
+**Parameters**
+
+- `data: string` — The string to hash.
+
+---
+
+<a id="cryptography.sha.sha512_bytes" />
+```gust
+def sha512_bytes(data: bytes) -> bytes
+```
+
+SHA-512 of raw `data`, as a 64-byte digest. Binary-safe.
+
+**Parameters**
+
+- `data: bytes` — The bytes to hash.
+
+---
+
+<a id="cryptography.sha.sha512_hex" />
+```gust
+def sha512_hex(data: string) -> string
+```
+
+SHA-512 of `data` as a 128-character lowercase hex string.
+
+**Parameters**
+
+- `data: string` — The string to hash.
+
+---
+
+<a id="cryptography.sha.sha384" />
+```gust
+def sha384(data: string) -> bytes
+```
+
+SHA-384 of `data` (read as raw bytes), as a 48-byte digest.
+
+**Parameters**
+
+- `data: string` — The string to hash.
+
+---
+
+<a id="cryptography.sha.sha384_hex" />
+```gust
+def sha384_hex(data: string) -> string
+```
+
+SHA-384 of `data` as a 96-character lowercase hex string.
+
+**Parameters**
+
+- `data: string` — The string to hash.

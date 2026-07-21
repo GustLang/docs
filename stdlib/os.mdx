@@ -1,0 +1,331 @@
+---
+title: os
+description: "System-level utilities: the operating-system and hardware identity (platform, OS version, architecture, hostname, byte order), process identity (pid, ppid, uid, username, executable path, command-line arguments), standard-stream I/O, executable lookup on `$PATH`, and a per-compile arena allocator for batch drivers"
+---
+
+```gust
+use os
+```
+
+System-level utilities: the operating-system and hardware identity (platform,
+OS version, architecture, hostname, byte order), process identity (pid, ppid,
+uid, username, executable path, command-line arguments), standard-stream I/O,
+executable lookup on `$PATH`, and a per-compile arena allocator for batch
+drivers.
+
+**Examples**
+
+```gust
+use os
+
+def main() -> none
+    print(os.hostname())
+    print(os.pid())
+end
+```
+
+**On this page:** [`Platform`](#Platform) · [`platform`](#os.platform) · [`os_version`](#os.os_version) · [`arch`](#os.arch) · [`hostname`](#os.hostname) · [`pid`](#os.pid) · [`ppid`](#os.ppid) · [`uid`](#os.uid) · [`username`](#os.username) · [`executable`](#os.executable) · [`args`](#os.args) · [`env`](#os.env) · [`set_env`](#os.set_env) · [`stdout_write`](#os.stdout_write) · [`arena_push`](#os.arena_push) · [`arena_pop`](#os.arena_pop) · [`arena_pause`](#os.arena_pause) · [`arena_resume`](#os.arena_resume) · [`arena_active`](#os.arena_active) · [`byteorder`](#os.byteorder) · [`processor`](#os.processor) · [`architecture`](#os.architecture) · [`stdin_read`](#os.stdin_read) · [`stdin_readline`](#os.stdin_readline) · [`stdin_isatty`](#os.stdin_isatty) · [`stdout_isatty`](#os.stdout_isatty) · [`stdin_read_n`](#os.stdin_read_n) · [`which`](#os.which)
+
+## `Platform`
+
+<a id="Platform" />
+```gust
+auto_enum Platform: string
+```
+
+Operating-system family the binary is running on.
+
+**Variants**
+
+- `linux = "linux"` — Linux kernel
+- `macos = "macos"` — macOS / Darwin
+- `windows = "windows"` — Microsoft Windows
+- `android = "android"` — Android
+- `freebsd = "freebsd"` — FreeBSD
+- `openbsd = "openbsd"` — OpenBSD
+- `netbsd = "netbsd"` — NetBSD
+- `cygwin = "cygwin"` — Cygwin environment on Windows
+- `solaris = "solaris"` — Solaris / illumos
+- `hpux = "hpux"` — HP-UX
+- `unix = "unix"` — Generic Unix-like, family not otherwise identified
+- `emscripten = "emscripten"` — WebAssembly (browser or Node) runtime profile
+- `freestanding = "freestanding"` — Bare-metal target with no operating system
+- `unknown = "unknown"` — Platform could not be determined
+
+## Functions
+
+<a id="os.platform" />
+```gust
+def foreign platform() -> Platform
+```
+
+Operating system family the binary is running on.
+
+---
+
+<a id="os.os_version" />
+```gust
+def foreign os_version() -> string
+```
+
+Kernel or OS release string (e.g. `"6.8.0-106-generic"`).
+
+---
+
+<a id="os.arch" />
+```gust
+def foreign arch() -> string
+```
+
+CPU architecture string (e.g. `"x86_64"`, `"aarch64"`).
+
+---
+
+<a id="os.hostname" />
+```gust
+def foreign hostname() -> string
+```
+
+Network hostname of the current machine.
+
+---
+
+<a id="os.pid" />
+```gust
+def foreign pid() -> integer
+```
+
+Process ID of the current process.
+
+---
+
+<a id="os.ppid" />
+```gust
+def foreign ppid() -> integer
+```
+
+Process ID of the parent process.
+
+---
+
+<a id="os.uid" />
+```gust
+def foreign uid() -> integer
+```
+
+Real user ID under which the process is running.
+
+---
+
+<a id="os.username" />
+```gust
+def foreign username() -> string
+```
+
+Login name of the user running the process.
+
+---
+
+<a id="os.executable" />
+```gust
+def foreign executable() -> string
+```
+
+Absolute path to the running binary.
+
+---
+
+<a id="os.args" />
+```gust
+def foreign args() -> list[string]
+```
+
+Command-line arguments passed to the process. `args()[0]` is the program name.
+
+---
+
+<a id="os.env" />
+```gust
+def foreign env(name: string) -> string
+```
+
+Read an environment variable, returning the empty string if unset.
+
+**Parameters**
+
+- `name: string` — The environment variable name to read.
+
+---
+
+<a id="os.set_env" />
+```gust
+def foreign set_env(name: string, value: string) -> none
+```
+
+Set an environment variable for the current process.
+
+**Parameters**
+
+- `name: string` — The environment variable name to set.
+- `value: string` — The value to assign.
+
+---
+
+<a id="os.stdout_write" />
+```gust
+def foreign stdout_write(msg: string) -> none
+```
+
+Write `msg` to stdout, with no trailing newline.
+
+**Parameters**
+
+- `msg: string` — Text to write to stdout.
+
+---
+
+<a id="os.arena_push" />
+```gust
+def foreign arena_push() -> none
+```
+
+Begin a per-compile arena region; subsequent allocations bump-allocate
+from it until the matching `arena_pop`. Nestable (depth-counted).
+
+---
+
+<a id="os.arena_pop" />
+```gust
+def foreign arena_pop() -> none
+```
+
+End the current arena region. When the outermost push is unwound, every
+allocation made since it is freed at once. Anything that must survive must
+first be copied out under a `arena_pause`/`arena_resume` window.
+
+---
+
+<a id="os.arena_pause" />
+```gust
+def foreign arena_pause() -> none
+```
+
+Temporarily route allocations back to the real heap (e.g. to deep-copy a
+compile's result out of the arena before popping). Nestable.
+
+---
+
+<a id="os.arena_resume" />
+```gust
+def foreign arena_resume() -> none
+```
+
+Undo one `arena_pause`.
+
+---
+
+<a id="os.arena_active" />
+```gust
+def foreign arena_active() -> bool
+```
+
+True when an arena region is currently open on this thread (depth > 0).
+Lets a callee skip its own push/promote/pop when it is already running
+inside a caller's arena — the caller's pop will reclaim everything.
+
+---
+
+<a id="os.byteorder" />
+```gust
+def byteorder() -> string
+```
+
+Endianness of the current machine — `"little"` or `"big"`.
+
+---
+
+<a id="os.processor" />
+```gust
+def processor() -> string
+```
+
+Vendor/model string for the CPU, if the OS exposes one.
+
+---
+
+<a id="os.architecture" />
+```gust
+def architecture() -> string
+```
+
+Word size and ABI hint (e.g. `"64bit"`).
+
+---
+
+<a id="os.stdin_read" />
+```gust
+def stdin_read() -> string
+```
+
+Read all of stdin as a single string. Blocks until EOF.
+
+---
+
+<a id="os.stdin_readline" />
+```gust
+def stdin_readline() -> string
+```
+
+Read one line from stdin, stripping the trailing newline.
+Returns an empty string at EOF.
+
+---
+
+<a id="os.stdin_isatty" />
+```gust
+def stdin_isatty() -> bool
+```
+
+True when stdin is connected to an interactive terminal. Use this to
+decide whether to prompt interactively or fall back to defaults (e.g. in
+CI, where stdin is not a TTY).
+
+---
+
+<a id="os.stdout_isatty" />
+```gust
+def stdout_isatty() -> bool
+```
+
+True when stdout is connected to an interactive terminal. Use this to
+decide whether to emit color and other terminal formatting, which should be
+suppressed when output is redirected to a file or pipe.
+
+---
+
+<a id="os.stdin_read_n" />
+```gust
+def stdin_read_n(n: integer) -> string
+```
+
+Read exactly `n` bytes from stdin and return as a string.
+Returns fewer bytes only at EOF.
+
+**Parameters**
+
+- `n: integer` — Number of bytes to read.
+
+---
+
+<a id="os.which" />
+```gust
+def which(name: string) -> string
+```
+
+Return the absolute path of `name` by searching `$PATH`, or the empty
+string if no executable is found. If `name` contains a `/` it is checked
+directly and returned as-is when executable. Symlinks are not resolved.
+
+**Parameters**
+
+- `name: string` — Executable name to locate, or a path containing a `/`.

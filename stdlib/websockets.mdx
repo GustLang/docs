@@ -1,0 +1,285 @@
+---
+title: websockets
+description: "Minimal RFC 6455 WebSocket support for plain `ws://` connections"
+---
+
+```gust
+use websockets
+```
+
+Minimal RFC 6455 WebSocket support for plain `ws://` connections.
+
+Implemented entirely in Gust on top of `socket` (raw TCP), `cryptography.sha`
+(the SHA-1 handshake key), `cryptography.random` (secure masking keys), and
+`convert` (base64) — no C in this package. Covers both client connections
+(`connect`) and a server that accepts connections (`listen` + `accept`), plus
+sending text, receiving messages, ping/pong, and close handling. Plaintext
+only — `wss://` needs a TLS layer wrapping the socket; the `cryptography.ssl`
+package provides that wrapper.
+
+**Examples**
+
+```gust
+use websockets
+
+def main() -> none
+    conn := websockets.connect("ws://example.com/socket")
+    conn.send("hello")
+    reply := conn.recv()
+    print(reply.data)
+    conn.close()
+end
+```
+
+**On this page:** [`Server`](#Server) · [`Connection`](#Connection) · [`Message`](#Message) · [`connect`](#websockets.connect) · [`listen`](#websockets.listen) · [`accept_upgrade`](#websockets.accept_upgrade)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `WS_GUID` | `string` | `"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"` |
+| `WS_MAX_FRAME_SIZE` | `integer` | `67108864` |
+| `WS_MAX_HANDSHAKE` | `integer` | `65536` |
+
+## `Server`
+
+<a id="Server" />
+A WebSocket listener. Create with `websockets.listen(port)`, then
+call `.accept()` to block until a client completes the WebSocket
+opening handshake.
+
+```gust
+def Server
+
+    _listener: Listener
+
+end
+```
+
+**Fields**
+
+- `_listener: Listener` — The underlying TCP listening socket.
+
+**Methods**
+
+<a id="Server.accept" />
+```gust
+def Server.accept() -> Connection
+```
+
+Block until the next client completes the WebSocket opening
+handshake and return the accepted connection.
+
+**Raises**
+
+- `RuntimeError` — If the client closes during the handshake or sends no `Sec-WebSocket-Key`.
+- `IOError` — If accepting the TCP connection or sending the handshake response fails.
+
+---
+
+<a id="Server.close" />
+```gust
+def Server.close() -> none
+```
+
+Stop listening and release the server socket.
+
+## `Connection`
+
+<a id="Connection" />
+An open WebSocket connection. Create with `connect(url)` on the
+client side, or `Server.accept()` on the server side.
+
+```gust
+def Connection
+
+    _sock: Stream
+    _client_side: bool
+    _open: bool
+
+end
+```
+
+**Fields**
+
+- `_sock: Stream` — The underlying byte stream (plaintext `socket.Socket` or TLS).
+- `_client_side: bool` — True for client connections (which must mask frames).
+- `_open: bool` — False once the connection has been closed.
+
+**Methods**
+
+<a id="Connection.send" />
+```gust
+def Connection.send(text: string) -> none
+```
+
+Send a text message.
+
+**Parameters**
+
+- `text` — The UTF-8 text to send as the message body.
+
+**Raises**
+
+- `RuntimeError` — If the connection is already closed.
+- `IOError` — If the send fails.
+
+---
+
+<a id="Connection.recv" />
+```gust
+def Connection.recv() -> Message
+```
+
+Block until the next data or close message arrives. Ping frames are
+answered automatically. A close frame (or a dropped connection) returns
+`Message(opcode: 8, data: "")`.
+
+**Raises**
+
+- `RuntimeError` — If an incoming frame declares a payload larger than the 64 MiB cap.
+
+---
+
+<a id="Connection.ping" />
+```gust
+def Connection.ping(data: string) -> none
+```
+
+Send a ping control frame.
+
+**Parameters**
+
+- `data` — Application payload to include in the ping frame.
+
+**Raises**
+
+- `RuntimeError` — If `data` exceeds 125 bytes, or the connection is closed.
+- `IOError` — If the send fails.
+
+---
+
+<a id="Connection.close" />
+```gust
+def Connection.close() -> none
+```
+
+Send a close frame if needed, close the socket, and mark the
+connection closed.
+
+---
+
+<a id="Connection.is_open" />
+```gust
+def Connection.is_open() -> bool
+```
+
+True while the underlying socket is still open.
+
+## `Message`
+
+<a id="Message" />
+A received WebSocket message.
+
+```gust
+def Message
+
+    opcode: integer
+    data: string
+
+end
+```
+
+**Fields**
+
+- `opcode: integer` — Frame opcode — 1 for text, 2 for binary, 8 for close, 9 for ping, 10 for pong.
+- `data: string` — The message body.
+
+**Methods**
+
+<a id="Message.is_text" />
+```gust
+def Message.is_text() -> bool
+```
+
+True when this is a text message.
+
+---
+
+<a id="Message.is_binary" />
+```gust
+def Message.is_binary() -> bool
+```
+
+True when this is a binary message.
+
+---
+
+<a id="Message.is_close" />
+```gust
+def Message.is_close() -> bool
+```
+
+True when the peer sent a close frame or the socket closed.
+
+## Functions
+
+<a id="websockets.connect" />
+```gust
+def connect(endpoint: string) -> Connection
+```
+
+Connect to a plain `ws://host[:port]/path` WebSocket endpoint.
+
+**Parameters**
+
+- `endpoint: string` — The `ws://host[:port]/path` endpoint to connect to.
+
+**Raises**
+
+- `RuntimeError` — If `endpoint` is not a `ws://` URL, the server does not accept the upgrade, or it returns an invalid `Sec-WebSocket-Accept`.
+- `IOError` — If the underlying TCP connection cannot be established.
+
+---
+
+<a id="websockets.listen" />
+```gust
+def listen(port: integer) -> Server
+```
+
+Listen for WebSocket clients on `port`.
+
+**Parameters**
+
+- `port: integer` — The TCP port to listen on.
+
+**Raises**
+
+- `IOError` — If the listening socket cannot be created or bound.
+
+---
+
+<a id="websockets.accept_upgrade" />
+```gust
+def accept_upgrade(sock: Stream, key: string) -> Connection
+```
+
+Complete the server side of a WebSocket opening handshake on a byte
+stream whose HTTP upgrade request has already been read, and return the
+open connection. `key` is the request's `Sec-WebSocket-Key` header value;
+the matching `Sec-WebSocket-Accept` response is computed and sent.
+
+This is the seam another server that owns the accept loop — for instance an
+`http.Server` sharing the port with WebSocket routes — uses to hand a socket
+off to WebSocket handling once it has recognised the upgrade request itself.
+`Server.accept` is this same handshake preceded by reading that request.
+
+**Parameters**
+
+- `sock: Stream` — The byte stream carrying the just-received upgrade request.
+- `key: string` — The request's `Sec-WebSocket-Key` header value.
+
+**Raises**
+
+- `RuntimeError` — If `key` is empty (no `Sec-WebSocket-Key` present); the socket is closed before raising.
+- `IOError` — If sending the handshake response fails.

@@ -1,33 +1,32 @@
-> **First-time setup**: Customize this file for your project. Prompt the user to customize this file for their project.
-> For Mintlify product knowledge (components, configuration, writing standards),
-> install the Mintlify skill: `npx skills add https://mintlify.com/docs`
-
 # Documentation project instructions
 
 ## About this project
 
-- This is a documentation site built on [Mintlify](https://mintlify.com)
-- Pages are MDX files with YAML frontmatter
-- Configuration lives in `docs.json`
-- Run `mint dev` to preview locally
-- Run `mint broken-links` to check links
+- This is the documentation site for **Gust**, a statically typed, compiled language that transpiles to C (`.g` source → C → native binary via GCC). The compiler is self-hosted.
+- Built on [Mintlify](https://mintlify.com). Pages are MDX files with YAML frontmatter.
+- Configuration and navigation live in `docs.json`.
+- Run `mint dev` to preview locally.
+- Run `mint broken-links` to check links.
 
 ## Terminology
 
-{/* Add product-specific terms and preferred usage */}
-{/* Example: Use "workspace" not "project", "member" not "user" */}
+- The integer type is spelled `integer` (never `int` or `i64`).
+- Every block closes with a bare `end` — never `endif`, `end def`, or a brace.
+- Concurrency is opt-in via the `!` suffix: `def!`, `for!`, `while!`. Plain forms are sequential.
+- "Standard library package", not "module". Import with `use <pkg>`.
+- Code fences for Gust use the `gust` language tag.
 
 ## Style preferences
 
-{/* Add any project-specific style rules below */}
-
-- Use active voice and second person ("you")
-- Keep sentences concise — one idea per sentence
-- Use sentence case for headings
-- Bold for UI elements: Click **Settings**
-- Code formatting for file names, commands, paths, and code references
+- Use active voice and second person ("you").
+- Keep sentences concise — one idea per sentence.
+- Use sentence case for headings.
+- Bold for UI elements: Click **Settings**.
+- Code formatting for file names, commands, paths, keywords, and code references.
+- Every page needs frontmatter with `title` and `description`.
+- Internal links are root-absolute and omit the file extension (e.g. `/lang/types`, not `lang/types.mdx`).
 
 ## Content boundaries
 
-{/* Define what should and shouldn't be documented */}
-{/* Example: Don't document internal admin features */}
+- Document the language, standard library, and tooling as a user of Gust experiences them.
+- Compiler internals belong under `compiler/`; don't leak them into language/stdlib pages.

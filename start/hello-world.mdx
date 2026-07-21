@@ -1,0 +1,184 @@
+---
+title: Hello, Gust
+description: Write, run, and build your first Gust program
+---
+
+The shortest full Gust program:
+
+```gust title="hello.g"
+def main() -> none
+    print("Hello, world!")
+end
+```
+
+Every executable program starts at `main`. It takes no arguments, returns
+`none`, and — like every block in Gust — closes with a bare `end`.
+
+Run it:
+
+```bash
+$ gust run hello.g
+Hello, world!
+```
+
+## What just happened?
+
+1. The compiler (`gustc`) lexed and parsed `hello.g`.
+2. The analyzer type-checked it.
+3. The code generator emitted C source into a temporary file.
+4. `gcc` compiled that C into a native binary.
+5. Your shell ran the binary and printed the result.
+
+You can see the generated C for any file with:
+
+```bash
+$ gust emit hello.g
+```
+
+That prints the C to stdout — handy when you're debugging or just curious
+about what the compiler did.
+
+## Printing
+
+`print` is part of the [prelude](/lang/overview), so it needs no `use`. It
+writes each argument followed by a newline. You can pass several values of
+mixed types in one call — they are printed space-separated:
+
+```gust title="print.g"
+def main() -> none
+    print("Hello, world!")
+    print("x =", 42, "ready =", true)
+end
+```
+
+```bash
+$ gust run print.g
+Hello, world!
+x = 42 ready = true
+```
+
+To assemble a single string yourself, you have two idioms. Use `+` to
+concatenate strings — cast non-string values with `as string`:
+
+```gust
+print("count: " + 3 as string)
+```
+
+Or use an **f-string**, where `{}` interpolates any expression:
+
+```gust title="fstring.g"
+def main() -> none
+    name := "Gust"
+    count := 3
+    print(f"Hello, {name}!")
+    print(f"{name} has {count} letters, and .length reports {name.length}.")
+end
+```
+
+```bash
+$ gust run fstring.g
+Hello, Gust!
+Gust has 3 letters, and .length reports 4.
+```
+
+## A program that reads input
+
+`input` is also in the prelude. It prints its prompt, reads one line from
+stdin, and returns it as a `string`:
+
+```gust title="greet.g"
+def greet(name: string) -> string
+    return f"Hello, {name}!"
+end
+
+def main() -> none
+    who := input("name? ")
+    print(greet(who))
+end
+```
+
+```bash
+$ gust run greet.g
+name? Ada
+Hello, Ada!
+```
+
+A few things this snippet demonstrates — all covered in detail later in the
+docs:
+
+- **Functions** declared with `def`, return type after `->`, closed with `end`.
+- **F-strings** for interpolation: `f"Hello, {name}!"`.
+- **Type inference** with `:=` — `who` is inferred `string` from `input`'s
+  return type.
+- **Prelude** — `print` and `input` are available everywhere without `use`.
+
+## Reading command-line arguments
+
+`input` reads from stdin. To read the arguments passed on the command line,
+import the `os` standard library package and call `os.args()`. It returns a
+`list[string]` whose first element is the program name:
+
+```gust title="args.g"
+use os
+
+def main() -> none
+    args := os.args()
+    print("program: " + args[0])
+    for arg in args
+        print(arg)
+    end
+end
+```
+
+Command-line arguments reach a program only when you run the compiled binary
+directly — `gust run` parses any extra flags itself rather than forwarding
+them. Build the binary first (see below), then invoke it.
+
+## Running versus building
+
+`gust run` compiles to a temporary binary, executes it, and forwards its exit
+code — nothing is left on disk. To keep the binary, use `gust build`:
+
+```bash
+$ gust build -o greet greet.g
+$ ./greet
+name? Grace
+Hello, Grace!
+```
+
+The result is a fully native executable — no Python runtime, no interpreter.
+Ship it anywhere with a compatible glibc. Add `--release` to either command
+for an optimized build.
+
+To type-check a file without running it or producing a binary — and without
+requiring a `main` — use `gust check`:
+
+```bash
+$ gust check greet.g
+ok: greet.g
+```
+
+## Starting a project
+
+A single `.g` file is enough for scripts and experiments. For anything larger,
+scaffold a project with `gust init`:
+
+```bash
+$ gust init hello
+$ cd hello
+$ gust run
+Hello, world!
+```
+
+`gust init` writes a `gust.toml`, a `src/main.g` entry point, and a `tests/`
+directory. Once a `gust.toml` exists, `gust run`, `gust build`, and `gust
+test` default to the entry declared in it — you no longer name a file on the
+command line. See [project configuration](/tooling/project-config) for the
+`gust.toml` format.
+
+## Where to next?
+
+- [Take the language tour](/start/tour) — every major feature in one sitting.
+- [CLI reference](/start/cli) — `run`, `build`, `emit`, `check`, `test`,
+  `format`, `init`, and the rest.
+- [Language reference](/lang/overview) — deep dives, one topic per page.

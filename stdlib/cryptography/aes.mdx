@@ -1,0 +1,162 @@
+---
+title: cryptography.aes
+description: "Authenticated AES encryption (AES-GCM), backed by the system OpenSSL (`libcrypto`)"
+---
+
+```gust
+use cryptography.aes
+```
+
+Authenticated AES encryption (AES-GCM), backed by the system OpenSSL
+(`libcrypto`). GCM is an AEAD mode: a single `gcm_encrypt` both encrypts the
+plaintext and produces a 128-bit authentication tag covering the ciphertext
+*and* any associated data, so tampering is detected on decrypt rather than
+silently accepted. AES itself is left to the audited, constant-time libcrypto
+implementation rather than re-rolled in Gust — the one place in this family
+where side-channel resistance and correctness matter most.
+
+Keys are 16, 24, or 32 bytes (AES-128/192/256 — the size is chosen from the
+key length). The nonce ("number used once") MUST be unique per message under a
+given key; reusing a nonce with the same key is catastrophic for GCM. The
+standard nonce length is 12 bytes — use `random_nonce()` and never repeat one.
+`gcm_encrypt` returns the ciphertext with the 16-byte tag appended; pass that
+whole value back to `gcm_decrypt`, which raises `DecryptionError` if
+authentication fails for any reason (wrong key/nonce/aad or tampering).
+
+Keys and nonces come from the OS CSPRNG via the `cryptography.random` package.
+
+**Examples**
+
+```gust
+use cryptography.aes
+
+def main() -> none
+    key := aes.random_key(32)          # AES-256
+    nonce := aes.random_nonce()        # fresh per message, never reused
+    sealed := aes.gcm_encrypt(key, nonce, "attack at dawn" as bytes, b"")
+    plain := aes.gcm_decrypt(key, nonce, sealed, b"")
+    print(plain as string)   # attack at dawn
+end
+```
+
+**On this page:** [`DecryptionError`](#DecryptionError) · [`gcm_encrypt`](#cryptography.aes.gcm_encrypt) · [`gcm_decrypt`](#cryptography.aes.gcm_decrypt) · [`random_key`](#cryptography.aes.random_key) · [`random_nonce`](#cryptography.aes.random_nonce)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `GCM_STANDARD_NONCE_LEN` | `integer` | `12` |
+
+## Functions
+
+<a id="cryptography.aes.gcm_encrypt" />
+```gust
+def gcm_encrypt(key: bytes, nonce: bytes, plaintext: bytes, aad: bytes) -> bytes
+```
+
+Encrypt `plaintext` under AES-GCM and return `ciphertext || tag` (the
+16-byte tag appended to the ciphertext). `aad` is additional authenticated
+data — covered by the tag but not encrypted (pass `b""` for none).
+
+The key length selects the cipher: 16 → AES-128, 24 → AES-192, 32 →
+AES-256. The nonce must be unique per message under `key` (12 bytes is
+standard; see `random_nonce`).
+
+**Parameters**
+
+- `key: bytes` — 16, 24, or 32 secret key bytes.
+- `nonce: bytes` — Unique per-message nonce (12 bytes recommended).
+- `plaintext: bytes` — The data to encrypt (may be empty).
+- `aad: bytes` — Associated data to authenticate but not encrypt (may be empty).
+
+**Raises**
+
+- `ValueError` — The key is not 16, 24, or 32 bytes, or the nonce length is invalid.
+
+<Warning>
+A nonce must never be reused with the same key. Repeating a
+(key, nonce) pair under AES-GCM is catastrophic: it breaks
+confidentiality and lets an attacker forge messages. Draw a fresh
+nonce from `random_nonce()` for every message.
+</Warning>
+
+---
+
+<a id="cryptography.aes.gcm_decrypt" />
+```gust
+def gcm_decrypt(
+    key: bytes,
+    nonce: bytes,
+    ciphertext: bytes,
+    aad: bytes,
+) -> bytes
+```
+
+Verify and decrypt a `ciphertext || tag` value produced by
+`gcm_encrypt`, returning the recovered plaintext. The `key`, `nonce`, and
+`aad` must match those used for encryption.
+
+**Parameters**
+
+- `key: bytes` — The same 16/24/32-byte key used to encrypt.
+- `nonce: bytes` — The same nonce used to encrypt.
+- `ciphertext: bytes` — The `ciphertext || tag` value from `gcm_encrypt`.
+- `aad: bytes` — The same associated data used to encrypt (may be empty).
+
+**Raises**
+
+- `DecryptionError` — The authentication tag does not verify — the key, nonce, or associated data differs from encryption, or the ciphertext/tag was tampered with.
+- `ValueError` — The key or nonce length is invalid, or the ciphertext is too short to contain a tag.
+
+<Warning>
+When decryption raises the recovered data is not authentic — discard
+it and do not act on it.
+</Warning>
+
+---
+
+<a id="cryptography.aes.random_key" />
+```gust
+def random_key(size: integer) -> bytes
+```
+
+Return `size` cryptographically secure random key bytes from the OS
+CSPRNG. `size` must be 16, 24, or 32 (AES-128/192/256).
+
+**Parameters**
+
+- `size: integer` — Key length in bytes — 16, 24, or 32.
+
+**Raises**
+
+- `ValueError` — `size` is not 16, 24, or 32.
+
+---
+
+<a id="cryptography.aes.random_nonce" />
+```gust
+def random_nonce() -> bytes
+```
+
+Return a fresh 12-byte (96-bit) GCM nonce from the OS CSPRNG — the
+standard size.
+
+<Warning>
+Call this once per message and never reuse the result under the same
+key.
+</Warning>
+
+## Errors
+
+<a id="DecryptionError" />
+```gust
+error DecryptionError(message: string)
+```
+
+Raised by `gcm_decrypt` when the authentication tag does not verify —
+the key, nonce, or associated data differs from encryption, or the
+ciphertext/tag was altered. A security-relevant failure, never a transient
+one: the recovered plaintext (if any) must not be trusted or used.
+
+Fields:
+message: Human-readable description of the failure.

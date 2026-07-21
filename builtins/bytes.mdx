@@ -1,0 +1,102 @@
+---
+title: bytes
+description: "Mutable sequence of raw bytes (octets 0-255)"
+---
+
+Mutable sequence of raw bytes (octets 0-255). Backed by `GBytes*` in the
+C runtime — a heap object with its own length and capacity, grown on
+`append`. Distinct from `string`: a `bytes` value may contain embedded NUL
+bytes and arbitrary non-ASCII octets without truncating or re-encoding.
+
+Literals:
+
+```gust
+b"abc"              # three bytes: 0x61 0x62 0x63
+b"\x00\xff"         # raw octets via \xNN — embedded NULs survive
+b""                 # empty bytes
+
+# Recognized escapes inside b"...": \n \t \r \0 \xNN, plus a leading
+# backslash to escape a literal backslash or double-quote. Source bytes
+# must be ASCII (0-127); use \xNN for any octet above 127.
+```
+
+Access:
+
+```gust
+data[i]             # index access → integer in 0-255, bounds-checked
+                    # (raises IndexError on an out-of-range index)
+data[a:b]           # slice → a new `bytes` (clamped to bounds)
+```
+
+Casting:
+
+```gust
+data as string      # decode the raw octets verbatim (no charset check);
+                    # length-preserving, so embedded NULs survive
+text as bytes       # encode a string's bytes back into `bytes`
+```
+
+Typical sources of `bytes` values are binary reads such as
+`socket.recv` / `socket.recv_exact`; convert to text with `as string`
+once a full message has been read.
+
+## Fields
+
+- `length: integer` — Number of bytes currently held.
+
+## Methods
+
+<a id="bytes.append" />
+```gust
+def bytes.append(value: integer) -> none
+```
+
+Append a single byte to the end, growing the buffer as needed. Only the low
+8 bits of `value` are stored (`value & 0xFF`), so any integer is accepted and
+silently masked into a byte.
+
+**Parameters**
+
+- `value: integer` — The byte to append; reduced modulo 256.
+
+---
+
+<a id="bytes.slice" />
+```gust
+def bytes.slice(start: integer, stop: integer) -> bytes
+```
+
+Return a new `bytes` holding the half-open range `[start, stop)`. Bounds are
+clamped — a `start` below 0 becomes 0, a `stop` past the end becomes the
+length, and an empty range yields empty `bytes`. Equivalent to `data[start:stop]`.
+
+**Parameters**
+
+- `start: integer` — Index of the first byte to include (clamped to 0).
+- `stop: integer` — Index one past the last byte to include (clamped to length).
+
+---
+
+<a id="bytes.encode" />
+```gust
+def bytes.encode(format: string) -> string
+```
+
+Encode these raw octets using the named scheme, returning text. Supported
+formats:
+
+```gust
+* `"base64"` — RFC 4648 standard alphabet with `=` padding.
+* `"hex"`    — lowercase hex, two chars per byte.
+```
+
+Length-aware: every octet (including `0x00`) is encoded. The inverse is
+`string.decode(format)`, which returns `bytes`.
+
+**Parameters**
+
+- `format: string` — The codec name, `"base64"` or `"hex"`.
+
+**Raises**
+
+- `ValueError` — When `format` is not `"base64"` or `"hex"`.

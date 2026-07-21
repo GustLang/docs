@@ -1,0 +1,141 @@
+---
+title: float
+description: "64-bit double-precision floating point"
+---
+
+64-bit double-precision floating point. Backed by `double` in the C runtime.
+
+Literals:
+
+```gust
+3.14                # decimal float
+-0.5                # negative
+1e10                # scientific notation
+```
+
+Operators:
+
+```gust
++ - * /             # arithmetic — `/` raises ValueError on division by zero
+== != < > <= >=     # comparison
+# (// and % are integer-only — cast operands to integer first)
+```
+
+Casting:
+
+```gust
+"3.14" as float     # parse from string (raises ValueError on bad input)
+42 as float         # widen from integer
+x as string         # float to string
+x as integer        # truncate toward zero
+```
+
+Display: whole numbers show as X.0, others use shortest representation
+Range: see math.max_float() and math.min_float()
+Special values: see math.inf(), math.nan(), math.is_nan(), math.is_inf()
+
+## Dunders
+
+<a id="float.__string" />
+```gust
+def float.__string() -> string
+```
+
+Triggered by `print(x)` and f-string interpolation.
+
+---
+
+<a id="float.__integer" />
+```gust
+def float.__integer() -> integer
+```
+
+Triggered by `x as integer`. Truncates toward zero.
+
+---
+
+<a id="float.__float" />
+```gust
+def float.__float() -> float
+```
+
+Triggered by `x as float`. Identity.
+
+---
+
+<a id="float.__bool" />
+```gust
+def float.__bool() -> bool
+```
+
+Triggered by `x as bool`. Non-zero is true; NaN is false.
+
+---
+
+<a id="float.__eq" />
+```gust
+def float.__eq(other: float) -> bool
+```
+
+Triggered by `==` and `!=` (auto-negated).
+
+**Parameters**
+
+- `other: float` — The float to compare against.
+
+<Note>
+NaN never equals anything, including itself, so `x == x` is `false`
+when `x` is NaN.
+</Note>
+
+---
+
+<a id="float.__lt" />
+```gust
+def float.__lt(other: float) -> bool
+```
+
+Triggered by `<`.
+
+**Parameters**
+
+- `other: float` — The float to compare against.
+
+---
+
+<a id="float.__lte" />
+```gust
+def float.__lte(other: float) -> bool
+```
+
+Triggered by `<=`.
+
+**Parameters**
+
+- `other: float` — The float to compare against.
+
+---
+
+<a id="float.__gt" />
+```gust
+def float.__gt(other: float) -> bool
+```
+
+Triggered by `>`.
+
+**Parameters**
+
+- `other: float` — The float to compare against.
+
+---
+
+<a id="float.__gte" />
+```gust
+def float.__gte(other: float) -> bool
+```
+
+Triggered by `>=`.
+
+**Parameters**
+
+- `other: float` — The float to compare against.

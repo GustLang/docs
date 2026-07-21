@@ -1,0 +1,599 @@
+---
+title: database
+description: "Driver-agnostic database access — the shared contract every SQL driver speaks"
+---
+
+```gust
+use database
+```
+
+Driver-agnostic database access — the shared contract every SQL driver speaks.
+
+This package defines no driver of its own. It declares the surface that concrete
+drivers (`database.sqlite`, `database.postgres`, …) implement, so application code
+written against `database.Connection` runs unchanged on any backend:
+
+The pieces:
+
+* `Value` — one SQL scalar (integer / float / text / blob / bool / null), built
+  with the `int_`/`real`/`text`/`blob`/`boolean`/`null` constructors and read
+  back with the `as_*` accessors. This is how parameters go in and column
+  values come out, uniformly across drivers.
+* `Row` — one result row: ordered column names paired with `Value`s, addressable
+  by name (`get`) or position (`get_at`).
+* `Cursor` — a forward-only stream of rows from a query. `next()` advances and
+  `row()` yields the current row; `query_all` drains one into a list for you.
+* `Connection` — an open session: `execute` (statements), `query` (a `Cursor`),
+  and `begin`/`commit`/`rollback` for transactions.
+* `ExecResult` — what a non-`SELECT` statement reports back: rows affected and,
+  where the driver supports it, the last auto-generated row id.
+
+Placeholders are written as `?` in the SQL you pass; each driver maps them to its
+native form (`?` for SQLite, `$1…$n` for PostgreSQL). Bind one `Value` per `?`,
+left to right, via the `params` list.
+
+Adding a driver is purely additive: create a `database.<name>` subpackage whose
+connection/cursor types `implement Connection` / `Cursor`, with a `connect(...)`
+entry point. No change to this package is required.
+
+**Examples**
+
+```gust
+use database
+
+use database.sqlite
+
+def main() -> none
+    conn: database.Connection = sqlite.connect("app.db")
+    conn.execute("create table todo(id integer primary key, task text)", [])
+    conn.execute("insert into todo(task) values (?)", [database.text("buy milk")])
+    for row in database.query_all(conn, "select id, task from todo", [])
+        print(row.get("id").to_text() + ": " + row.get("task").as_text())
+    end
+    conn.close()
+end
+```
+
+**On this page:** [`ValueKind`](#ValueKind) · [`Value`](#Value) · [`Row`](#Row) · [`ExecResult`](#ExecResult) · [`Cursor`](#Cursor) · [`Connection`](#Connection) · [`DatabaseError`](#DatabaseError) · [`ConnectionError`](#ConnectionError) · [`QueryError`](#QueryError) · [`int_`](#database.int_) · [`real`](#database.real) · [`text`](#database.text) · [`blob`](#database.blob) · [`boolean`](#database.boolean) · [`null`](#database.null) · [`make_row`](#database.make_row) · [`query_all`](#database.query_all) · [`query_one`](#database.query_one)
+
+## `ValueKind`
+
+<a id="ValueKind" />
+```gust
+auto_enum ValueKind: integer
+```
+
+Discriminator for the scalar carried by a `Value`.
+
+**Variants**
+
+- `null_kind = 1` — SQL NULL — no value present.
+- `int_kind = 2` — A 64-bit signed integer.
+- `real_kind = 3` — A double-precision float.
+- `text_kind = 4` — A UTF-8 string.
+- `blob_kind = 5` — A raw byte string.
+- `bool_kind = 6` — A boolean (drivers that lack a native bool map to/from it).
+
+## `Value`
+
+<a id="Value" />
+One SQL scalar, tagged with its `kind`.
+
+You rarely build a `Value` field-by-field — use the `int_`, `real`, `text`,
+`blob`, `boolean`, and `null` constructors for parameters, and read column
+values back with `is_null` plus the matching `as_*` accessor. The `as_*`
+accessors raise `DatabaseError` on a kind mismatch (including NULL), so a
+wrong assumption about a column's type surfaces immediately rather than
+silently returning a zero value; guard nullable columns with `is_null()`
+first, or use the `*_or` variants to supply a fallback.
+
+```gust
+def Value
+
+    kind: ValueKind
+    _i: integer
+    _f: float
+    _s: string
+    _b: bytes
+    _bool: bool
+
+end
+```
+
+**Fields**
+
+- `kind: ValueKind` — Which of the storage fields below is meaningful.
+- `_i: integer` — Backing store for `int_kind`.
+- `_f: float` — Backing store for `real_kind`.
+- `_s: string` — Backing store for `text_kind`.
+- `_b: bytes` — Backing store for `blob_kind`.
+- `_bool: bool` — Backing store for `bool_kind`.
+
+**Methods**
+
+<a id="Value.is_null" />
+```gust
+def Value.is_null() -> bool
+```
+
+True if this value is SQL NULL.
+
+---
+
+<a id="Value.as_integer" />
+```gust
+def Value.as_integer() -> integer
+```
+
+The stored integer.
+
+**Raises**
+
+- `DatabaseError` — If this value is not an integer; guard nullable columns with `is_null`, or use `as_integer_or` for a fallback.
+
+---
+
+<a id="Value.as_float" />
+```gust
+def Value.as_float() -> float
+```
+
+The stored float.
+
+**Raises**
+
+- `DatabaseError` — If this value is not a float.
+
+---
+
+<a id="Value.as_text" />
+```gust
+def Value.as_text() -> string
+```
+
+The stored string.
+
+**Raises**
+
+- `DatabaseError` — If this value is not text.
+
+---
+
+<a id="Value.as_bytes" />
+```gust
+def Value.as_bytes() -> bytes
+```
+
+The stored blob.
+
+**Raises**
+
+- `DatabaseError` — If this value is not a blob.
+
+---
+
+<a id="Value.as_bool" />
+```gust
+def Value.as_bool() -> bool
+```
+
+The stored boolean.
+
+**Raises**
+
+- `DatabaseError` — If this value is not a bool.
+
+---
+
+<a id="Value.as_integer_or" />
+```gust
+def Value.as_integer_or(fallback: integer) -> integer
+```
+
+The stored integer, or `fallback` if this value is NULL or not an integer.
+
+**Parameters**
+
+- `fallback` — Returned when the value is not a plain integer.
+
+---
+
+<a id="Value.as_text_or" />
+```gust
+def Value.as_text_or(fallback: string) -> string
+```
+
+The stored string, or `fallback` if this value is NULL or not text.
+
+**Parameters**
+
+- `fallback` — Returned when the value is not text.
+
+---
+
+<a id="Value.to_text" />
+```gust
+def Value.to_text() -> string
+```
+
+A printable rendering of the value, whatever its kind — never raises.
+NULL renders as "NULL", a blob as "&lt;N bytes>", booleans as "true"/"false".
+Convenient for logging and debugging.
+
+## `Row`
+
+<a id="Row" />
+One result row: column names paired positionally with their `Value`s.
+
+Look values up by column name with `get` or by zero-based position with
+`get_at`. The two lists are always the same length and in query order.
+Build a row with `make_row` so name lookups resolve in constant time.
+
+```gust
+def Row
+
+    columns: list[string]
+    values: list[Value]
+    _index: dict[string, integer]
+
+end
+```
+
+**Fields**
+
+- `columns: list[string]` — Column names, in selection order.
+- `values: list[Value]` — The value for each column, aligned with `columns`.
+- `_index: dict[string, integer]` — Column name to position, for constant-time name lookup. When a name repeats, the first occurrence wins, matching a linear scan.
+
+**Methods**
+
+<a id="Row.get" />
+```gust
+def Row.get(name: string) -> Value
+```
+
+The value of column `name`.
+
+**Parameters**
+
+- `name` — The column name to look up.
+
+**Raises**
+
+- `DatabaseError` — If the row has no column named `name` (the lookup is case-sensitive, matching the driver's reported names).
+
+---
+
+<a id="Row.get_at" />
+```gust
+def Row.get_at(index: integer) -> Value
+```
+
+The value of the column at zero-based `index`.
+
+**Parameters**
+
+- `index` — Zero-based column position.
+
+**Raises**
+
+- `DatabaseError` — If `index` is out of range.
+
+---
+
+<a id="Row.has" />
+```gust
+def Row.has(name: string) -> bool
+```
+
+True if the row has a column named `name`.
+
+**Parameters**
+
+- `name` — The column name to test for.
+
+---
+
+<a id="Row.width" />
+```gust
+def Row.width() -> integer
+```
+
+The number of columns in the row.
+
+## `ExecResult`
+
+<a id="ExecResult" />
+What a non-`SELECT` statement reports back.
+
+```gust
+def ExecResult
+
+    rows_affected: integer
+    last_insert_id: integer
+
+end
+```
+
+**Fields**
+
+- `rows_affected: integer` — Number of rows inserted, updated, or deleted.
+- `last_insert_id: integer` — The most recently auto-generated row id, where the driver tracks one (SQLite's `rowid`). Drivers without the concept (PostgreSQL, which uses `INSERT … RETURNING`) report 0.
+
+## `Cursor`
+
+<a id="Cursor" />
+A forward-only stream of result rows from a query.
+
+Or let `query_all(conn, sql, params)` drain the whole stream into a list.
+Always run to end-of-stream or call `close()` so the driver can release the
+underlying statement.
+
+**Methods**
+
+<a id="Cursor.next" />
+```gust
+def Cursor.next() -> bool
+```
+
+---
+
+<a id="Cursor.row" />
+```gust
+def Cursor.row() -> Row
+```
+
+---
+
+<a id="Cursor.columns" />
+```gust
+def Cursor.columns() -> list[string]
+```
+
+---
+
+<a id="Cursor.close" />
+```gust
+def Cursor.close() -> none
+```
+
+**Examples**
+
+Drive it by calling `next()` to advance to the next row (it returns false at
+end-of-stream) and `row()` to read the current one:
+```gust
+cur := conn.query("select * from t", [])
+while cur.next()
+    print(cur.row().get("name").as_text())
+end
+cur.close()
+```
+
+## `Connection`
+
+<a id="Connection" />
+An open database session — the driver-agnostic handle application code
+holds. Obtain one from a driver's `connect(...)`.
+
+`execute` runs a statement and reports an `ExecResult`; `query` runs a
+`SELECT` and returns a `Cursor`. Both take `?` placeholders bound, left to
+right, from the `params` list. Wrap multiple statements in
+`begin`/`commit` (or `rollback` on failure). `close` releases the session
+and is idempotent.
+
+**Methods**
+
+<a id="Connection.execute" />
+```gust
+def Connection.execute(sql: string, params: list[Value]) -> ExecResult
+```
+
+---
+
+<a id="Connection.query" />
+```gust
+def Connection.query(sql: string, params: list[Value]) -> Cursor
+```
+
+---
+
+<a id="Connection.begin" />
+```gust
+def Connection.begin() -> none
+```
+
+---
+
+<a id="Connection.commit" />
+```gust
+def Connection.commit() -> none
+```
+
+---
+
+<a id="Connection.rollback" />
+```gust
+def Connection.rollback() -> none
+```
+
+---
+
+<a id="Connection.close" />
+```gust
+def Connection.close() -> none
+```
+
+---
+
+<a id="Connection.is_open" />
+```gust
+def Connection.is_open() -> bool
+```
+
+## Functions
+
+<a id="database.int_" />
+```gust
+def int_(n: integer) -> Value
+```
+
+A `Value` wrapping the integer `n`.
+
+**Parameters**
+
+- `n: integer` — The integer to store.
+
+---
+
+<a id="database.real" />
+```gust
+def real(x: float) -> Value
+```
+
+A `Value` wrapping the float `x`.
+
+**Parameters**
+
+- `x: float` — The float to store.
+
+---
+
+<a id="database.text" />
+```gust
+def text(s: string) -> Value
+```
+
+A `Value` wrapping the string `s`.
+
+**Parameters**
+
+- `s: string` — The text to store.
+
+---
+
+<a id="database.blob" />
+```gust
+def blob(b: bytes) -> Value
+```
+
+A `Value` wrapping the raw bytes `b`.
+
+**Parameters**
+
+- `b: bytes` — The byte string to store.
+
+---
+
+<a id="database.boolean" />
+```gust
+def boolean(b: bool) -> Value
+```
+
+A `Value` wrapping the boolean `b`.
+
+**Parameters**
+
+- `b: bool` — The boolean to store.
+
+---
+
+<a id="database.null" />
+```gust
+def null() -> Value
+```
+
+A `Value` representing SQL NULL.
+
+---
+
+<a id="database.make_row" />
+```gust
+def make_row(columns: list[string], values: list[Value]) -> Row
+```
+
+Build a `Row` from parallel `columns` and `values`, precomputing the
+column-name index so `get`/`has` resolve in constant time.
+
+**Parameters**
+
+- `columns: list[string]` — Column names, in selection order.
+- `values: list[Value]` — The value for each column, aligned with `columns`.
+
+---
+
+<a id="database.query_all" />
+```gust
+def query_all(conn: Connection, sql: string, params: list[Value]) -> list[Row]
+```
+
+Run `sql` and return every result row as a list, closing the cursor.
+
+Convenience for the common case where the whole result set fits in memory.
+For large results, stream with `conn.query(...)` instead.
+
+**Parameters**
+
+- `conn: Connection` — The connection to run the query on.
+- `sql: string` — The SQL to execute, with `?` placeholders.
+- `params: list[Value]` — One `Value` per placeholder, in order.
+
+---
+
+<a id="database.query_one" />
+```gust
+def query_one(conn: Connection, sql: string, params: list[Value]) -> Row
+```
+
+Run `sql` and return its first row, closing the cursor.
+
+**Parameters**
+
+- `conn: Connection` — The connection to run the query on.
+- `sql: string` — The SQL to execute, with `?` placeholders.
+- `params: list[Value]` — One `Value` per placeholder, in order.
+
+**Raises**
+
+- `DatabaseError` — If the query yields no rows — use `query_all` and check the length when "no match" is an expected outcome.
+
+## Errors
+
+<a id="DatabaseError" />
+```gust
+error DatabaseError(message: string)
+```
+
+Base class of database failures — and what a driver raises when nothing
+more specific fits. Catch this to handle any database error at once.
+
+Fields:
+message: Human-readable description of what went wrong.
+
+---
+
+<a id="ConnectionError" />
+```gust
+error ConnectionError(message: string)
+```
+
+Raised when a connection cannot be opened, or fails after being opened
+(the server went away, authentication was rejected, the socket dropped).
+Distinct from `QueryError` so "couldn't reach the database" is catchable
+apart from "the statement was bad".
+
+Fields:
+message: Description, including the driver's connection error text.
+
+---
+
+<a id="QueryError" />
+```gust
+error QueryError(message: string)
+```
+
+Raised when a statement is rejected or fails to run — a syntax error, a
+constraint violation, a missing table, a type mismatch in a bound parameter.
+The `message` carries the driver's diagnostic verbatim.
+
+Fields:
+message: Description, including the driver's statement error text.

@@ -1,0 +1,146 @@
+---
+title: cryptography.kdf
+description: "Key derivation functions, implemented in pure Gust over `cryptography.hmac` (HMAC-SHA-256)"
+---
+
+```gust
+use cryptography.kdf
+```
+
+Key derivation functions, implemented in pure Gust over `cryptography.hmac`
+(HMAC-SHA-256). Two complementary primitives:
+
+- PBKDF2 (`pbkdf2_sha256`, RFC 2898) — stretch a low-entropy *password* into a
+  key by iterating HMAC many times. The iteration count is a deliberate cost
+  knob against brute force. Use it to derive an encryption key from a
+  passphrase. (For merely *storing* a password to check later, prefer
+  `cryptography.bcrypt`, which bundles the salt and cost into one string.)
+
+- HKDF (`hkdf_sha256`, RFC 5869) — derive one or more strong keys from an
+  already-high-entropy secret (e.g. a Diffie-Hellman / X25519 shared secret).
+  Extract-then-expand: it does NOT stretch against brute force and is not for
+  passwords; it turns good key material into the exact bytes you need, bound
+  to a context via `info`.
+
+All inputs and outputs are `bytes`; pass `value as bytes` for string inputs.
+
+**Examples**
+
+```gust
+use cryptography.kdf
+use cryptography.random
+
+def main() -> none
+    salt := random.random_bytes(16)
+    key := kdf.pbkdf2_sha256("correct horse" as bytes, salt, 200000, 32)
+    print(key.length)   # 32
+end
+```
+
+**On this page:** [`pbkdf2_sha256`](#cryptography.kdf.pbkdf2_sha256) · [`hkdf_extract_sha256`](#cryptography.kdf.hkdf_extract_sha256) · [`hkdf_expand_sha256`](#cryptography.kdf.hkdf_expand_sha256) · [`hkdf_sha256`](#cryptography.kdf.hkdf_sha256)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `HASH_LEN` | `integer` | `32` |
+
+## Functions
+
+<a id="cryptography.kdf.pbkdf2_sha256" />
+```gust
+def pbkdf2_sha256(
+    password: bytes,
+    salt: bytes,
+    iterations: integer,
+    dklen: integer,
+) -> bytes
+```
+
+Derive a `dklen`-byte key from `password` and `salt` using PBKDF2 with
+HMAC-SHA-256 over `iterations` rounds. More iterations = more brute-force
+resistance and more time; pick the largest count your latency budget
+allows (hundreds of thousands is common for interactive logins).
+
+**Parameters**
+
+- `password: bytes` — The low-entropy secret to stretch.
+- `salt: bytes` — A per-derivation salt (16+ random bytes recommended).
+- `iterations: integer` — Number of HMAC rounds (the cost factor).
+- `dklen: integer` — Desired derived-key length in bytes.
+
+**Raises**
+
+- `ValueError` — `iterations` is less than 1, or `dklen` is negative.
+
+<Note>
+PBKDF2 derives an encryption key from a password. To merely store a
+password for later verification, prefer `cryptography.bcrypt`, which
+bundles the salt and cost into one self-describing string.
+</Note>
+
+---
+
+<a id="cryptography.kdf.hkdf_extract_sha256" />
+```gust
+def hkdf_extract_sha256(salt: bytes, ikm: bytes) -> bytes
+```
+
+HKDF-Extract (RFC 5869): condense input keying material `ikm` into a
+fixed-length pseudorandom key (PRK) using `salt` as the HMAC key. An empty
+`salt` is treated as a string of `HASH_LEN` zero bytes, per the RFC.
+
+**Parameters**
+
+- `salt: bytes` — Optional salt (non-secret); empty for the default all-zero salt.
+- `ikm: bytes` — The input keying material (a high-entropy secret).
+
+---
+
+<a id="cryptography.kdf.hkdf_expand_sha256" />
+```gust
+def hkdf_expand_sha256(prk: bytes, info: bytes, length: integer) -> bytes
+```
+
+HKDF-Expand (RFC 5869): expand a pseudorandom key `prk` into `length`
+bytes of output keying material, bound to the context `info`. `length` may
+be at most `255 * HASH_LEN` (8160) bytes.
+
+**Parameters**
+
+- `prk: bytes` — A pseudorandom key from `hkdf_extract_sha256`.
+- `info: bytes` — Context/application-binding bytes (may be empty).
+- `length: integer` — Desired output length in bytes.
+
+**Raises**
+
+- `ValueError` — `length` is negative or greater than 8160 (255 * HASH_LEN).
+
+---
+
+<a id="cryptography.kdf.hkdf_sha256" />
+```gust
+def hkdf_sha256(ikm: bytes, salt: bytes, info: bytes, length: integer) -> bytes
+```
+
+One-shot HKDF (RFC 5869): extract then expand. Derive `length` bytes of
+key material from the high-entropy secret `ikm`, salted by `salt` and bound
+to the context `info`.
+
+**Parameters**
+
+- `ikm: bytes` — The input keying material (a high-entropy secret).
+- `salt: bytes` — Optional salt (empty for the default all-zero salt).
+- `info: bytes` — Context/application-binding bytes (may be empty).
+- `length: integer` — Desired output length in bytes (≤ 8160).
+
+**Raises**
+
+- `ValueError` — `length` is negative or greater than 8160.
+
+<Warning>
+HKDF does not stretch low-entropy input. Only use it on
+already-high-entropy key material (e.g. a Diffie-Hellman shared
+secret); to derive a key from a password, use `pbkdf2_sha256` or
+`cryptography.bcrypt`.
+</Warning>

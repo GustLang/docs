@@ -1,0 +1,378 @@
+---
+title: bluetooth
+description: "A cross-platform Bluetooth Low Energy API covering both roles:"
+---
+
+```gust
+use bluetooth
+```
+
+A cross-platform Bluetooth Low Energy API covering both roles:
+
+- Peripheral: advertise and expose a GATT server (services / characteristics
+  that a central can read, write, and subscribe to).
+- Central: scan for peripherals, connect, and read / write their
+  characteristics by UUID.
+
+Backends are selected at the C-compile step. Both roles work on the Raspberry
+Pi Pico 2 W (CYW43 + BTstack) and on the Linux host: the central role uses
+BlueZ kernel sockets (HCI scan + L2CAP ATT), and the peripheral role registers
+a GATT server + LE advertisement with BlueZ over D-Bus (sd-bus). macOS and
+Windows are a compile-time error until their backends exist, rather than a
+misleading no-op. On Linux, both roles need privileges (HCI scanning needs
+CAP_NET_RAW + CAP_NET_ADMIN; registering a GATT app/advert with BlueZ is
+privileged too) — run as root. UUIDs use the `UUID` type: `UUID(value: 0x181A)`
+(16-bit) or `UUID(value: "0000180d-0000-1000-8000-00805f9b34fb")` (128-bit).
+Byte payloads are `list[integer]`.
+
+Scan for a peripheral, connect to the first result, and read a characteristic:
+
+**Examples**
+
+```gust
+use bluetooth
+
+def main() -> none
+    HEART_RATE := bluetooth.UUID(value: "00002a37-0000-1000-8000-00805f9b34fb")
+    if bluetooth.scan(2000) > 0 and bluetooth.connect(bluetooth.scan_addr(0), 5000)
+        print(bluetooth.read(HEART_RATE, 2000))
+        bluetooth.disconnect()
+    end
+end
+```
+
+**On this page:** [`UUID`](#UUID) · [`peripheral_init`](#bluetooth.peripheral_init) · [`raw_add_service`](#bluetooth.raw_add_service) · [`raw_add_characteristic`](#bluetooth.raw_add_characteristic) · [`peripheral_start`](#bluetooth.peripheral_start) · [`set_value`](#bluetooth.set_value) · [`notify`](#bluetooth.notify) · [`take_write`](#bluetooth.take_write) · [`is_connected`](#bluetooth.is_connected) · [`scan`](#bluetooth.scan) · [`scan_addr`](#bluetooth.scan_addr) · [`scan_name`](#bluetooth.scan_name) · [`scan_rssi`](#bluetooth.scan_rssi) · [`connect`](#bluetooth.connect) · [`raw_read`](#bluetooth.raw_read) · [`raw_write`](#bluetooth.raw_write) · [`disconnect`](#bluetooth.disconnect) · [`add_service`](#bluetooth.add_service) · [`add_characteristic`](#bluetooth.add_characteristic) · [`read`](#bluetooth.read) · [`write`](#bluetooth.write)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `PROP_READ` | `integer` | `1` |
+| `PROP_WRITE` | `integer` | `2` |
+| `PROP_NOTIFY` | `integer` | `4` |
+
+## `UUID`
+
+<a id="UUID" />
+A Bluetooth UUID — a 16-bit code or a 128-bit string. Construct it with
+the `value` field.
+
+`print(u)` / f-strings render the canonical text, and `==` compares two
+UUIDs. Pass it to any API that takes a UUID (add_service / read / …).
+
+```gust
+def UUID
+
+    value: integer | string
+
+end
+```
+
+**Fields**
+
+- `value: integer | string` — The UUID as a 16-bit integer code or a 128-bit dashed string.
+
+**Examples**
+
+```gust
+ENV  := bluetooth.UUID(value: 0x181A)
+UART := bluetooth.UUID(value: "6e400001-b5a3-f393-e0a9-e50e24dcca9e")
+```
+
+## Functions
+
+<a id="bluetooth.peripheral_init" />
+```gust
+def foreign peripheral_init(name: string) -> bool
+```
+
+Bring up BLE as a peripheral with advertised device `name`. Call before
+add_service / add_characteristic. Returns true on success.
+
+**Parameters**
+
+- `name: string` — Device name to advertise.
+
+---
+
+<a id="bluetooth.raw_add_service" />
+```gust
+def foreign raw_add_service(uuid: string, uuid_bytes: list[integer]) -> none
+```
+
+Internal parsed form of add_service.
+
+**Parameters**
+
+- `uuid: string` — Canonical UUID text for the service.
+- `uuid_bytes: list[integer]` — The UUID's big-endian wire bytes (2 or 16).
+
+---
+
+<a id="bluetooth.raw_add_characteristic" />
+```gust
+def foreign raw_add_characteristic(
+    uuid: string,
+    uuid_bytes: list[integer],
+    properties: integer,
+) -> integer
+```
+
+Internal parsed form of add_characteristic.
+
+**Parameters**
+
+- `uuid: string` — Canonical UUID text for the characteristic.
+- `uuid_bytes: list[integer]` — The UUID's big-endian wire bytes (2 or 16).
+- `properties: integer` — OR of PROP_* flags granting read/write/notify.
+
+---
+
+<a id="bluetooth.peripheral_start" />
+```gust
+def foreign peripheral_start() -> none
+```
+
+Finalize the GATT database and begin advertising. Call after all
+services / characteristics are added.
+
+---
+
+<a id="bluetooth.set_value" />
+```gust
+def foreign set_value(handle: integer, data: list[integer]) -> none
+```
+
+Set the stored value a central reads from characteristic `handle`.
+
+**Parameters**
+
+- `handle: integer` — Characteristic handle returned by add_characteristic.
+- `data: list[integer]` — Byte payload to store as the characteristic value.
+
+---
+
+<a id="bluetooth.notify" />
+```gust
+def foreign notify(handle: integer, data: list[integer]) -> integer
+```
+
+Push `data` to a subscribed central as a notification on `handle`.
+Returns 0 on success, non-zero if not connected / not subscribed.
+
+**Parameters**
+
+- `handle: integer` — Characteristic handle returned by add_characteristic.
+- `data: list[integer]` — Byte payload to send as the notification.
+
+---
+
+<a id="bluetooth.take_write" />
+```gust
+def foreign take_write(handle: integer) -> list[integer]
+```
+
+Consume the most recent value a central wrote to `handle` (empty list if
+none since the last call). Poll this to react to writes.
+
+**Parameters**
+
+- `handle: integer` — Characteristic handle returned by add_characteristic.
+
+---
+
+<a id="bluetooth.is_connected" />
+```gust
+def foreign is_connected() -> bool
+```
+
+True while a central is connected.
+
+---
+
+<a id="bluetooth.scan" />
+```gust
+def foreign scan(timeout_ms: integer) -> integer
+```
+
+Scan for advertising peripherals for `timeout_ms`. Returns the number
+found; read them with scan_addr / scan_name / scan_rssi (0 .. count-1).
+
+**Parameters**
+
+- `timeout_ms: integer` — Milliseconds to scan for advertising peripherals.
+
+---
+
+<a id="bluetooth.scan_addr" />
+```gust
+def foreign scan_addr(index: integer) -> string
+```
+
+Address of scan result `index` ("aa:bb:cc:dd:ee:ff"), or "" if out of range.
+
+**Parameters**
+
+- `index: integer` — Zero-based scan result index.
+
+---
+
+<a id="bluetooth.scan_name" />
+```gust
+def foreign scan_name(index: integer) -> string
+```
+
+Advertised name of scan result `index` ("" if none).
+
+**Parameters**
+
+- `index: integer` — Zero-based scan result index.
+
+---
+
+<a id="bluetooth.scan_rssi" />
+```gust
+def foreign scan_rssi(index: integer) -> integer
+```
+
+Signal strength (dBm) of scan result `index`.
+
+**Parameters**
+
+- `index: integer` — Zero-based scan result index.
+
+---
+
+<a id="bluetooth.connect" />
+```gust
+def foreign connect(addr: string, timeout_ms: integer) -> bool
+```
+
+Connect to the peripheral at `addr` ("aa:bb:cc:dd:ee:ff"), waiting up to
+`timeout_ms`. Returns true on success.
+
+**Parameters**
+
+- `addr: string` — Peripheral address as "aa:bb:cc:dd:ee:ff".
+- `timeout_ms: integer` — Milliseconds to wait for the connection.
+
+---
+
+<a id="bluetooth.raw_read" />
+```gust
+def foreign raw_read(
+    uuid_bytes: list[integer],
+    timeout_ms: integer,
+) -> list[integer]
+```
+
+Internal parsed form of read.
+
+**Parameters**
+
+- `uuid_bytes: list[integer]` — Big-endian wire bytes (2 or 16) of the characteristic UUID.
+- `timeout_ms: integer` — Milliseconds to wait for the read.
+
+---
+
+<a id="bluetooth.raw_write" />
+```gust
+def foreign raw_write(
+    uuid_bytes: list[integer],
+    data: list[integer],
+    timeout_ms: integer,
+) -> bool
+```
+
+Internal parsed form of write.
+
+**Parameters**
+
+- `uuid_bytes: list[integer]` — Big-endian wire bytes (2 or 16) of the characteristic UUID.
+- `data: list[integer]` — Byte payload to write.
+- `timeout_ms: integer` — Milliseconds to wait for the write.
+
+---
+
+<a id="bluetooth.disconnect" />
+```gust
+def foreign disconnect() -> none
+```
+
+Disconnect from the peripheral.
+
+---
+
+<a id="bluetooth.add_service" />
+```gust
+def add_service(uuid: UUID) -> none
+```
+
+Begin a GATT service with `uuid`. Characteristics added after this
+belong to it.
+
+**Parameters**
+
+- `uuid: UUID` — UUID of the service to begin.
+
+**Raises**
+
+- `ValueError` — If `uuid` holds a malformed UUID string.
+
+---
+
+<a id="bluetooth.add_characteristic" />
+```gust
+def add_characteristic(uuid: UUID, properties: integer) -> integer
+```
+
+Add a characteristic (OR of PROP_* flags) to the current service.
+Returns a handle used with set_value / notify / take_write.
+
+**Parameters**
+
+- `uuid: UUID` — UUID of the characteristic to add.
+- `properties: integer` — OR of PROP_* flags granting read/write/notify.
+
+**Raises**
+
+- `ValueError` — If `uuid` holds a malformed UUID string.
+
+---
+
+<a id="bluetooth.read" />
+```gust
+def read(uuid: UUID, timeout_ms: integer) -> list[integer]
+```
+
+Read the characteristic `uuid` from the connected peripheral (discovers
+it if needed). Empty list on error.
+
+**Parameters**
+
+- `uuid: UUID` — UUID of the characteristic to read.
+- `timeout_ms: integer` — Milliseconds to wait for the read.
+
+**Raises**
+
+- `ValueError` — If `uuid` holds a malformed UUID string.
+
+---
+
+<a id="bluetooth.write" />
+```gust
+def write(uuid: UUID, data: list[integer], timeout_ms: integer) -> bool
+```
+
+Write `data` to characteristic `uuid` on the connected peripheral.
+Returns true on success.
+
+**Parameters**
+
+- `uuid: UUID` — UUID of the characteristic to write.
+- `data: list[integer]` — Byte payload to write.
+- `timeout_ms: integer` — Milliseconds to wait for the write.
+
+**Raises**
+
+- `ValueError` — If `uuid` holds a malformed UUID string.

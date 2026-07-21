@@ -1,0 +1,190 @@
+---
+title: dict
+description: "Hash map with string-coerced keys"
+---
+
+Hash map with string-coerced keys. Backed by `GDict*` in the C runtime.
+
+Literals:
+
+```gust
+{"key": "value", "other": "data"}     # a dict of two entries
+{}                  # empty dict (type inferred from context)
+```
+
+Operators:
+
+```gust
+in, not in          # key containment: "key" in d → true
+for k in d          # iterate keys
+for k, v in d       # iterate (key, value) pairs
+```
+
+Access:
+
+```gust
+d["key"]            # get value by key (raises if missing)
+d["key"] = value    # set value by key (creates or updates)
+```
+
+## Fields
+
+- `length: integer` — Number of entries currently stored in the dict.
+
+## Dunders
+
+<a id="dict.__string" />
+```gust
+def dict.__string() -> string
+```
+
+Triggered by `print(d)` and f-string interpolation. Renders as `{k: v, ...}`.
+
+---
+
+<a id="dict.__dict" />
+```gust
+def dict.__dict() -> dict[K, V]
+```
+
+Triggered by `d as dict[K, V]`. Identity.
+
+---
+
+<a id="dict.__bool" />
+```gust
+def dict.__bool() -> bool
+```
+
+Triggered by `d as bool`. True for non-empty dicts.
+
+---
+
+<a id="dict.__length" />
+```gust
+def dict.__length() -> integer
+```
+
+Triggered by `d.length`. Number of entries.
+
+---
+
+<a id="dict.__contains" />
+```gust
+def dict.__contains(key: K) -> bool
+```
+
+Triggered by `key in d` and `key not in d`.
+
+**Parameters**
+
+- `key: K` — The key whose presence is being tested.
+
+---
+
+<a id="dict.__iter" />
+```gust
+def dict.__iter() -> dict[K, V]
+```
+
+Triggered by `for k in d` (keys) and `for k, v in d` (pairs).
+
+---
+
+<a id="dict.__get" />
+```gust
+def dict.__get(key: K) -> V
+```
+
+Triggered by `d[key]` reads. Use `d.get(key)` for a `V | none` result
+that tolerates a missing key.
+
+**Parameters**
+
+- `key: K` — The key to look up.
+
+**Raises**
+
+- `KeyError` — When `key` is not present in the dict.
+
+---
+
+<a id="dict.__set" />
+```gust
+def dict.__set(key: K, value: V) -> none
+```
+
+Triggered by `d[key] = value` writes.
+
+**Parameters**
+
+- `key: K` — The key to create or update.
+- `value: V` — The value to store under `key`.
+
+## Methods
+
+<a id="dict.get" />
+```gust
+def dict.get(key: K) -> V | none
+```
+
+Look up `key`, returning `V | none`. Returns `none` when the key is missing,
+so callers must narrow with `is not none` before using the value.
+
+**Parameters**
+
+- `key: K` — The key to look up.
+
+**Examples**
+
+```gust
+name := users.get("alice")
+if name is not none
+    print(name)
+end
+```
+
+---
+
+<a id="dict.delete" />
+```gust
+def dict.delete(key: K) -> bool
+```
+
+Remove the entry for `key` and return `true` if it was present; `false`
+if the key was missing (no-op).
+
+**Parameters**
+
+- `key: K` — The key whose entry should be removed.
+
+---
+
+<a id="dict.clear" />
+```gust
+def dict.clear() -> none
+```
+
+Remove every entry, leaving the dict empty.
+
+---
+
+<a id="dict.copy" />
+```gust
+def dict.copy() -> dict[K, V]
+```
+
+Return a shallow copy. Keys are new strings; values are copied byte-for-byte.
+
+---
+
+<a id="dict.merge" />
+```gust
+def dict.merge(other: dict[K, V]) -> none
+```
+
+Copy every entry from `other` into this dict. Existing keys are overwritten.
+
+**Parameters**
+
+- `other: dict[K, V]` — The dict whose entries are copied into this dict.

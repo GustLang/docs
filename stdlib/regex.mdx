@@ -1,0 +1,512 @@
+---
+title: regex
+description: "Backtracking regular-expression engine backing the `regex` package"
+---
+
+```gust
+use regex
+```
+
+Backtracking regular-expression engine backing the `regex` package. A pattern
+is compiled to a flat list of `GrxInst` instructions and matched by a
+recursive backtracking virtual machine.
+
+The instruction set supports literals, `.`, character classes, the `\d \w
+\s` shorthands, anchors with multiline semantics, greedy and lazy
+quantifiers, alternation, capturing and non-capturing groups, positive and
+negative lookahead, backreferences, word boundaries, and case-insensitive
+matching.
+
+All declarations here are engine internals; the public surface lives in the
+`Regex`/`Match` types and the free functions of the package.
+
+**On this page:** [`Op`](#Op) · [`GrxInst`](#GrxInst) · [`GrxParse`](#GrxParse) · [`Match`](#Match) · [`Regex`](#Regex) · [`compile_pattern`](#regex.compile_pattern) · [`exec_match`](#regex.exec_match) · [`match`](#regex.match) · [`contains`](#regex.contains) · [`find`](#regex.find) · [`find_all`](#regex.find_all) · [`replace`](#regex.replace) · [`split`](#regex.split) · [`compile`](#regex.compile) · [`compile_ignore_case`](#regex.compile_ignore_case)
+
+## `Op`
+
+<a id="Op" />
+```gust
+auto_enum Op: integer
+```
+
+One virtual-machine opcode.
+
+**Variants**
+
+- `character = 1` — Match one literal byte held in `ch`.
+- `any = 2` — Match any byte except a newline.
+- `class_set = 3` — Match a byte against the `members` bitmap (`negate` inverts).
+- `complete = 4` — Overall match succeeds at the current position.
+- `jump = 5` — Continue at `pc + x`.
+- `split = 6` — Try `pc + x` first, then `pc + y` on failure.
+- `save = 7` — Record the current position into capture slot `x`.
+- `line_start = 8` — Zero-width; matches at text start or just after a newline.
+- `line_end = 9` — Zero-width; matches at text end or just before a newline.
+- `word_boundary = 10` — Zero-width word boundary (`negate` selects `\B`).
+- `lookahead = 11` — Run the sub-program at `pc + 1`, then skip to `pc + y`.
+- `lookahead_done = 12` — Sentinel marking a successful lookahead sub-program.
+- `backref = 13` — Match text equal to the capture of group `x`.
+
+## `GrxInst`
+
+<a id="GrxInst" />
+One compiled instruction of a regular-expression program.
+
+```gust
+def GrxInst
+
+    op: Op
+    negate: bool
+    ch: integer
+    x: integer
+    y: integer
+    members: list[bool]
+
+end
+```
+
+**Fields**
+
+- `op: Op` — The opcode selecting how the instruction executes.
+- `negate: bool` — Inverts membership for `class_set`, `word_boundary`, and selects negative lookahead.
+- `ch: integer` — Literal byte for `character`.
+- `x: integer` — First jump/split offset, capture slot, backreference group, or lookahead skip target, depending on `op`.
+- `y: integer` — Second split offset or lookahead skip target.
+- `members: list[bool]` — 256-entry membership bitmap for `class_set`; empty otherwise.
+
+## `GrxParse`
+
+<a id="GrxParse" />
+Recursive-descent parser and program builder over a pattern string.
+
+```gust
+def GrxParse
+
+    pat: string
+    pos: integer
+    err: bool
+    icase: bool
+    ngroups: integer
+    brace_literal: bool
+
+end
+```
+
+**Fields**
+
+- `pat: string` — The pattern being compiled.
+- `pos: integer` — Current byte offset into `pat`.
+- `err: bool` — Set once a malformed construct is seen.
+- `icase: bool` — Whether matching folds case.
+- `ngroups: integer` — Running count assigning capture-group numbers.
+- `brace_literal: bool` — Set when a `{` failed to parse as a quantifier and was consumed as a literal, signalling the caller to stop quantifying.
+
+**Methods**
+
+<a id="GrxParse.peek" />
+```gust
+def GrxParse.peek() -> integer
+```
+
+Byte at the cursor, or -1 at end of pattern.
+
+---
+
+<a id="GrxParse.peek_at" />
+```gust
+def GrxParse.peek_at(offset: integer) -> integer
+```
+
+Byte `offset` positions ahead of the cursor, or -1 past the end.
+
+---
+
+<a id="GrxParse.parse_alt" />
+```gust
+def GrxParse.parse_alt() -> list[GrxInst]
+```
+
+Parse an alternation: one or more concatenations joined by `|`.
+
+---
+
+<a id="GrxParse.parse_concat_seq" />
+```gust
+def GrxParse.parse_concat_seq() -> list[GrxInst]
+```
+
+Parse a run of quantified atoms up to `|`, `)`, or end of pattern.
+
+---
+
+<a id="GrxParse.parse_repeat" />
+```gust
+def GrxParse.parse_repeat() -> list[GrxInst]
+```
+
+Parse one atom followed by any quantifiers (`*` `+` `?` `{n,m}`),
+honouring a trailing `?` for the lazy variant.
+
+---
+
+<a id="GrxParse.parse_brace" />
+```gust
+def GrxParse.parse_brace(a: list[GrxInst]) -> list[GrxInst]
+```
+
+Parse a `{n}`, `{n,}`, or `{n,m}` counted quantifier applied to `a`. A
+malformed brace is treated as a literal `{`: the cursor is rewound past it
+and `brace_literal` is set so the caller stops quantifying.
+
+---
+
+<a id="GrxParse.parse_atom" />
+```gust
+def GrxParse.parse_atom() -> list[GrxInst]
+```
+
+Parse a single atom: a group, class, `.`, anchor, escape, or literal.
+
+---
+
+<a id="GrxParse.parse_escape" />
+```gust
+def GrxParse.parse_escape() -> list[GrxInst]
+```
+
+Parse a backslash escape as an atom: a shorthand class, a word
+boundary, a backreference, or an escaped literal.
+
+---
+
+<a id="GrxParse.parse_group" />
+```gust
+def GrxParse.parse_group() -> list[GrxInst]
+```
+
+Parse a group opening at `(`: capturing `(...)`, non-capturing
+`(?:...)`, lookahead `(?=...)`/`(?!...)`, or a lookbehind `(?<=...)`/
+`(?<!...)` which is accepted as an always-true zero-width assertion.
+
+---
+
+<a id="GrxParse.parse_class" />
+```gust
+def GrxParse.parse_class() -> list[GrxInst]
+```
+
+Parse a `[...]` class body (the leading `[` already consumed).
+
+## `Match`
+
+<a id="Match" />
+The outcome of `Regex.exec`: whether a match was found and, if so, the
+byte span of the whole match and of each capture group.
+
+Group 0 is the whole match; groups 1.. are the parenthesized captures in
+left-to-right opening order. A group that did not participate in the match
+reports a start and end of -1.
+
+```gust
+def Match
+
+    matched: bool
+    start: integer
+    stop: integer
+    _starts: list[integer]
+    _ends: list[integer]
+
+end
+```
+
+**Fields**
+
+- `matched: bool` — Whether a match was found at or after the start index.
+- `start: integer` — Byte offset of the whole match (-1 if no match).
+- `stop: integer` — Byte offset just past the whole match (-1 if no match).
+- `_starts: list[integer]` — Per-group start offsets, index 0 being the whole match.
+- `_ends: list[integer]` — Per-group end offsets, aligned with `_starts`.
+
+**Methods**
+
+<a id="Match.group_count" />
+```gust
+def Match.group_count() -> integer
+```
+
+Return the number of groups recorded, including the whole match at
+index 0.
+
+---
+
+<a id="Match.group_start" />
+```gust
+def Match.group_start(index: integer) -> integer
+```
+
+Return the start offset of group `index`, or -1 if it did not
+participate.
+
+---
+
+<a id="Match.group_end" />
+```gust
+def Match.group_end(index: integer) -> integer
+```
+
+Return the end offset of group `index`, or -1 if it did not
+participate.
+
+---
+
+<a id="Match.group" />
+```gust
+def Match.group(text: string, index: integer) -> string
+```
+
+Return the substring of `text` captured by group `index`, or "" if the
+group did not participate. `text` must be the same string passed to
+`exec`.
+
+**Parameters**
+
+- `text` — The text the match was produced from.
+- `index` — Group number; 0 is the whole match.
+
+## `Regex`
+
+<a id="Regex" />
+A compiled regular expression. Build one with `compile` or
+`compile_ignore_case`, and run it with `exec`.
+
+```gust
+def Regex
+
+    _prog: list[GrxInst]
+    _ngroups: integer
+    _icase: bool
+
+end
+```
+
+**Fields**
+
+- `_prog: list[GrxInst]` — The compiled instruction program.
+- `_ngroups: integer` — Number of capturing groups (excluding the whole match).
+- `_icase: bool` — Whether matching folds case.
+
+**Methods**
+
+<a id="Regex.exec" />
+```gust
+def Regex.exec(text: string, from_index: integer) -> Match
+```
+
+Search `text` for the leftmost match at or after `from_index`.
+
+**Parameters**
+
+- `text` — The text to search.
+- `from_index` — Byte offset to begin searching from.
+
+**Returns** `Match`
+
+A `Match`; its `matched` field is false when nothing matched.
+
+---
+
+<a id="Regex.group_count" />
+```gust
+def Regex.group_count() -> integer
+```
+
+Return the number of capture groups in the pattern, not counting the
+whole match.
+
+---
+
+<a id="Regex.close" />
+```gust
+def Regex.close() -> none
+```
+
+Release the compiled program. Retained for API compatibility; the
+program is reclaimed automatically, and this drops it eagerly.
+
+## Functions
+
+<a id="regex.compile_pattern" />
+```gust
+def compile_pattern(pattern: string, icase: bool) -> Regex
+```
+
+Compile `pattern` into a runnable `Regex`.
+
+**Parameters**
+
+- `pattern: string` — The pattern source.
+- `icase: bool` — Whether matching folds case.
+
+**Raises**
+
+- `ValueError` — When the pattern is malformed.
+
+---
+
+<a id="regex.exec_match" />
+```gust
+def exec_match(
+    prog: list[GrxInst],
+    icase: bool,
+    ngroups: integer,
+    text: string,
+    from_index: integer,
+) -> Match
+```
+
+Search `text` for the leftmost match at or after `from_index`, returning
+a `Match` whose `matched` field is false when nothing matched.
+
+---
+
+<a id="regex.match" />
+```gust
+def match(pattern: string, text: string) -> bool
+```
+
+Test if a string matches a pattern (full match).
+
+**Parameters**
+
+- `pattern: string` — The pattern.
+- `text: string` — Text to test against the pattern.
+
+**Raises**
+
+- `ValueError` — If the pattern is malformed.
+
+---
+
+<a id="regex.contains" />
+```gust
+def contains(pattern: string, text: string) -> bool
+```
+
+Test if text contains a match for the pattern anywhere.
+
+**Parameters**
+
+- `pattern: string` — The pattern.
+- `text: string` — Text to search.
+
+**Raises**
+
+- `ValueError` — If the pattern is malformed.
+
+---
+
+<a id="regex.find" />
+```gust
+def find(pattern: string, text: string) -> string
+```
+
+Find the first occurrence of a pattern in text. Returns the matched
+substring, or "" if no match.
+
+**Parameters**
+
+- `pattern: string` — The pattern.
+- `text: string` — Text to search.
+
+**Raises**
+
+- `ValueError` — If the pattern is malformed.
+
+---
+
+<a id="regex.find_all" />
+```gust
+def find_all(pattern: string, text: string) -> list[string]
+```
+
+Find all non-overlapping matches of a pattern in text.
+
+**Parameters**
+
+- `pattern: string` — The pattern.
+- `text: string` — Text to search.
+
+**Raises**
+
+- `ValueError` — If the pattern is malformed.
+
+---
+
+<a id="regex.replace" />
+```gust
+def replace(pattern: string, text: string, replacement: string) -> string
+```
+
+Replace all occurrences of a pattern with a replacement string.
+
+**Parameters**
+
+- `pattern: string` — The pattern.
+- `text: string` — Text to operate on.
+- `replacement: string` — String to substitute for each match.
+
+**Raises**
+
+- `ValueError` — If the pattern is malformed.
+
+---
+
+<a id="regex.split" />
+```gust
+def split(pattern: string, text: string) -> list[string]
+```
+
+Split text by a regex pattern.
+
+**Parameters**
+
+- `pattern: string` — The pattern used as the delimiter.
+- `text: string` — Text to split.
+
+**Raises**
+
+- `ValueError` — If the pattern is malformed.
+
+---
+
+<a id="regex.compile" />
+```gust
+def compile(pattern: string) -> Regex
+```
+
+Compile `pattern` for case-sensitive matching.
+
+**Parameters**
+
+- `pattern: string` — The pattern, using the extended syntax documented above.
+
+**Raises**
+
+- `ValueError` — If the pattern is malformed.
+
+---
+
+<a id="regex.compile_ignore_case" />
+```gust
+def compile_ignore_case(pattern: string) -> Regex
+```
+
+Compile `pattern` for case-insensitive matching.
+
+**Parameters**
+
+- `pattern: string` — The pattern, using the extended syntax documented above.
+
+**Raises**
+
+- `ValueError` — If the pattern is malformed.

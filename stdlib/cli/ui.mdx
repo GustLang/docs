@@ -1,0 +1,2591 @@
+---
+title: cli.ui
+description: "Terminal key decoder: the byte-to-keycode state machine behind `read_key()` and `read_key_timeout()`"
+---
+
+```gust
+use cli.ui
+```
+
+Terminal key decoder: the byte-to-keycode state machine behind `read_key()`
+and `read_key_timeout()`.
+
+The reader pulls one byte at a time from stdin through `_read_byte`, a small
+timed-read primitive backed by the terminal syscalls in ui.c. A printable or
+control byte maps straight to its own code. An ESC byte opens an escape
+sequence, and the decoder pulls continuation bytes (each with a short timeout,
+so a lone ESC key does not stall) to resolve CSI (`ESC [ ...`) and SS3
+(`ESC O ...`) forms into the tagged codes in keys.g.
+
+`_read_byte` returns a byte value in `0..255`, or one of three sentinels that
+double as the keycode the reader should yield when no byte is available:
+`KEY_NONE` (-1) on EOF or read error, `KEY_TIMEOUT` (-2) when the wait elapses,
+and `KEY_RESIZE` (266) when the terminal was resized.
+
+**On this page:** [`Border`](#Border) · [`Align`](#Align) · [`ListItem`](#ListItem) · [`BulletList`](#BulletList) · [`TextQuestion`](#TextQuestion) · [`ConfirmQuestion`](#ConfirmQuestion) · [`SelectQuestion`](#SelectQuestion) · [`CheckboxQuestion`](#CheckboxQuestion) · [`PressAnyKeyQuestion`](#PressAnyKeyQuestion) · [`RunConfig`](#RunConfig) · [`FrameRenderer`](#FrameRenderer) · [`Table`](#Table) · [`CLIUIApp`](#CLIUIApp) · [`View`](#View) · [`Range`](#Range) · [`BorderChars`](#BorderChars) · [`App`](#App) · [`read_key`](#cli.ui.read_key) · [`read_key_timeout`](#cli.ui.read_key_timeout) · [`terminal_size`](#cli.ui.terminal_size) · [`is_printable`](#cli.ui.is_printable) · [`to_string`](#cli.ui.to_string) · [`join_horizontal`](#cli.ui.join_horizontal) · [`join_horizontal_divided`](#cli.ui.join_horizontal_divided) · [`join_vertical`](#cli.ui.join_vertical) · [`place`](#cli.ui.place) · [`overlay`](#cli.ui.overlay) · [`style_runes`](#cli.ui.style_runes) · [`style_ranges`](#cli.ui.style_ranges) · [`bullet_list`](#cli.ui.bullet_list) · [`numbered_list`](#cli.ui.numbered_list) · [`alpha_list`](#cli.ui.alpha_list) · [`text`](#cli.ui.text) · [`path`](#cli.ui.path) · [`password`](#cli.ui.password) · [`confirm`](#cli.ui.confirm) · [`select`](#cli.ui.select) · [`autocomplete`](#cli.ui.autocomplete) · [`rawselect`](#cli.ui.rawselect) · [`checkbox`](#cli.ui.checkbox) · [`press_any_key_to_continue`](#cli.ui.press_any_key_to_continue) · [`run_config`](#cli.ui.run_config) · [`run`](#cli.ui.run) · [`styled`](#cli.ui.styled) · [`print_formatted_text`](#cli.ui.print_formatted_text) · [`table`](#cli.ui.table) · [`ui_app`](#cli.ui.ui_app) · [`setup`](#cli.ui.setup) · [`teardown`](#cli.ui.teardown) · [`clear_screen`](#cli.ui.clear_screen) · [`move_cursor`](#cli.ui.move_cursor) · [`hide_cursor`](#cli.ui.hide_cursor) · [`show_cursor`](#cli.ui.show_cursor) · [`enter_alt_screen`](#cli.ui.enter_alt_screen) · [`leave_alt_screen`](#cli.ui.leave_alt_screen) · [`raw_mode_enter`](#cli.ui.raw_mode_enter) · [`raw_mode_leave`](#cli.ui.raw_mode_leave) · [`write_frame`](#cli.ui.write_frame) · [`make_range`](#cli.ui.make_range) · [`view`](#cli.ui.view) · [`border_chars`](#cli.ui.border_chars) · [`word_wrap_text`](#cli.ui.word_wrap_text) · [`hard_wrap_segment`](#cli.ui.hard_wrap_segment) · [`wrap_line`](#cli.ui.wrap_line) · [`skip_escape_at`](#cli.ui.skip_escape_at) · [`utf8_decode_at`](#cli.ui.utf8_decode_at) · [`cp_display_width`](#cli.ui.cp_display_width) · [`visible_width`](#cli.ui.visible_width) · [`truncate_visible`](#cli.ui.truncate_visible) · [`pad_to_width`](#cli.ui.pad_to_width) · [`fg_code`](#cli.ui.fg_code) · [`is_color_index`](#cli.ui.is_color_index) · [`fg_params`](#cli.ui.fg_params) · [`bg_params`](#cli.ui.bg_params) · [`hex_to_rgb`](#cli.ui.hex_to_rgb)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `ESC_TIMEOUT_MS` | `integer` | `50` |
+| `CSI_PARAM_LIMIT` | `integer` | `8` |
+| `CSI_FINAL_MIN` | `integer` | `64` |
+| `CSI_FINAL_MAX` | `integer` | `126` |
+| `ASCII_DIGIT_MIN` | `integer` | `48` |
+| `ASCII_DIGIT_MAX` | `integer` | `57` |
+| `CLEAR_LINE` | `string` | `"\x1b[2K"` |
+| `HIDE_CURSOR` | `string` | `"\x1b[?25l"` |
+| `SHOW_CURSOR` | `string` | `"\x1b[?25h"` |
+| `KEY_LF` | `integer` | `10` |
+| `KEY_CTRL_H` | `integer` | `8` |
+| `KEY_LOWER_J` | `integer` | `106` |
+| `KEY_UPPER_J` | `integer` | `74` |
+| `KEY_LOWER_K` | `integer` | `107` |
+| `KEY_UPPER_K` | `integer` | `75` |
+| `KEY_LOWER_Y` | `integer` | `121` |
+| `KEY_UPPER_Y` | `integer` | `89` |
+| `KEY_LOWER_N` | `integer` | `110` |
+| `KEY_UPPER_N` | `integer` | `78` |
+| `KEY_TAB` | `integer` | `9` |
+| `KEY_ENTER` | `integer` | `13` |
+| `KEY_ESC` | `integer` | `27` |
+| `KEY_SPACE` | `integer` | `32` |
+| `KEY_BACKSPACE` | `integer` | `127` |
+| `KEY_CTRL_A` | `integer` | `1` |
+| `KEY_CTRL_B` | `integer` | `2` |
+| `KEY_CTRL_C` | `integer` | `3` |
+| `KEY_CTRL_D` | `integer` | `4` |
+| `KEY_CTRL_E` | `integer` | `5` |
+| `KEY_CTRL_F` | `integer` | `6` |
+| `KEY_CTRL_K` | `integer` | `11` |
+| `KEY_CTRL_L` | `integer` | `12` |
+| `KEY_CTRL_N` | `integer` | `14` |
+| `KEY_CTRL_P` | `integer` | `16` |
+| `KEY_CTRL_U` | `integer` | `21` |
+| `KEY_CTRL_W` | `integer` | `23` |
+| `KEY_CTRL_Z` | `integer` | `26` |
+| `KEY_UP` | `integer` | `256` |
+| `KEY_DOWN` | `integer` | `257` |
+| `KEY_RIGHT` | `integer` | `258` |
+| `KEY_LEFT` | `integer` | `259` |
+| `KEY_HOME` | `integer` | `260` |
+| `KEY_END` | `integer` | `261` |
+| `KEY_DELETE` | `integer` | `262` |
+| `KEY_PAGE_UP` | `integer` | `263` |
+| `KEY_PAGE_DOWN` | `integer` | `264` |
+| `KEY_INSERT` | `integer` | `265` |
+| `KEY_RESIZE` | `integer` | `266` |
+| `KEY_F1` | `integer` | `272` |
+| `KEY_F2` | `integer` | `273` |
+| `KEY_F3` | `integer` | `274` |
+| `KEY_F4` | `integer` | `275` |
+| `KEY_F5` | `integer` | `276` |
+| `KEY_F6` | `integer` | `277` |
+| `KEY_F7` | `integer` | `278` |
+| `KEY_F8` | `integer` | `279` |
+| `KEY_F9` | `integer` | `280` |
+| `KEY_F10` | `integer` | `281` |
+| `KEY_F11` | `integer` | `282` |
+| `KEY_F12` | `integer` | `283` |
+| `KEY_NONE` | `integer` | `-1` |
+| `KEY_TIMEOUT` | `integer` | `-2` |
+| `CLEAR_ROW` | `string` | `"\x1b[2K"` |
+| `QUESTION_PREFIX` | `string` | `"?"` |
+| `SELECTED_POINTER` | `string` | `"»"` |
+| `INDICATOR_SELECTED` | `string` | `"[x]"` |
+| `INDICATOR_UNSELECTED` | `string` | `"[ ]"` |
+
+## `Border`
+
+<a id="Border" />
+```gust
+enum Border: string
+```
+
+A border preset, naming the glyph set drawn around a view.
+
+**Variants**
+
+- `off = "none"` — No border.
+- `rounded = "rounded"` — Rounded corners (╭╮╰╯).
+- `normal = "normal"` — Square single-line corners (┌┐└┘).
+- `thick = "thick"` — Heavy single-line box.
+- `double = "double"` — Double-line box (╔╗╚╝).
+- `ascii = "ascii"` — Plain ASCII (+ - |), for terminals without box-drawing glyphs.
+- `block = "block"` — Solid full-block edges.
+- `outer_half = "outer_half_block"` — Half-block edges facing outward.
+- `inner_half = "inner_half_block"` — Half-block edges facing inward.
+- `hidden = "hidden"` — Space glyphs — reserves the border's width without drawing it.
+- `markdown = "markdown"` — A Markdown-table-style frame.
+
+## `Align`
+
+<a id="Align" />
+```gust
+enum Align: string
+```
+
+A content alignment. `left`/`center`/`right` apply horizontally,
+`top`/`center`/`bottom` vertically.
+
+**Variants**
+
+- `left = "left"` — Align to the left edge.
+- `center = "center"` — Center between the edges.
+- `right = "right"` — Align to the right edge.
+- `top = "top"` — Align to the top edge.
+- `bottom = "bottom"` — Align to the bottom edge.
+
+## `ListItem`
+
+<a id="ListItem" />
+A single item in a list. Either a plain string or a nested BulletList.
+
+```gust
+def ListItem
+
+    text: string
+    sublist_ref: string
+
+end
+```
+
+**Fields**
+
+- `text: string` — The item's display text for a plain item.
+- `sublist_ref: string` — Serialized sub-list render, "" if this is a plain item.
+
+## `BulletList`
+
+<a id="BulletList" />
+A vertical list with configurable bullet/enumerator, indentation,
+and per-item styling.
+
+```gust
+def BulletList
+
+    items: list[ListItem]
+    bullet_str: string
+    indent_str: string
+    bullet_fg: string
+    item_fg: string
+    item_bold_on: bool
+    item_dim_on: bool
+    enumerator_type: string
+
+end
+```
+
+**Fields**
+
+- `items: list[ListItem]` — The list's items, in display order.
+- `bullet_str: string` — The fixed bullet character used for the "bullet" enumerator.
+- `indent_str: string` — The indentation prefix applied to nested sub-lists.
+- `bullet_fg: string` — Foreground color for the bullet/enumerator, "" for none.
+- `item_fg: string` — Foreground color for item text, "" for none.
+- `item_bold_on: bool` — When true, item text is rendered bold.
+- `item_dim_on: bool` — When true, item text is rendered dim.
+- `enumerator_type: string` — Enumerator style: "bullet", "arabic", "alpha", "roman", "dash", or "asterisk".
+
+**Methods**
+
+<a id="BulletList.item" />
+```gust
+def BulletList.item(text: string) -> BulletList
+```
+
+Append a plain-text item.
+
+**Parameters**
+
+- `text` — The item's display text.
+
+---
+
+<a id="BulletList.nested" />
+```gust
+def BulletList.nested(sub: BulletList) -> BulletList
+```
+
+Append a nested sub-list. The sub-list is rendered and indented.
+
+**Parameters**
+
+- `sub` — The sub-list to render and append.
+
+---
+
+<a id="BulletList.bullet" />
+```gust
+def BulletList.bullet(b: string) -> BulletList
+```
+
+Set the bullet/enumerator character for fixed bullets.
+
+**Parameters**
+
+- `b` — The bullet character to use.
+
+---
+
+<a id="BulletList.indent" />
+```gust
+def BulletList.indent(prefix: string) -> BulletList
+```
+
+Set the indentation prefix used for nested sub-lists.
+
+**Parameters**
+
+- `prefix` — The indentation string applied to nested lines.
+
+---
+
+<a id="BulletList.bullet_foreground" />
+```gust
+def BulletList.bullet_foreground(color: string) -> BulletList
+```
+
+Color the bullet/enumerator.
+
+**Parameters**
+
+- `color` — The foreground color name for the bullet.
+
+---
+
+<a id="BulletList.item_foreground" />
+```gust
+def BulletList.item_foreground(color: string) -> BulletList
+```
+
+Color the item text.
+
+**Parameters**
+
+- `color` — The foreground color name for item text.
+
+---
+
+<a id="BulletList.bold" />
+```gust
+def BulletList.bold(on: bool) -> BulletList
+```
+
+Toggle bold styling for item text.
+
+**Parameters**
+
+- `on` — When true, item text is rendered bold.
+
+---
+
+<a id="BulletList.dim" />
+```gust
+def BulletList.dim(on: bool) -> BulletList
+```
+
+Toggle dim styling for item text.
+
+**Parameters**
+
+- `on` — When true, item text is rendered dim.
+
+---
+
+<a id="BulletList.enumerator" />
+```gust
+def BulletList.enumerator(kind: string) -> BulletList
+```
+
+Set enumerator type: "bullet", "arabic", "alpha", "roman",
+"dash", "asterisk".
+
+**Parameters**
+
+- `kind` — The enumerator style name.
+
+---
+
+<a id="BulletList.render" />
+```gust
+def BulletList.render() -> string
+```
+
+Render the list to a string.
+
+**Raises**
+
+- `ValueError` — A bullet or item color is not a recognized name, 0-255 index, or #hex.
+
+## `TextQuestion`
+
+<a id="TextQuestion" />
+A free-text question. Create with `text(...)`, then call `.ask()`.
+
+```gust
+def TextQuestion
+
+    message: string
+    default_value: string
+    should_skip: bool
+    skip_value: string
+    is_password: bool
+
+end
+```
+
+**Fields**
+
+- `message: string` — The prompt text shown to the user.
+- `default_value: string` — Value returned when the user enters nothing.
+- `should_skip: bool` — When true, `.ask()` returns `skip_value` without prompting.
+- `skip_value: string` — Value returned when `should_skip` is set.
+- `is_password: bool` — When true, interactive input is masked with `*`.
+
+**Methods**
+
+<a id="TextQuestion.default" />
+```gust
+def TextQuestion.default(value: string) -> TextQuestion
+```
+
+Set the value returned when the user enters nothing.
+
+**Parameters**
+
+- `value` — The default string used for empty input.
+
+---
+
+<a id="TextQuestion.skip_if" />
+```gust
+def TextQuestion.skip_if(condition: bool, value: string) -> TextQuestion
+```
+
+When `condition` is true, `.ask()` returns `value` without prompting.
+
+**Parameters**
+
+- `condition` — When true, prompting is skipped.
+- `value` — The string returned when skipping.
+
+---
+
+<a id="TextQuestion.ask" />
+```gust
+def TextQuestion.ask() -> string
+```
+
+Run the prompt and return the entered string. Returns the skip value
+when skipping, the default when the input is empty, or the masked
+password reader when configured as a password on an interactive TTY.
+
+## `ConfirmQuestion`
+
+<a id="ConfirmQuestion" />
+A yes/no question. Create with `confirm(...)`, then call `.ask()`.
+
+```gust
+def ConfirmQuestion
+
+    message: string
+    default_value: bool
+    should_skip: bool
+    skip_value: bool
+
+end
+```
+
+**Fields**
+
+- `message: string` — The prompt text shown to the user.
+- `default_value: bool` — Answer used when the user presses Enter without typing y or n.
+- `should_skip: bool` — When true, `.ask()` returns `skip_value` without prompting.
+- `skip_value: bool` — Answer returned when `should_skip` is set.
+
+**Methods**
+
+<a id="ConfirmQuestion.default" />
+```gust
+def ConfirmQuestion.default(value: bool) -> ConfirmQuestion
+```
+
+Set the answer used when the user presses Enter without typing y or n.
+
+**Parameters**
+
+- `value` — The default yes/no answer for empty input.
+
+---
+
+<a id="ConfirmQuestion.skip_if" />
+```gust
+def ConfirmQuestion.skip_if(condition: bool, value: bool) -> ConfirmQuestion
+```
+
+When `condition` is true, `.ask()` returns `value` without prompting.
+
+**Parameters**
+
+- `condition` — When true, prompting is skipped.
+- `value` — The yes/no answer returned when skipping.
+
+---
+
+<a id="ConfirmQuestion.ask" />
+```gust
+def ConfirmQuestion.ask() -> bool
+```
+
+Run the prompt and return the yes/no answer. Re-prompts on invalid
+input; empty input returns the default.
+
+## `SelectQuestion`
+
+<a id="SelectQuestion" />
+A single-choice question. Create with `select(...)`, then call `.ask()`.
+
+On an interactive TTY the choice is picked with arrow-key navigation;
+otherwise it falls back to a styled numbered list read from stdin.
+
+```gust
+def SelectQuestion
+
+    message: string
+    choices: list[string]
+    default_value: string
+    should_skip: bool
+    skip_value: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — The prompt text shown to the user.
+- `choices: list[string]` — The selectable values, in display order.
+- `default_value: string` — Choice pre-selected when the user presses Enter.
+- `should_skip: bool` — When true, `.ask()` returns `skip_value` without prompting.
+- `skip_value: string` — Value returned when `should_skip` is set.
+
+**Methods**
+
+<a id="SelectQuestion.default" />
+```gust
+def SelectQuestion.default(value: string) -> SelectQuestion
+```
+
+Set the choice pre-selected when the user presses Enter.
+
+**Parameters**
+
+- `value` — The choice value to pre-select.
+
+---
+
+<a id="SelectQuestion.skip_if" />
+```gust
+def SelectQuestion.skip_if(condition: bool, value: string) -> SelectQuestion
+```
+
+When `condition` is true, `.ask()` returns `value` without prompting.
+
+**Parameters**
+
+- `condition` — When true, prompting is skipped.
+- `value` — The choice value returned when skipping.
+
+---
+
+<a id="SelectQuestion.ask" />
+```gust
+def SelectQuestion.ask() -> string
+```
+
+Run the prompt and return the chosen value. Uses arrow-key selection
+on an interactive TTY, otherwise a numbered list read from stdin.
+Returns "" when there are no choices.
+
+## `CheckboxQuestion`
+
+<a id="CheckboxQuestion" />
+A multi-choice question. Create with `checkbox(...)`, then call `.ask()`.
+
+Interactive input accepts comma-separated numbers or exact choice values.
+Non-interactive flows can use `.skip_if(...)` for automation.
+
+```gust
+def CheckboxQuestion
+
+    message: string
+    choices: list[string]
+    default_values: list[string]
+    should_skip: bool
+    skip_value: list[string]
+
+end
+```
+
+**Fields**
+
+- `message: string` — The prompt text shown to the user.
+- `choices: list[string]` — The selectable values, in display order.
+- `default_values: list[string]` — Choices pre-checked when the prompt opens.
+- `should_skip: bool` — When true, `.ask()` returns `skip_value` without prompting.
+- `skip_value: list[string]` — Values returned when `should_skip` is set.
+
+**Methods**
+
+<a id="CheckboxQuestion.default" />
+```gust
+def CheckboxQuestion.default(values: list[string]) -> CheckboxQuestion
+```
+
+Set the choices pre-checked when the prompt opens.
+
+**Parameters**
+
+- `values` — The choice values to pre-check.
+
+---
+
+<a id="CheckboxQuestion.skip_if" />
+```gust
+def CheckboxQuestion.skip_if(
+    condition: bool,
+    value: list[string],
+) -> CheckboxQuestion
+```
+
+When `condition` is true, `.ask()` returns `value` without prompting.
+
+**Parameters**
+
+- `condition` — When true, prompting is skipped.
+- `value` — The values returned when skipping.
+
+---
+
+<a id="CheckboxQuestion.ask" />
+```gust
+def CheckboxQuestion.ask() -> list[string]
+```
+
+Run the prompt and return the selected values. Uses interactive
+multi-select on a TTY, otherwise reads comma-separated numbers or values
+from stdin. Empty input keeps the defaults.
+
+## `PressAnyKeyQuestion`
+
+<a id="PressAnyKeyQuestion" />
+A pause prompt. Create with `press_any_key_to_continue(...)`, then
+call `.ask()`. This line-input implementation waits for Enter.
+
+```gust
+def PressAnyKeyQuestion
+
+    message: string
+    should_skip: bool
+
+end
+```
+
+**Fields**
+
+- `message: string` — The prompt text shown to the user.
+- `should_skip: bool` — When true, `.ask()` returns immediately without pausing.
+
+**Methods**
+
+<a id="PressAnyKeyQuestion.skip_if" />
+```gust
+def PressAnyKeyQuestion.skip_if(condition: bool) -> PressAnyKeyQuestion
+```
+
+When `condition` is true, `.ask()` returns immediately without pausing.
+
+**Parameters**
+
+- `condition` — When true, the pause is skipped.
+
+---
+
+<a id="PressAnyKeyQuestion.ask" />
+```gust
+def PressAnyKeyQuestion.ask() -> none
+```
+
+Display the message and wait for the user to press Enter.
+
+## `RunConfig`
+
+<a id="RunConfig" />
+Display and timing options for `run`. Construct with `run_config()` and
+override fields as needed.
+
+```gust
+def RunConfig
+
+    alt_screen: bool
+    hide_cursor: bool
+    tick_ms: integer
+
+end
+```
+
+**Fields**
+
+- `alt_screen: bool` — Switch to the alternate screen buffer while running.
+- `hide_cursor: bool` — Hide the terminal cursor while running.
+- `tick_ms: integer` — Milliseconds between synthetic `Tick` events. 0 disables the timer, so the loop blocks until the next key (no animation).
+
+## `FrameRenderer`
+
+<a id="FrameRenderer" />
+Diff-based frame writer. Remembers the previous frame and repaints only
+the lines that changed, so a steady TUI updates without full-screen flicker.
+
+```gust
+def FrameRenderer
+
+    prev_lines: list[string]
+    active: bool
+
+end
+```
+
+**Fields**
+
+- `prev_lines: list[string]` — The lines emitted in the previous frame.
+- `active: bool` — Whether a previous frame exists to diff against.
+
+**Methods**
+
+<a id="FrameRenderer.paint" />
+```gust
+def FrameRenderer.paint(frame: string) -> none
+```
+
+Draw `frame`, emitting only the rows that differ from the last paint.
+The first paint (or one after `mark_dirty`) clears the screen and writes
+every row.
+
+**Parameters**
+
+- `frame` — The full rendered frame, rows separated by newlines.
+
+---
+
+<a id="FrameRenderer.mark_dirty" />
+```gust
+def FrameRenderer.mark_dirty() -> none
+```
+
+Force the next `paint` to clear and redraw the whole screen. Called
+after a resize, where absolute row positions no longer line up.
+
+## `Table`
+
+<a id="Table" />
+A tabular view. Use the builder methods to add data and configure
+appearance, then call render() to produce a string.
+
+```gust
+def Table
+
+    header_row: list[string]
+    data_rows: list[list[string]]
+    border_preset: string
+    border_fg_color: string
+    has_outer_top: bool
+    has_outer_bottom: bool
+    has_outer_left: bool
+    has_outer_right: bool
+    has_header_divider: bool
+    has_column_dividers: bool
+    has_row_dividers: bool
+    header_bold_on: bool
+    header_fg_color: string
+    cell_fg_color: string
+    cell_h_align: string
+    table_width: integer
+    y_offset: integer
+
+end
+```
+
+**Fields**
+
+- `header_row: list[string]` — Column header cells.
+- `data_rows: list[list[string]]` — Each entry is one row of cell strings.
+- `border_preset: string` — The border preset's string value (see `Border`).
+- `border_fg_color: string` — Foreground color applied to border lines ("" = none).
+- `has_outer_top: bool` — Whether the top outer border edge is drawn.
+- `has_outer_bottom: bool` — Whether the bottom outer border edge is drawn.
+- `has_outer_left: bool` — Whether the left outer border edge is drawn.
+- `has_outer_right: bool` — Whether the right outer border edge is drawn.
+- `has_header_divider: bool` — Whether a divider is drawn between headers and data.
+- `has_column_dividers: bool` — Whether vertical dividers separate columns.
+- `has_row_dividers: bool` — Whether horizontal dividers separate data rows.
+- `header_bold_on: bool` — Whether the header row is rendered bold.
+- `header_fg_color: string` — Foreground color for header text ("" = default).
+- `cell_fg_color: string` — Foreground color for data-cell text ("" = default).
+- `cell_h_align: string` — Horizontal alignment for cells (`Align` string value).
+- `table_width: integer` — Target total width; 0 means auto-size from content.
+- `y_offset: integer` — Number of leading data rows to skip when rendering.
+
+**Methods**
+
+<a id="Table.headers" />
+```gust
+def Table.headers(cols: list[string]) -> Table
+```
+
+Set the column headers.
+
+**Parameters**
+
+- `cols` — Header cell strings, one per column.
+
+---
+
+<a id="Table.row" />
+```gust
+def Table.row(cells: list[string]) -> Table
+```
+
+Append a data row.
+
+**Parameters**
+
+- `cells` — Cell strings for the new row, one per column.
+
+---
+
+<a id="Table.border" />
+```gust
+def Table.border(preset: Border) -> Table
+```
+
+Set the border preset.
+
+**Parameters**
+
+- `preset` — The border preset to draw (e.g. `Border.rounded`).
+
+---
+
+<a id="Table.border_foreground" />
+```gust
+def Table.border_foreground(color: string) -> Table
+```
+
+Color the border lines.
+
+**Parameters**
+
+- `color` — Foreground color name applied to the border characters.
+
+---
+
+<a id="Table.border_top" />
+```gust
+def Table.border_top(on: bool) -> Table
+```
+
+Show or hide the top outer border edge.
+
+**Parameters**
+
+- `on` — true to draw the top edge, false to hide it.
+
+---
+
+<a id="Table.border_bottom" />
+```gust
+def Table.border_bottom(on: bool) -> Table
+```
+
+Show or hide the bottom outer border edge.
+
+**Parameters**
+
+- `on` — true to draw the bottom edge, false to hide it.
+
+---
+
+<a id="Table.border_left" />
+```gust
+def Table.border_left(on: bool) -> Table
+```
+
+Show or hide the left outer border edge.
+
+**Parameters**
+
+- `on` — true to draw the left edge, false to hide it.
+
+---
+
+<a id="Table.border_right" />
+```gust
+def Table.border_right(on: bool) -> Table
+```
+
+Show or hide the right outer border edge.
+
+**Parameters**
+
+- `on` — true to draw the right edge, false to hide it.
+
+---
+
+<a id="Table.header_divider" />
+```gust
+def Table.header_divider(on: bool) -> Table
+```
+
+Show or hide the divider row between headers and data.
+
+**Parameters**
+
+- `on` — true to draw the header divider, false to hide it.
+
+---
+
+<a id="Table.column_dividers" />
+```gust
+def Table.column_dividers(on: bool) -> Table
+```
+
+Show or hide vertical dividers between columns.
+
+**Parameters**
+
+- `on` — true to draw column dividers, false to hide them.
+
+---
+
+<a id="Table.row_dividers" />
+```gust
+def Table.row_dividers(on: bool) -> Table
+```
+
+Show or hide horizontal dividers between data rows.
+
+**Parameters**
+
+- `on` — true to draw row dividers, false to hide them.
+
+---
+
+<a id="Table.header_bold" />
+```gust
+def Table.header_bold(on: bool) -> Table
+```
+
+Toggle bold styling for the header row.
+
+**Parameters**
+
+- `on` — true to render the header bold, false for normal weight.
+
+---
+
+<a id="Table.header_foreground" />
+```gust
+def Table.header_foreground(color: string) -> Table
+```
+
+Set the header text color.
+
+**Parameters**
+
+- `color` — Foreground color name for header text.
+
+---
+
+<a id="Table.cell_foreground" />
+```gust
+def Table.cell_foreground(color: string) -> Table
+```
+
+Set the data-cell text color.
+
+**Parameters**
+
+- `color` — Foreground color name for data-cell text.
+
+---
+
+<a id="Table.align" />
+```gust
+def Table.align(direction: Align) -> Table
+```
+
+Set horizontal alignment for all cells: `Align.left`, `Align.center`,
+or `Align.right`.
+
+**Parameters**
+
+- `direction` — The cell alignment to apply.
+
+---
+
+<a id="Table.width" />
+```gust
+def Table.width(w: integer) -> Table
+```
+
+Set a target total width. Columns will be expanded or shrunk to fit.
+0 = auto (default).
+
+**Parameters**
+
+- `w` — Target total table width in columns; 0 means auto-size.
+
+---
+
+<a id="Table.offset" />
+```gust
+def Table.offset(n: integer) -> Table
+```
+
+Skip the first `n` data rows (for scrolling).
+
+**Parameters**
+
+- `n` — Number of leading data rows to skip.
+
+---
+
+<a id="Table.render" />
+```gust
+def Table.render() -> string
+```
+
+Render the table to a string.
+
+**Raises**
+
+- `ValueError` — A border, header, or cell color is not a recognized name, 0-255 index, or #hex.
+
+## `CLIUIApp`
+
+<a id="CLIUIApp" />
+A TUI runtime configuration. Construct with
+`ui_app(title, use_alt_screen, show_cursor)`, then call
+`cli.setup(app)` before your loop and `cli.teardown(app)` after.
+
+```gust
+def CLIUIApp
+
+    title: string
+    alt_screen: bool
+    cursor: bool
+
+end
+```
+
+**Fields**
+
+- `title: string` — Informational app title; `""` to skip.
+- `alt_screen: bool` — When true, `setup` switches to the alternate screen buffer.
+- `cursor: bool` — When false, `setup` hides the terminal cursor.
+
+## `View`
+
+<a id="View" />
+A styled, optionally bordered region of text. Builders mutate the
+receiver in place and return self for chaining.
+
+```gust
+def View
+
+    body: string
+    fg: string
+    bg: string
+    border_style: string
+    border_fg: string
+    has_border_top: bool
+    has_border_right: bool
+    has_border_bottom: bool
+    has_border_left: bool
+    border_title_s: string
+    border_title_align_s: string
+    padding_top: integer
+    padding_right: integer
+    padding_bottom: integer
+    padding_left: integer
+    margin_top: integer
+    margin_right: integer
+    margin_bottom: integer
+    margin_left: integer
+    inner_width: integer
+    inner_height: integer
+    h_align: string
+    v_align: string
+    is_bold: bool
+    is_italic: bool
+    is_underline: bool
+    is_strikethrough: bool
+    is_dim: bool
+    is_inverse: bool
+    is_blink: bool
+    do_inline: bool
+    do_word_wrap: bool
+    width_max: integer
+    height_max: integer
+    tab_width_n: integer
+
+end
+```
+
+**Fields**
+
+- `body: string` — The raw content text to render.
+- `fg: string` — Foreground color value ("" = none).
+- `bg: string` — Background color value ("" = none).
+- `border_style: string` — Border preset name (e.g. "rounded", "none").
+- `border_fg: string` — Color for the border lines ("" = inherit/none).
+- `has_border_top: bool` — Whether the top border edge is drawn.
+- `has_border_right: bool` — Whether the right border edge is drawn.
+- `has_border_bottom: bool` — Whether the bottom border edge is drawn.
+- `has_border_left: bool` — Whether the left border edge is drawn.
+- `border_title_s: string` — Text embedded in the top border line.
+- `border_title_align_s: string` — Alignment of the border title ("left"/"center"/"right").
+- `padding_top: integer` — Inner spacing rows above the content.
+- `padding_right: integer` — Inner spacing columns right of the content.
+- `padding_bottom: integer` — Inner spacing rows below the content.
+- `padding_left: integer` — Inner spacing columns left of the content.
+- `margin_top: integer` — Outer spacing rows above the border.
+- `margin_right: integer` — Outer spacing columns right of the border.
+- `margin_bottom: integer` — Outer spacing rows below the border.
+- `margin_left: integer` — Outer spacing columns left of the border.
+- `inner_width: integer` — Locked total outer width (0 = auto).
+- `inner_height: integer` — Locked total outer height (0 = auto).
+- `h_align: string` — Horizontal content alignment.
+- `v_align: string` — Vertical content alignment.
+- `is_bold: bool` — Whether bold styling is applied.
+- `is_italic: bool` — Whether italic styling is applied.
+- `is_underline: bool` — Whether underline styling is applied.
+- `is_strikethrough: bool` — Whether strikethrough styling is applied.
+- `is_dim: bool` — Whether dim styling is applied.
+- `is_inverse: bool` — Whether inverse (swapped fg/bg) styling is applied.
+- `is_blink: bool` — Whether blink styling is applied.
+- `do_inline: bool` — Whether newlines are stripped to a single line.
+- `do_word_wrap: bool` — Whether content is word-wrapped to the inner width.
+- `width_max: integer` — Hard truncation cap on rendered width (0 = none).
+- `height_max: integer` — Hard truncation cap on rendered height (0 = none).
+- `tab_width_n: integer` — Tab expansion width (-1 = leave tabs unchanged).
+
+**Methods**
+
+<a id="View.content" />
+```gust
+def View.content(s: string) -> View
+```
+
+Replace the view's body text.
+
+**Parameters**
+
+- `s` — The new body text.
+
+---
+
+<a id="View.foreground" />
+```gust
+def View.foreground(color: string) -> View
+```
+
+Set the foreground color. Accepts named colors ("red", "bright_cyan"),
+256-color index as string ("214"), or 24-bit hex ("#ff5733"). Pass ""
+to clear.
+
+**Parameters**
+
+- `color` — The foreground color value, or "" to clear.
+
+---
+
+<a id="View.background" />
+```gust
+def View.background(color: string) -> View
+```
+
+Set the background color. Same value grammar as foreground.
+
+**Parameters**
+
+- `color` — The background color value, or "" to clear.
+
+---
+
+<a id="View.border" />
+```gust
+def View.border(style: Border) -> View
+```
+
+Set the border preset and enable all four sides.
+
+**Parameters**
+
+- `style` — The border preset to apply (e.g. `Border.rounded`).
+
+---
+
+<a id="View.border_foreground" />
+```gust
+def View.border_foreground(color: string) -> View
+```
+
+Color the border lines independently of the inner content.
+
+**Parameters**
+
+- `color` — The color value for the border lines.
+
+---
+
+<a id="View.border_top" />
+```gust
+def View.border_top(on: bool) -> View
+```
+
+Enable or disable the top border edge.
+
+**Parameters**
+
+- `on` — True to draw the top edge, false to omit it.
+
+---
+
+<a id="View.border_right" />
+```gust
+def View.border_right(on: bool) -> View
+```
+
+Enable or disable the right border edge.
+
+**Parameters**
+
+- `on` — True to draw the right edge, false to omit it.
+
+---
+
+<a id="View.border_bottom" />
+```gust
+def View.border_bottom(on: bool) -> View
+```
+
+Enable or disable the bottom border edge.
+
+**Parameters**
+
+- `on` — True to draw the bottom edge, false to omit it.
+
+---
+
+<a id="View.border_left" />
+```gust
+def View.border_left(on: bool) -> View
+```
+
+Enable or disable the left border edge.
+
+**Parameters**
+
+- `on` — True to draw the left edge, false to omit it.
+
+---
+
+<a id="View.border_title" />
+```gust
+def View.border_title(text: string) -> View
+```
+
+Embed text in the top border line. The title is placed inside the
+horizontal border characters (e.g. ╭── Title ──╮). Use
+border_title_align to control placement.
+
+**Parameters**
+
+- `text` — The title text to embed in the top border.
+
+---
+
+<a id="View.border_title_align" />
+```gust
+def View.border_title_align(align: Align) -> View
+```
+
+Set the alignment of the border title: `Align.left`, `Align.center`
+(default), or `Align.right`.
+
+**Parameters**
+
+- `align` — The title alignment.
+
+---
+
+<a id="View.padding" />
+```gust
+def View.padding(
+    top: integer,
+    right: integer,
+    bottom: integer,
+    left: integer,
+) -> View
+```
+
+Set all four padding sides explicitly (inner spacing between content
+and the border).
+
+**Parameters**
+
+- `top` — Padding rows above the content.
+- `right` — Padding columns right of the content.
+- `bottom` — Padding rows below the content.
+- `left` — Padding columns left of the content.
+
+---
+
+<a id="View.padding_all" />
+```gust
+def View.padding_all(n: integer) -> View
+```
+
+Apply the same padding to all four sides.
+
+**Parameters**
+
+- `n` — Padding applied to every side.
+
+---
+
+<a id="View.padding_xy" />
+```gust
+def View.padding_xy(x: integer, y: integer) -> View
+```
+
+Horizontal padding `x` (left + right) and vertical padding `y`
+(top + bottom).
+
+**Parameters**
+
+- `x` — Horizontal padding applied to left and right.
+- `y` — Vertical padding applied to top and bottom.
+
+---
+
+<a id="View.margin" />
+```gust
+def View.margin(
+    top: integer,
+    right: integer,
+    bottom: integer,
+    left: integer,
+) -> View
+```
+
+Set all four margin sides (outer spacing outside the border).
+
+**Parameters**
+
+- `top` — Margin rows above the border.
+- `right` — Margin columns right of the border.
+- `bottom` — Margin rows below the border.
+- `left` — Margin columns left of the border.
+
+---
+
+<a id="View.margin_all" />
+```gust
+def View.margin_all(n: integer) -> View
+```
+
+Apply the same margin to all four sides.
+
+**Parameters**
+
+- `n` — Margin applied to every side.
+
+---
+
+<a id="View.margin_xy" />
+```gust
+def View.margin_xy(x: integer, y: integer) -> View
+```
+
+Horizontal margin `x` and vertical margin `y`.
+
+**Parameters**
+
+- `x` — Horizontal margin applied to left and right.
+- `y` — Vertical margin applied to top and bottom.
+
+---
+
+<a id="View.width" />
+```gust
+def View.width(n: integer) -> View
+```
+
+Lock the total outer width (border + padding + content). Lines wider
+than the effective inner width wrap to fit (the default); shorter lines
+are padded according to h_align. Call `.word_wrap(false)` to truncate
+overflow instead of wrapping.
+
+**Parameters**
+
+- `n` — The total outer width in columns.
+
+---
+
+<a id="View.height" />
+```gust
+def View.height(n: integer) -> View
+```
+
+Lock the total outer height (border + padding + content). Shorter
+content is padded according to v_align; taller content is truncated.
+
+**Parameters**
+
+- `n` — The total outer height in rows.
+
+---
+
+<a id="View.max_width" />
+```gust
+def View.max_width(n: integer) -> View
+```
+
+Hard-cap the rendered width. Applied after borders and padding.
+Unlike width(), this does not affect layout of content inside the view.
+
+**Parameters**
+
+- `n` — The maximum rendered width in columns.
+
+---
+
+<a id="View.max_height" />
+```gust
+def View.max_height(n: integer) -> View
+```
+
+Hard-cap the rendered height. Applied after borders and padding.
+
+**Parameters**
+
+- `n` — The maximum rendered height in rows.
+
+---
+
+<a id="View.align_horizontal" />
+```gust
+def View.align_horizontal(direction: Align) -> View
+```
+
+Set horizontal alignment: `Align.left` (default), `Align.center`, or
+`Align.right`.
+
+**Parameters**
+
+- `direction` — The horizontal alignment.
+
+---
+
+<a id="View.align_vertical" />
+```gust
+def View.align_vertical(direction: Align) -> View
+```
+
+Set vertical alignment: `Align.top` (default), `Align.center`, or
+`Align.bottom`. Only takes effect when height() is set.
+
+**Parameters**
+
+- `direction` — The vertical alignment.
+
+---
+
+<a id="View.word_wrap" />
+```gust
+def View.word_wrap(on: bool) -> View
+```
+
+Toggle word wrapping at the effective inner width (on by default).
+Requires width() to be set, otherwise wrapping has no effect. Pass
+`false` to truncate overflowing lines instead of wrapping them.
+
+**Parameters**
+
+- `on` — True to wrap overflow, false to truncate it.
+
+---
+
+<a id="View.inline" />
+```gust
+def View.inline(on: bool) -> View
+```
+
+Collapse the content to a single line by stripping newlines.
+
+**Parameters**
+
+- `on` — True to strip newlines into a single line.
+
+---
+
+<a id="View.tab_width" />
+```gust
+def View.tab_width(n: integer) -> View
+```
+
+Set tab expansion width. Pass 0 to remove tabs, -1 (default) to
+leave them unchanged, or a positive integer to expand to that many
+spaces.
+
+**Parameters**
+
+- `n` — Tab expansion width (0 = remove, -1 = unchanged, >0 = spaces).
+
+---
+
+<a id="View.bold" />
+```gust
+def View.bold(on: bool) -> View
+```
+
+Toggle bold text styling.
+
+**Parameters**
+
+- `on` — True to enable bold, false to disable it.
+
+---
+
+<a id="View.italic" />
+```gust
+def View.italic(on: bool) -> View
+```
+
+Toggle italic text styling.
+
+**Parameters**
+
+- `on` — True to enable italic, false to disable it.
+
+---
+
+<a id="View.underline" />
+```gust
+def View.underline(on: bool) -> View
+```
+
+Toggle underline text styling.
+
+**Parameters**
+
+- `on` — True to enable underline, false to disable it.
+
+---
+
+<a id="View.strikethrough" />
+```gust
+def View.strikethrough(on: bool) -> View
+```
+
+Toggle strikethrough text styling.
+
+**Parameters**
+
+- `on` — True to enable strikethrough, false to disable it.
+
+---
+
+<a id="View.dim" />
+```gust
+def View.dim(on: bool) -> View
+```
+
+Toggle dim text styling.
+
+**Parameters**
+
+- `on` — True to enable dim, false to disable it.
+
+---
+
+<a id="View.inverse" />
+```gust
+def View.inverse(on: bool) -> View
+```
+
+Toggle inverse (swapped foreground/background) styling.
+
+**Parameters**
+
+- `on` — True to enable inverse, false to disable it.
+
+---
+
+<a id="View.blink" />
+```gust
+def View.blink(on: bool) -> View
+```
+
+Toggle blink text styling.
+
+**Parameters**
+
+- `on` — True to enable blink, false to disable it.
+
+---
+
+<a id="View.has_no_style" />
+```gust
+def View.has_no_style() -> bool
+```
+
+True when no text styling is set — no foreground or background color
+and none of the bold, italic, dim, underline, inverse, blink, or
+strikethrough attributes enabled — so styling a character would leave it
+byte-for-byte identical to the raw text.
+
+---
+
+<a id="View.render" />
+```gust
+def View.render() -> string
+```
+
+Render the view to a string with ANSI escape codes for styling
+and Unicode box-drawing for borders.
+
+Pipeline:
+
+1. Tab expansion / inline stripping
+ 2. Determine inner content width
+ 3. Word wrap (if enabled)
+ 4. Align and pad each line to inner width
+ 5. Vertical padding rows
+ 6. Lock to inner_height with v_align
+ 7. Apply text styling + horizontal padding
+ 8. Apply borders (with optional title)
+ 9. Apply max_width / max_height truncation
+10. Apply margins
+
+**Raises**
+
+- `ValueError` — A foreground, background, or border color is not a recognized name, 0-255 index, or #hex.
+
+---
+
+<a id="View.build_sgr" />
+```gust
+def View.build_sgr() -> string
+```
+
+Build the leading SGR escape that opens the view's text styling.
+Returns "" when nothing is set so callers can skip the closer.
+
+**Raises**
+
+- `ValueError` — The foreground or background color is not a recognized name, 0-255 index, or #hex.
+
+## `Range`
+
+<a id="Range" />
+A half-open [start, end) range of visible columns to style.
+Used with style_ranges().
+
+```gust
+def Range
+
+    start: integer
+    end_col: integer
+    v: View
+
+end
+```
+
+**Fields**
+
+- `start: integer` — Inclusive start column (0-based visible index).
+- `end_col: integer` — Exclusive end column (0-based visible index).
+- `v: View` — The View whose styling is applied to this range.
+
+## `BorderChars`
+
+<a id="BorderChars" />
+All box-drawing characters for one border preset. The middle_* fields
+are T-junction connectors used by tables and split layouts.
+
+```gust
+def BorderChars
+
+    top_left: string
+    top_right: string
+    bottom_left: string
+    bottom_right: string
+    horizontal: string
+    vertical: string
+    middle_left: string
+    middle_right: string
+    middle_top: string
+    middle_bottom: string
+    middle: string
+
+end
+```
+
+**Fields**
+
+- `top_left: string` — Glyph for the top-left corner.
+- `top_right: string` — Glyph for the top-right corner.
+- `bottom_left: string` — Glyph for the bottom-left corner.
+- `bottom_right: string` — Glyph for the bottom-right corner.
+- `horizontal: string` — Glyph for horizontal edge runs.
+- `vertical: string` — Glyph for vertical edge runs.
+- `middle_left: string` — Left T-junction connector.
+- `middle_right: string` — Right T-junction connector.
+- `middle_top: string` — Top T-junction connector.
+- `middle_bottom: string` — Bottom T-junction connector.
+- `middle: string` — Cross (four-way) junction connector.
+
+## `App`
+
+<a id="App" />
+A full-screen terminal program driven by `run`. `update` advances the
+program's state one event at a time and returns `false` to stop the loop;
+`view` renders the whole current frame as a string.
+
+**Methods**
+
+<a id="App.update" />
+```gust
+def App.update(ev: Event) -> bool
+```
+
+---
+
+<a id="App.view" />
+```gust
+def App.view() -> string
+```
+
+## Functions
+
+<a id="cli.ui.read_key" />
+```gust
+def read_key() -> integer
+```
+
+Block until the next keypress on stdin and return its tagged code.
+Returns `KEY_NONE` on EOF or read error.
+
+<Note>
+Requires raw mode (the `run` loop installs it for you). When used
+outside a `run` loop, wrap reads in `raw_mode_enter()` /
+`raw_mode_leave()` to suppress line buffering and echo.
+</Note>
+
+---
+
+<a id="cli.ui.read_key_timeout" />
+```gust
+def read_key_timeout(timeout_ms: integer) -> integer
+```
+
+Return the next keypress, or `KEY_TIMEOUT` if none arrives within
+`timeout_ms` milliseconds. A negative timeout blocks indefinitely and
+behaves like `read_key()`. Returns `KEY_NONE` on EOF or read error and
+`KEY_RESIZE` when the terminal is resized while waiting.
+
+**Parameters**
+
+- `timeout_ms: integer` — Milliseconds to wait for a key; negative blocks forever.
+
+<Note>
+Requires raw mode.
+</Note>
+
+---
+
+<a id="cli.ui.terminal_size" />
+```gust
+def terminal_size() -> tuple[integer, integer]
+```
+
+Return `(columns, rows)` for the controlling terminal. Falls back
+to `(80, 24)` when stdout isn't a TTY or the ioctl fails.
+
+---
+
+<a id="cli.ui.is_printable" />
+```gust
+def is_printable(code: integer) -> bool
+```
+
+True for the printable ASCII range (space through tilde).
+
+**Parameters**
+
+- `code: integer` — A tagged keycode as returned by `read_key()`.
+
+---
+
+<a id="cli.ui.to_string" />
+```gust
+def to_string(code: integer) -> string
+```
+
+Render the printable byte for `code`, or `""` for special keys.
+Useful when accumulating typed text inside a key handler.
+
+**Parameters**
+
+- `code: integer` — A tagged keycode as returned by `read_key()`.
+
+---
+
+<a id="cli.ui.join_horizontal" />
+```gust
+def join_horizontal(blocks: list[string]) -> string
+```
+
+Place rendered blocks side-by-side, row by row. Each block is
+padded to its own widest visible line so shorter rows never crash
+into neighbours. Blocks of unequal height are bottom-padded with
+blanks.
+
+**Parameters**
+
+- `blocks: list[string]` — Rendered view strings to lay out left-to-right.
+
+**Examples**
+
+```gust
+result := cli.join_horizontal([left.render(), right.render()])
+```
+
+---
+
+<a id="cli.ui.join_horizontal_divided" />
+```gust
+def join_horizontal_divided(blocks: list[string], divider: string) -> string
+```
+
+Place rendered blocks side-by-side with `divider` inserted between
+each pair of adjacent blocks on every row. Useful for two-column
+layouts where you want a visible separator.
+
+When `divider` is "" this lays the blocks out flush (and `join_horizontal`
+is just this with `divider == ""`).
+
+**Parameters**
+
+- `blocks: list[string]` — Rendered view strings to lay out left-to-right.
+- `divider: string` — String inserted between each pair of adjacent blocks.
+
+**Examples**
+
+```gust
+inner := cli.join_horizontal_divided([left.render(), right.render()], "│")
+outer := cli.view(inner).border(cli.Border.rounded).border_title(" App ").render()
+```
+
+---
+
+<a id="cli.ui.join_vertical" />
+```gust
+def join_vertical(blocks: list[string], align: Align) -> string
+```
+
+Stack rendered blocks top-to-bottom. Every line is padded to the
+widest visible line across all blocks; `align` (`Align.left`,
+`Align.center`, `Align.right`) controls where the slack goes.
+
+**Parameters**
+
+- `blocks: list[string]` — Rendered view strings to stack top-to-bottom.
+- `align: Align` — Horizontal alignment of the padding.
+
+---
+
+<a id="cli.ui.place" />
+```gust
+def place(width: integer, height: integer, content: string) -> string
+```
+
+Center `content` inside a (`width` × `height`) box. Lines wider
+than `width` are truncated; the block is centered vertically with
+blank padding above and below. Useful for placing panels in a fixed
+viewport.
+
+**Parameters**
+
+- `width: integer` — Box width in visible columns.
+- `height: integer` — Box height in rows.
+- `content: string` — Multi-line string to center inside the box.
+
+---
+
+<a id="cli.ui.overlay" />
+```gust
+def overlay(
+    background: string,
+    foreground: string,
+    x: integer,
+    y: integer,
+) -> string
+```
+
+Paint `foreground` on top of `background` starting at column `x`,
+row `y` (both 0-indexed, in visible coordinates). The foreground
+replaces those cells of the background line-for-line. Out-of-range
+placements are clipped. Useful for modal dialogs layered over a base
+view.
+
+**Parameters**
+
+- `background: string` — Base multi-line string to paint onto.
+- `foreground: string` — Multi-line string painted over the background.
+- `x: integer` — 0-indexed visible column where the foreground starts.
+- `y: integer` — 0-indexed row where the foreground starts.
+
+---
+
+<a id="cli.ui.style_runes" />
+```gust
+def style_runes(
+    str: string,
+    indices: list[integer],
+    matched: View,
+    unmatched: View,
+) -> string
+```
+
+Apply `matched` style to the visible characters at the given
+`indices` (0-based) and `unmatched` style to all other visible
+characters. ANSI escape sequences in `str` are passed through
+unchanged; only printable codepoints count toward the index.
+
+**Parameters**
+
+- `str: string` — Source string whose visible characters are styled.
+- `indices: list[integer]` — 0-based visible-character positions to style as matched.
+- `matched: View` — View style applied to characters at `indices`.
+- `unmatched: View` — View style applied to all other visible characters.
+
+**Raises**
+
+- `ValueError` — A `matched` or `unmatched` view carries a color that is not a recognized name, 0-255 index, or #hex.
+
+**Examples**
+
+Highlight the 3rd and 5th characters red:
+```gust
+styled := cli.style_runes("Hello world", [2, 4],
+    cli.view("").foreground("red"),
+    cli.view(""))
+```
+
+---
+
+<a id="cli.ui.style_ranges" />
+```gust
+def style_ranges(str: string, ranges: list[Range]) -> string
+```
+
+Apply per-range View styles to `str`. Visible columns inside
+[range.start, range.end_col) are wrapped with that range's style.
+Overlapping ranges: last one in the list wins. Columns not covered
+by any range are passed through unstyled.
+
+**Parameters**
+
+- `str: string` — Source string whose visible columns are styled.
+- `ranges: list[Range]` — Column ranges to style; later entries win on overlap.
+
+**Raises**
+
+- `ValueError` — A range's view carries a color that is not a recognized name, 0-255 index, or #hex.
+
+**Examples**
+
+Make columns 6-11 bold cyan:
+```gust
+r := cli.make_range(6, 11, cli.view("").foreground("cyan").bold(true))
+result := cli.style_ranges("Hello world", [r])
+```
+
+---
+
+<a id="cli.ui.bullet_list" />
+```gust
+def bullet_list(raw_items: list[string]) -> BulletList
+```
+
+Create a bullet list from a list of plain strings.
+
+**Parameters**
+
+- `raw_items: list[string]` — The item texts, in display order.
+
+---
+
+<a id="cli.ui.numbered_list" />
+```gust
+def numbered_list(raw_items: list[string]) -> BulletList
+```
+
+Create an Arabic-numbered list (1., 2., 3., …).
+
+**Parameters**
+
+- `raw_items: list[string]` — The item texts, in display order.
+
+---
+
+<a id="cli.ui.alpha_list" />
+```gust
+def alpha_list(raw_items: list[string]) -> BulletList
+```
+
+Create a lowercase-letter list (a., b., c., …).
+
+**Parameters**
+
+- `raw_items: list[string]` — The item texts, in display order.
+
+---
+
+<a id="cli.ui.text" />
+```gust
+def text(message: string) -> TextQuestion
+```
+
+Prompt for a free-form string.
+
+**Parameters**
+
+- `message: string` — The prompt text shown to the user.
+
+---
+
+<a id="cli.ui.path" />
+```gust
+def path(message: string) -> TextQuestion
+```
+
+Prompt for a filesystem path.
+
+**Parameters**
+
+- `message: string` — The prompt text shown to the user.
+
+---
+
+<a id="cli.ui.password" />
+```gust
+def password(message: string) -> TextQuestion
+```
+
+Prompt for a password. Interactive terminals mask input with `*`.
+
+**Parameters**
+
+- `message: string` — The prompt text shown to the user.
+
+---
+
+<a id="cli.ui.confirm" />
+```gust
+def confirm(message: string) -> ConfirmQuestion
+```
+
+Prompt for a yes/no answer. Defaults to yes.
+
+**Parameters**
+
+- `message: string` — The prompt text shown to the user.
+
+---
+
+<a id="cli.ui.select" />
+```gust
+def select(message: string, choices: list[string]) -> SelectQuestion
+```
+
+Prompt for one value from `choices` using a styled numbered list.
+
+**Parameters**
+
+- `message: string` — The prompt text shown to the user.
+- `choices: list[string]` — The selectable values, in display order.
+
+---
+
+<a id="cli.ui.autocomplete" />
+```gust
+def autocomplete(message: string, choices: list[string]) -> SelectQuestion
+```
+
+Prompt for one value from `choices`.
+
+Renders the available choices and accepts either a number or an exact
+value. Shares `SelectQuestion`, so callers keep the same `.default(...)`,
+`.skip_if(...)`, and `.ask()` chain.
+
+**Parameters**
+
+- `message: string` — The prompt text shown to the user.
+- `choices: list[string]` — The selectable values, in display order.
+
+---
+
+<a id="cli.ui.rawselect" />
+```gust
+def rawselect(message: string, choices: list[string]) -> SelectQuestion
+```
+
+Prompt for one value from `choices`. Equivalent to `select`.
+
+**Parameters**
+
+- `message: string` — The prompt text shown to the user.
+- `choices: list[string]` — The selectable values, in display order.
+
+---
+
+<a id="cli.ui.checkbox" />
+```gust
+def checkbox(message: string, choices: list[string]) -> CheckboxQuestion
+```
+
+Prompt for zero or more values from `choices`.
+
+**Parameters**
+
+- `message: string` — The prompt text shown to the user.
+- `choices: list[string]` — The selectable values, in display order.
+
+---
+
+<a id="cli.ui.press_any_key_to_continue" />
+```gust
+def press_any_key_to_continue(message: string) -> PressAnyKeyQuestion
+```
+
+Pause until the user presses Enter.
+
+**Parameters**
+
+- `message: string` — The prompt text shown to the user.
+
+---
+
+<a id="cli.ui.run_config" />
+```gust
+def run_config() -> RunConfig
+```
+
+A `RunConfig` with the common defaults: alternate screen on, cursor
+hidden, and no tick timer (the loop blocks for input). Override `tick_ms`
+to drive animation or background polling.
+
+---
+
+<a id="cli.ui.run" />
+```gust
+def run(app: App, config: RunConfig) -> none
+```
+
+Run `app`'s event loop until `update` returns `false` or input ends.
+
+Installs raw mode and the configured display preferences, then repeatedly
+renders `app.view()`, reads the next event, and feeds it to `app.update`.
+`Tick` events fire every `config.tick_ms` milliseconds when that is
+positive. The terminal is always restored before returning, including on a
+raised error.
+
+**Parameters**
+
+- `app: App` — The program whose `update`/`view` drive the loop.
+- `config: RunConfig` — Display and timing preferences.
+
+---
+
+<a id="cli.ui.styled" />
+```gust
+def styled(kind: string, text: string) -> string
+```
+
+Return `text` styled as a prompt token.
+
+Supported kinds: `qmark`, `question`, `answer`, `instruction`,
+`pointer`, `selected`, `error`, and `text`.
+
+**Parameters**
+
+- `kind: string` — Token name selecting the color/weight; unknown kinds pass through.
+- `text: string` — The text to wrap in the styling codes.
+
+---
+
+<a id="cli.ui.print_formatted_text" />
+```gust
+def print_formatted_text(kind: string, text: string) -> none
+```
+
+Print styled terminal text using the same token names as prompts.
+
+**Parameters**
+
+- `kind: string` — Token name selecting the color/weight; unknown kinds pass through.
+- `text: string` — The text to style and print.
+
+---
+
+<a id="cli.ui.table" />
+```gust
+def table() -> Table
+```
+
+Create an empty table with rounded border, all outer edges on,
+header divider on, column dividers on, and row dividers off.
+
+---
+
+<a id="cli.ui.ui_app" />
+```gust
+def ui_app(title: string, use_alt_screen: bool, show_cursor: bool) -> CLIUIApp
+```
+
+Create a fresh `CLIUIApp` from the given display flags. The title
+is informational; pass `""` to skip.
+
+**Parameters**
+
+- `title: string` — Informational app title; `""` to skip.
+- `use_alt_screen: bool` — When true, `setup` switches to the alternate screen buffer.
+- `show_cursor: bool` — When false, `setup` hides the terminal cursor.
+
+---
+
+<a id="cli.ui.setup" />
+```gust
+def setup(app: CLIUIApp) -> none
+```
+
+Install raw mode and apply the app's display preferences. Pair
+with `teardown(app)` to restore the terminal on exit.
+
+**Parameters**
+
+- `app: CLIUIApp` — The TUI configuration whose display preferences to apply.
+
+<Warning>
+Raw mode disables line buffering and echo for the whole terminal.
+Always call `teardown(app)`, including on an error path, or the
+terminal is left unusable after the program exits.
+</Warning>
+
+---
+
+<a id="cli.ui.teardown" />
+```gust
+def teardown(app: CLIUIApp) -> none
+```
+
+Restore the terminal: leave raw mode, show the cursor, drop the
+alt-screen if it was used. Safe to call twice; the underlying
+primitives are idempotent.
+
+**Parameters**
+
+- `app: CLIUIApp` — The TUI configuration that was passed to `setup`.
+
+---
+
+<a id="cli.ui.clear_screen" />
+```gust
+def clear_screen() -> none
+```
+
+Clear the screen and home the cursor. Useful between manual
+frame paints inside your loop.
+
+---
+
+<a id="cli.ui.move_cursor" />
+```gust
+def move_cursor(row: integer, col: integer) -> none
+```
+
+Move the cursor to (row, col). 1-based.
+
+**Parameters**
+
+- `row: integer` — 1-based target row.
+- `col: integer` — 1-based target column.
+
+---
+
+<a id="cli.ui.hide_cursor" />
+```gust
+def hide_cursor() -> none
+```
+
+Hide the terminal cursor.
+
+---
+
+<a id="cli.ui.show_cursor" />
+```gust
+def show_cursor() -> none
+```
+
+Show the terminal cursor.
+
+---
+
+<a id="cli.ui.enter_alt_screen" />
+```gust
+def enter_alt_screen() -> none
+```
+
+Switch to the alternate screen buffer. Pair with `leave_alt_screen()`.
+
+---
+
+<a id="cli.ui.leave_alt_screen" />
+```gust
+def leave_alt_screen() -> none
+```
+
+Return from the alternate screen buffer to the primary screen.
+
+---
+
+<a id="cli.ui.raw_mode_enter" />
+```gust
+def raw_mode_enter() -> bool
+```
+
+Install raw mode on stdin. Returns true on success. Idempotent.
+
+---
+
+<a id="cli.ui.raw_mode_leave" />
+```gust
+def raw_mode_leave() -> none
+```
+
+Restore the captured termios settings.
+
+---
+
+<a id="cli.ui.write_frame" />
+```gust
+def write_frame(s: string) -> none
+```
+
+Write `s` to stdout without an added trailing newline. Use this
+inside your loop instead of `print` so the rendered frame controls
+its own line layout.
+
+**Parameters**
+
+- `s: string` — The rendered frame text to write verbatim.
+
+---
+
+<a id="cli.ui.make_range" />
+```gust
+def make_range(start: integer, end_col: integer, v: View) -> Range
+```
+
+Construct a Range. `start` and `end_col` are visible-column
+indices (0-based); `end_col` is exclusive.
+
+**Parameters**
+
+- `start: integer` — Inclusive start column (0-based visible index).
+- `end_col: integer` — Exclusive end column (0-based visible index).
+- `v: View` — The View whose styling applies to the range.
+
+---
+
+<a id="cli.ui.view" />
+```gust
+def view(content: string) -> View
+```
+
+Create a fresh `View` wrapping `content`. All styling defaults
+to off. Chain builders to decorate, then call `.render()`.
+
+**Parameters**
+
+- `content: string` — The body text the view wraps.
+
+---
+
+<a id="cli.ui.border_chars" />
+```gust
+def border_chars(style: string) -> BorderChars
+```
+
+Return the full set of box-drawing characters for a border preset.
+The Middle* fields are T-junction connectors used by tables and
+multi-column layouts.
+
+**Parameters**
+
+- `style: string` — The border preset name to look up.
+
+---
+
+<a id="cli.ui.word_wrap_text" />
+```gust
+def word_wrap_text(text: string, width: integer) -> string
+```
+
+Wrap text so no visible line exceeds `width` columns. Preserves
+existing newlines; each line is wrapped independently at word
+boundaries (spaces). Long words that exceed `width` alone are not
+broken.
+
+**Parameters**
+
+- `text: string` — The text to wrap (may contain newlines).
+- `width: integer` — The maximum visible width per line in columns.
+
+---
+
+<a id="cli.ui.hard_wrap_segment" />
+```gust
+def hard_wrap_segment(s: string, width: integer) -> list[string]
+```
+
+Break `s` into pieces no wider than `width` visible columns, preserving
+ANSI escape sequences verbatim and never splitting a multi-byte (or
+double-width) character. Used to hard-break a single word that is itself
+longer than the wrap width, so it can't overflow.
+
+**Parameters**
+
+- `s: string` — The string to break into width-bounded pieces.
+- `width: integer` — The maximum visible width per piece in columns.
+
+---
+
+<a id="cli.ui.wrap_line" />
+```gust
+def wrap_line(line: string, width: integer) -> string
+```
+
+Wrap a single line at word boundaries. A word longer than `width` on
+its own is hard-broken (character by character) so it wraps instead of
+overflowing.
+
+**Parameters**
+
+- `line: string` — The single line to wrap (no embedded newlines).
+- `width: integer` — The maximum visible width per line in columns.
+
+---
+
+<a id="cli.ui.skip_escape_at" />
+```gust
+def skip_escape_at(s: string, i: integer) -> integer
+```
+
+Return the byte index just past the terminal escape sequence starting
+at `i`. When `s[i]` is not the start of a complete escape sequence, `i` is
+returned unchanged so the caller can process the byte as normal content.
+
+Recognizes CSI (ESC [ … final byte 0x40–0x7E) and OSC (ESC ] … BEL or
+ESC \) sequences; any other two-byte ESC pair is skipped whole.
+
+**Parameters**
+
+- `s: string` — The string being scanned.
+- `i: integer` — The byte offset to inspect.
+
+---
+
+<a id="cli.ui.utf8_decode_at" />
+```gust
+def utf8_decode_at(s: string, i: integer) -> tuple[integer, integer]
+```
+
+Decode the UTF-8 sequence starting at byte offset `i` in `s`.
+Returns (code_point, bytes_consumed). Falls back to (byte_value, 1)
+for invalid sequences.
+
+**Parameters**
+
+- `s: string` — The string to decode from.
+- `i: integer` — The byte offset at which the UTF-8 sequence starts.
+
+---
+
+<a id="cli.ui.cp_display_width" />
+```gust
+def cp_display_width(cp: integer) -> integer
+```
+
+Return the terminal display width of Unicode code point `cp`.
+0 = zero-width / combining,  1 = narrow (most Latin/symbols),
+2 = wide (CJK, emoji, fullwidth).
+
+**Parameters**
+
+- `cp: integer` — The Unicode code point to measure.
+
+---
+
+<a id="cli.ui.visible_width" />
+```gust
+def visible_width(s: string) -> integer
+```
+
+Terminal display width of `s`: counts visible columns, skipping
+ANSI CSI/OSC escape sequences and correctly handling multi-byte
+UTF-8 and East Asian wide characters (which count as 2 columns).
+
+**Parameters**
+
+- `s: string` — The string to measure.
+
+---
+
+<a id="cli.ui.truncate_visible" />
+```gust
+def truncate_visible(s: string, target: integer) -> string
+```
+
+Keep the first `target` visible columns of `s`, preserving any
+ANSI escape sequences encountered. Wide characters that would
+straddle the boundary are dropped entirely.
+
+**Parameters**
+
+- `s: string` — The string to truncate.
+- `target: integer` — The number of visible columns to keep.
+
+---
+
+<a id="cli.ui.pad_to_width" />
+```gust
+def pad_to_width(
+    s: string,
+    current_width: integer,
+    target: integer,
+    align: string,
+) -> string
+```
+
+Pad `s` (whose visible width is `current_width`) with spaces to
+reach `target` visible columns. `align` controls where the padding
+goes: "left" (default), "center", or "right".
+
+**Parameters**
+
+- `s: string` — The string to pad.
+- `current_width: integer` — The visible width of `s` in columns.
+- `target: integer` — The visible width to pad up to.
+- `align: string` — Where the padding goes ("left", "center", or "right").
+
+---
+
+<a id="cli.ui.fg_code" />
+```gust
+def fg_code(color: string) -> string
+```
+
+SGR opener for a single foreground color.
+
+**Parameters**
+
+- `color: string` — The foreground color value to encode.
+
+**Raises**
+
+- `ValueError` — The color is not a recognized name, 0-255 index, or #hex.
+
+---
+
+<a id="cli.ui.is_color_index" />
+```gust
+def is_color_index(color: string) -> bool
+```
+
+True if `color` is a valid 0-255 256-color index string (all digits,
+in range). Used to reject garbage color names before they get emitted as
+a malformed SGR parameter.
+
+**Parameters**
+
+- `color: string` — The candidate color string to test.
+
+---
+
+<a id="cli.ui.fg_params" />
+```gust
+def fg_params(color: string) -> string
+```
+
+Map a color value to a foreground SGR parameter string.
+Accepts named colors, 256-color indices ("214"), or hex ("#ff5733").
+
+**Parameters**
+
+- `color: string` — The color value to map (name, index, or hex).
+
+**Raises**
+
+- `ValueError` — The color is not a recognized name, 0-255 index, or #hex.
+
+---
+
+<a id="cli.ui.bg_params" />
+```gust
+def bg_params(color: string) -> string
+```
+
+Map a color value to a background SGR parameter string, the background
+counterpart of `fg_params`.
+
+**Parameters**
+
+- `color: string` — The color value to map (name, index, or hex).
+
+**Raises**
+
+- `ValueError` — The color is not a recognized name, 0-255 index, or #hex.
+
+---
+
+<a id="cli.ui.hex_to_rgb" />
+```gust
+def hex_to_rgb(hex: string) -> tuple[integer, integer, integer]
+```
+
+Parse "#RRGGBB" or "#RGB" into (r, g, b) 0-255 integers.
+
+**Parameters**
+
+- `hex: string` — The hex color string (with or without leading '#').
+
+**Raises**
+
+- `ValueError` — The string is not a valid #RGB or #RRGGBB hex color.

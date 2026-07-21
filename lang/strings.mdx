@@ -1,0 +1,315 @@
+---
+title: Strings
+description: Gust string literals, escapes, f-strings, slicing, and the full string operator and method surface
+---
+
+A `string` is an immutable, UTF-8 sequence of characters. Every operation that
+would change a string returns a new one instead of mutating the receiver, so a
+string value never changes underneath you.
+
+Gust has no separate character type. A single character is just a
+length-one string, so indexing, iteration, and `char_at` all yield `string`.
+
+## Literals
+
+Gust offers several literal forms. Each opens a distinct kind of string.
+
+```gust
+plain   := "hello"                 # single-line
+escaped := "tab\there\nand a quote \""
+multi   := """
+first line
+  indented, kept verbatim
+"""
+interp  := f"Hello, {name}!"       # f-string with interpolation
+raw     := r"\d+\s*"               # raw: backslashes stay literal
+```
+
+### Single-line strings
+
+A `"..."` literal holds one physical line. A literal newline inside it is an
+error — the compiler tells you to switch to a triple-quoted string. Use `\n`
+when you want a newline character.
+
+### Triple-quoted strings
+
+A `"""..."""` literal spans multiple physical lines. Content starts immediately
+after the opening delimiter (no leading newline is implied), and every line
+break and every space of indentation is preserved exactly as written.
+
+```gust
+block := """line one
+  indented two
+line three"""
+# block.split("\n").length == 3, and line 2 is "  indented two"
+```
+
+Inside a triple-quoted string only two escapes are recognized: `\"` (a literal
+quote that does not close the string) and `\\` (a literal backslash). Every
+other backslash sequence is kept verbatim, which lets you embed regex, Windows
+paths, or code samples without doubling anything.
+
+### Raw strings
+
+An `r"..."` literal treats backslashes as ordinary characters. A backslash
+before any character — including `"` — passes both characters through
+unchanged, and only an unescaped `"` ends the literal. Raw strings are the
+natural way to write regex patterns.
+
+```gust
+pattern := r"\d+\n"    # the 4-char string: backslash, d, plus, backslash, n
+```
+
+Raw strings are single-line and are not combinable with the `f` prefix.
+
+### Byte literals
+
+A `b"..."` literal produces a `bytes` value, not a `string`. Escapes are
+decoded eagerly, `\xNN` encodes a raw octet, and embedded NUL bytes survive.
+Reach for `bytes` whenever you need raw octets rather than text. See
+[bytes](/builtins/bytes).
+
+## Escapes
+
+Single-line and f-string bodies recognize these escapes:
+
+| Escape | Meaning |
+| --- | --- |
+| `\n` | newline |
+| `\t` | tab |
+| `\r` | carriage return |
+| `\0` | NUL byte |
+| `\"` | double quote |
+| `\\` | backslash |
+| `\xNN` | one byte from a two-digit hex code |
+| `\{` `\}` | literal braces (f-strings only) |
+
+An unrecognized escape drops the backslash and keeps the following character —
+`"a\db"` becomes `"adb"` — and the compiler raises a `W0603` warning
+suggesting you write `\\d` if a literal backslash was intended. Triple-quoted
+and raw strings do not decode these escapes; see their sections above.
+
+## F-strings
+
+An f-string, written `f"..."`, interpolates the value of any expression
+enclosed in `{...}`. A triple-quoted f-string, `f"""..."""`, does the same
+across multiple lines.
+
+```gust
+name := "ada"
+age  := 29
+print(f"{name} is {age}")          # ada is 29
+print(f"next year: {age + 1}")     # any expression works
+print(f"{name.uppercase()}")       # method calls
+```
+
+### What can go in a hole
+
+Each `{...}` holds a full expression, not just a variable — arithmetic,
+comparisons, method and function calls, indexing, ternaries, and collection
+literals all work. Braces nest, so a dict or list literal inside a hole is
+parsed correctly.
+
+```gust
+print(f"sum={n + 3}")
+print(f"first={items[0]}")
+print(f"nested={[1, 2, 3]}")
+print(f"choice={\"yes\" if ok else \"no\"}")
+```
+
+### How values render
+
+Each value is rendered by its own type:
+
+- Integers, floats, and booleans render as themselves (`3.0` prints as `3.0`,
+  `true` as `true`).
+- `none` renders as `none`.
+- Lists and dicts render as their repr, for example `[1, 2, 3]` or
+  `{"a": 1}`, recursing into nested collections.
+- Tuples render as `(a, b)`.
+- A struct renders through its `__string` method — the synthesized default, or
+  the one you define.
+
+```gust
+def Point
+    x: integer
+    y: integer
+end
+
+def Point.__string() -> string
+    return f"({x},{y})"
+end
+
+p := Point(x: 1, y: 2)
+print(f"{p}")                      # (1,2)
+```
+
+There is no format-specifier or conversion syntax inside a hole — `{x:.2f}`
+and `{x!r}` are not part of the language. Format a value first (with a method,
+a cast, or a helper) and interpolate the result.
+
+### Literal braces
+
+Escape a brace with `\{` or `\}` to include it in the output rather than
+opening an interpolation. A literal `%` needs no escaping.
+
+```gust
+print(f"a set literal: \{1, 2, 3\}")   # a set literal: {1, 2, 3}
+print(f"progress: 50%")                # progress: 50%
+```
+
+## Concatenation
+
+The `+` operator joins two strings. Both operands must be strings — there is no
+implicit conversion — so cast a number with `as string` before joining it.
+
+```gust
+greeting := "Hello, " + name + "!"
+label := "item " + (n as string)
+```
+
+Concatenating a non-string is a compile error (`cannot use '+' with string and
+integer`). For assembling many pieces, prefer an f-string or `join` over
+repeated `+`; see the performance note below.
+
+## Comparison and membership
+
+Strings compare by value, and the ordering operators compare lexicographically
+by byte.
+
+```gust
+"abc" == "abc"      # true — compares contents, not identity
+"abc" != "abd"      # true
+"apple" < "banana"  # true
+"Zebra" < "apple"   # true — uppercase sorts before lowercase
+```
+
+Use `in` and `not in` to test for a substring:
+
+```gust
+"ell" in "hello"        # true
+"xyz" not in "hello"    # true
+```
+
+## Indexing, slicing, and characters
+
+Index a string with `s[i]` to get the one-character string at position `i`.
+Negative indices count from the end.
+
+```gust
+s := "hello"
+s[0]     # "h"
+s[-1]    # "o"
+```
+
+Slice with `s[start:stop]` to get the substring from `start` (inclusive) to
+`stop` (exclusive). Either bound may be omitted: leave off `start` to begin at
+0, leave off `stop` to run to the end.
+
+```gust
+s[1:3]   # "el"
+s[1:]    # "ello"
+s[:3]    # "hel"
+```
+
+The `substring(start, stop)` method is the method-call equivalent of the
+`[start:stop]` slice.
+
+Access individual characters and bytes through methods:
+
+- `s.char_at(i)` returns the one-character string at index `i` (the same as
+  `s[i]`).
+- `s.byte_at(i)` returns the raw byte value `0-255` at index `i`, without UTF-8
+  interpretation — useful for scanning byte-literal payloads.
+
+Iterate a string directly to visit each character:
+
+```gust
+for ch in "abc"
+    print(ch)          # a, then b, then c
+end
+```
+
+Build a string from a code point with `chr(code)`, which returns the
+one-character string for the given byte value.
+
+```gust
+chr(65)    # "A"
+```
+
+## Casting
+
+Casts convert between strings and other primitives with `as`:
+
+```gust
+"42" as integer     # 42   — raises ValueError on non-numeric input
+"3.14" as float     # 3.14 — raises ValueError on non-numeric input
+"" as bool          # false — empty is false, any other string is true
+42 as string        # "42"
+3.14 as string      # "3.14"
+```
+
+Parsing casts (`as integer`, `as float`) raise a `ValueError` when the string
+is not a valid number, so guard untrusted input.
+
+## Docstrings
+
+A triple-quoted string placed as the first item in a module, or immediately
+after a `def`, is a docstring — the documentation for that declaration. Because
+it is an ordinary triple-quoted literal, indentation and line breaks are
+preserved, and tooling reads it to generate reference docs.
+
+```gust
+def area(width: integer, height: integer) -> integer
+    """Return the area of a rectangle.
+
+    Args:
+        width: The horizontal extent.
+        height: The vertical extent.
+    """
+    return width * height
+end
+```
+
+Document declarations with docstrings rather than `#` comments. Comments are
+for the reasoning behind non-obvious code inside a body.
+
+## Runtime note on NUL
+
+Gust strings are C-string-backed, so `chr(0)` cannot preserve an embedded NUL
+byte and returns the empty string. Use `bytes` for work that must carry raw
+octets, including NUL. See [bytes](/builtins/bytes).
+
+## Methods
+
+Every `string` method — case folding, searching, trimming and stripping,
+padding, splitting and joining, replacement, character-class checks, and
+base64/hex codecs — is listed in the
+[string builtins reference](/builtins/string), generated from the standard
+library source.
+
+Common examples:
+
+```gust
+"Hello".uppercase()             # "HELLO"
+"  hi  ".trim()                 # "hi"
+"a,b,c".split(",")              # ["a", "b", "c"]
+", ".join(["a", "b", "c"])      # "a, b, c"
+"na".repeat(2)                  # "nana"
+"hello".replace("l", "L")       # "heLLo"
+"hello".index_of("l")           # 2
+```
+
+## Performance note
+
+Because strings are immutable, `s = s + x` in a tight loop allocates a fresh
+copy every iteration — O(n²) work overall. For hot paths, collect the pieces in
+a `list[string]` and `join` once:
+
+```gust
+parts: list[string] = []
+for row in rows
+    parts.append(format_row(row))
+end
+out := "\n".join(parts)
+```

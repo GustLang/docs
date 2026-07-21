@@ -1,0 +1,150 @@
+---
+title: Formatter rules (F)
+description: "The gust format passes, grouped by category."
+---
+
+`F###` codes are the passes `gust format` applies. Every pass rewrites source in place except `F018`, which only warns.
+
+## spacing
+
+### F001 — operator-spacing
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Spaces around all binary operators (`:=`, `==`, `->`, `+`, …).
+
+### F002 — colon-comma-spacing
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Space after `:` and `,`; no space before either.
+
+### F003 — bracket-spacing
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+No spaces just inside `(`, `[`, `{` or just before `)`, `]`, `}`.
+
+## indentation
+
+### F004 — indentation
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Re-indents every line using the configured indent string (default 4 spaces).
+
+## blank-lines
+
+### F005 — toplevel-blank-lines
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Exactly two blank lines before every top-level definition; `use` lines stay tight.
+
+### F006 — struct-blank-lines
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+One blank line after a struct opener and before its `end`; none between fields.
+
+### F007 — sum-type-blank-lines
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Struct blank-line convention applied to sum-type `enum` blocks.
+
+### F008 — enum-blank-lines
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Exactly one blank line before the `end` of an `enum` / `auto_enum`.
+
+## style
+
+### F009 — expression-collapsing
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Collapses a multi-line expression to one line when the result fits `line_width`.
+
+### F010 — magic-trailing-comma
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+A trailing comma on the last item opts an expression out of collapsing.
+
+### F011 — trailing-comma
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Adds a trailing comma to the last item of a multi-line `list` / `dict` literal.
+
+### F016 — trailing-whitespace
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Strips trailing spaces and tabs from every line.
+
+### F017 — trailing-blank-lines
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Removes blank lines at the end of the file; ends with one newline.
+
+### F018 — line-length
+
+**Severity:** warning · **Autofix:** no
+
+Warns when a line still exceeds `line_width` (default 90) after long-line splitting (`F022`); such a line has no bracketed group to split at, so shorten it by hand.
+
+### F021 — docstring-closer-split
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Moves the closing `"""` of a multi-line docstring onto its own line, aligned with the opening quotes.
+
+### F022 — long-line-split
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Splits a line longer than `line_width` at a bracketed group (def signatures, call arguments, collection literals), one item per line with a trailing comma.
+
+## imports
+
+### F012 — import-sort
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Sorts a run of single-line `use` imports case-insensitively by package.
+
+### F013 — import-section-separation
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Splits stdlib imports from project-local imports with a blank line.
+
+### F014 — import-item-sort
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Sorts the names in a `use A, B from pkg` line (PascalCase before snake_case).
+
+### F015 — import-expansion
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Expands a too-long `use A, B, C from pkg` line to parenthesized multi-line form.
+
+### F019 — use-paren-collapse
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Flattens a single-line `use (A, B) from pkg` back to `use A, B from pkg`.
+
+### F020 — import-combine
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Merges single-line `use … from pkg` statements that share a source package.
+
+

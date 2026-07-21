@@ -1,0 +1,433 @@
+---
+title: Collections
+description: Lists, dicts, and tuples in Gust — literals, indexing, slicing, comprehensions, iteration, and heterogeneous Any-slot collections
+---
+
+Gust has three built-in collection types: the growable sequence `list[T]`, the
+hash map `dict[K, V]`, and the fixed-length heterogeneous `tuple`. Each has a
+literal form, works with the `[]` index operator, and iterates directly in a
+`for` loop.
+
+## Lists — `list[T]`
+
+A homogeneous, dynamically sized sequence. Every element has the same type `T`.
+
+```gust
+nums: list[integer] = [3, 1, 4, 1, 5, 9]
+nums.append(2)
+print(nums.length)     # 7
+print(nums[0])         # 3
+nums[0] = 99
+```
+
+An empty literal carries no element type on its own, so it needs an annotation:
+
+```gust
+items: list[integer] = []   # ok — the annotation supplies T
+items := []                 # error: cannot infer element type
+```
+
+Lists nest to any depth. A `list[list[integer]]` is a grid, indexed with
+chained brackets:
+
+```gust
+grid: list[list[integer]] = [[1, 2], [3, 4], [5, 6]]
+print(grid[1][1])      # 4
+print(grid.length)     # 3
+```
+
+### Indexing
+
+Index with `[i]`, both to read and to assign. Indices are zero-based, and
+negative indices count from the end — `-1` is the last element:
+
+```gust
+xs: list[integer] = [10, 20, 30]
+print(xs[0])           # 10
+print(xs[-1])          # 30    — last
+print(xs[-3])          # 10    — first
+xs[-1] = 99            # negative write
+print(xs[2])           # 99
+```
+
+An out-of-range index raises a catchable `IndexError` rather than reading
+garbage:
+
+```gust
+xs: list[integer] = [10, 20, 30]
+try
+    _ := xs[99]
+catch IndexError as e
+    print("out of range")
+end
+```
+
+### Membership and concatenation
+
+Test membership with `in` and its negation `not in`. Join two lists with `+`,
+which returns a new list:
+
+```gust
+xs: list[integer] = [1, 2, 3]
+print(3 in xs)         # true
+print(99 not in xs)    # true
+
+combined := [1, 2] + [3, 4]
+print(combined.length) # 4
+```
+
+### `list[T]` methods
+
+The full `list[T]` API — `append`, `insert`, `pop`, `pop_at`, `extend`,
+`delete`, `clear`, `sort`, `reverse`, `slice`, `copy`, `index_of`, `count`,
+`join`, and the `length` field — is documented in the
+[Builtins reference](/builtins/list).
+
+### Slicing
+
+Lists support half-open slices with `[start:end]`, returning a new list. The
+element at `start` is included; the element at `end` is not. Either bound may be
+omitted, and either may be negative:
+
+```gust
+nums: list[integer] = [0, 1, 2, 3, 4, 5]
+print(nums[1:4])         # [1, 2, 3]
+print(nums[:3])          # [0, 1, 2]   — start defaults to 0
+print(nums[3:])          # [3, 4, 5]   — end defaults to length
+print(nums[:])           # full copy
+print(nums[-3:])         # [3, 4, 5]   — last three
+print(nums[:-2])         # [0, 1, 2, 3]
+print(nums[1:-1])        # [1, 2, 3, 4]
+```
+
+Out-of-range bounds clamp to `[0, length]`, so slicing never raises
+`IndexError`. Slices carry no step — `[start:end:step]` is not supported; use a
+comprehension with a filter to skip elements.
+
+A slice on the left of `=` replaces that range in place with the elements of
+another list:
+
+```gust
+xs: list[integer] = [0, 1, 2, 3]
+xs[1:3] = [88, 89]
+print(xs[1])             # 88
+print(xs[2])             # 89
+```
+
+Strings slice with the same `[start:end]` syntax, including negative bounds,
+and return a new string:
+
+```gust
+s := "hello"
+print(s[1:4])            # "ell"
+print(s[-2:])            # "lo"
+```
+
+### List comprehensions
+
+Build a new list from an existing iterable with an inline expression:
+
+```gust
+squares := [x * x for x in range(5)]
+# [0, 1, 4, 9, 16]
+
+evens := [x for x in nums if x % 2 == 0]
+# [0, 2, 4]
+```
+
+The shape is `[<expr> for <var> in <iterable>]` with an optional
+`if <filter>` at the end. The body may call methods or build tuples — any
+expression that produces a value:
+
+```gust
+names := ["alice", "bob", "carol"]
+upper := [n.uppercase() for n in names]
+# ["ALICE", "BOB", "CAROL"]
+```
+
+Multiple `for` clauses give nested iteration, and multiple `if` filters chain;
+clauses apply left to right:
+
+```gust
+pairs := [(x, y) for x in range(3) for y in range(3) if x != y]
+```
+
+Comprehensions run sequentially. The body must produce a value — a comprehension
+whose body has type `none` is rejected. Use a plain `for` loop for side effects.
+
+### Iterating a list
+
+A `for` loop walks the elements directly:
+
+```gust
+for s in servers
+    process(s)
+end
+```
+
+When the element type is a tuple, unpack it into named variables in the loop
+header:
+
+```gust
+pairs: list[tuple[integer, string]] = [(1, "a"), (2, "b"), (3, "c")]
+for n, label in pairs
+    print(f"{n}: {label}")
+end
+```
+
+To walk elements with their index, iterate `range(list.length)`:
+
+```gust
+for i in range(names.length)
+    print(f"{i}: {names[i]}")
+end
+```
+
+Iteration is sequential by default. To run each iteration on its own thread, opt
+in with `for!`. See [Concurrency](/lang/concurrency).
+
+---
+
+## Dicts — `dict[K, V]`
+
+A hash map from keys of type `K` to values of type `V`. The key type may be
+`string` or `integer`; the value type is any type.
+
+```gust
+status: dict[string, string] = {
+    "web": "online",
+    "db":  "offline",
+}
+
+status["cache"] = "online"       # insert a new key
+status["web"] = "degraded"       # overwrite an existing key
+print(status.length)             # 3
+```
+
+Integer keys work the same way:
+
+```gust
+codes: dict[integer, string] = {1: "a", 2: "b", 3: "c"}
+codes[4] = "d"
+print(codes[2])                  # "b"
+```
+
+An empty literal needs an annotation to supply the key and value types:
+
+```gust
+scores: dict[string, integer] = {}   # ok
+scores := {}                         # error: cannot infer types
+```
+
+Values may be any type, including nested collections:
+
+```gust
+groups: dict[string, list[integer]] = {"evens": [2, 4, 6], "odds": [1, 3, 5]}
+print(groups["evens"][1])        # 4
+```
+
+### Reading, membership, and `get`
+
+Indexing with `[key]` returns the value. A missing key is a fatal runtime error,
+so use `in` to test presence or `get` to read safely:
+
+```gust
+v := status["web"]               # fatal error if "web" is absent
+print("web" in status)           # true
+print("nope" not in status)      # true
+```
+
+`get(key)` returns an optional `V | none` — `none` when the key is absent.
+Narrowing the result with `is not none` unwraps it to the plain value, so the
+non-none branch works with `V` directly:
+
+```gust
+scores: dict[string, integer] = {"alice": 90}
+g := scores.get("alice")
+if g is not none
+    print(g + 1)                 # 91 — plain integer arithmetic
+end
+print(scores.get("eve") is none) # true
+```
+
+### `dict[K, V]` methods
+
+The full `dict[K, V]` API — `get`, `delete`, `contains`, `clear`, `copy`,
+`merge`, and the `length` field — is documented in the
+[Builtins reference](/builtins/dict). `delete(key)` returns a `bool` reporting
+whether the key was present; `merge(other)` overwrites matching keys and adds
+new ones.
+
+### Dict comprehensions
+
+Build a dict from an iterable with a `key: value` body:
+
+```gust
+squares: dict[integer, integer] = {n: n * n for n in range(5)}
+# {0: 0, 1: 1, 2: 4, 3: 9, 4: 16}
+```
+
+The shape is `{<key>: <value> for <var> in <iterable>}` with an optional
+`if <filter>`. For a string-keyed dict, cast the loop variable to `string`:
+
+```gust
+lookup: dict[string, integer] = {(n as string): n * 10 for n in range(3)}
+# {"0": 0, "1": 10, "2": 20}
+
+evens: dict[string, integer] = {
+    (n as string): n for n in range(10) if n % 2 == 0,
+}
+```
+
+### Iterating a dict
+
+Dicts iterate directly. A one-variable loop walks the keys; a two-variable loop
+walks key/value pairs — no `keys()`/`values()`/`items()` helpers are needed:
+
+```gust
+# Keys only
+for key in status
+    print(f"{key} → {status[key]}")
+end
+
+# Pairs
+for key, value in status
+    print(f"{key} → {value}")
+end
+```
+
+Iteration is sequential. Marking a dict loop `for!` falls back to sequential —
+it does not parallelize dict iteration. See [Concurrency](/lang/concurrency).
+
+---
+
+## Tuples
+
+A tuple is a fixed-length, heterogeneous group of values. Each position has its
+own type, and the length is part of the type. Tuples are most often returned
+from functions that yield several values at once:
+
+```gust
+def divide(a: integer, b: integer) -> tuple[integer, integer]
+    return (a // b, a % b)
+end
+
+quotient, remainder := divide(10, 3)
+print(f"{quotient} r {remainder}")   # 3 r 1
+```
+
+Write a tuple literal with parentheses. The element types may differ:
+
+```gust
+row: tuple[integer, string, bool] = (1, "alice", true)
+```
+
+### Indexing and unpacking
+
+Index a tuple with a constant integer literal — `t[0]`, `t[1]`. A variable index
+is rejected, because each position has a distinct type that must be known at
+compile time:
+
+```gust
+row: tuple[integer, string, bool] = (1, "alice", true)
+print(row[0])            # 1
+print(row[1])            # "alice"
+```
+
+Unpacking binds every position to a name in one statement. Use `_` to discard a
+position you do not need:
+
+```gust
+q, _ := divide(10, 3)    # keep the quotient, drop the remainder
+```
+
+Unpacking also works in a `for` header when iterating a list of tuples (see
+[Iterating a list](#iterating-a-list)).
+
+Tuples are structurally typed — `tuple[string, integer]` is the same type
+everywhere it appears, regardless of where it was constructed. They nest inside
+lists and dicts freely.
+
+---
+
+## Heterogeneous collections with `Any`
+
+A collection whose element or value slot is `Any` accepts mixed types. Each
+concrete value is boxed into the slot when stored and read back out with an `as`
+cast:
+
+```gust
+xs: list[Any] = [1, "two", true, 3.5]
+print(xs[0] as integer)  # 1
+print(xs[1] as string)   # "two"
+print(xs[2] as bool)     # true
+
+d: dict[string, Any] = {"n": 1, "s": "two", "b": true}
+print(d["n"] as integer) # 1
+print(d["s"] as string)  # "two"
+```
+
+Narrow a boxed value at runtime with `is` before unboxing:
+
+```gust
+if d["n"] is integer
+    print(d["n"] as integer)
+end
+```
+
+Only the value slot of a dict may widen to `Any`. An `Any` *key* is rejected at
+compile time, because it has no single hashing path. Any-slot collections nest,
+and their string form recurses into the contents rather than printing an
+address:
+
+```gust
+nested: list[Any] = [1, ["a", "b"]]
+print(f"{nested}")       # [1, ["a", "b"]]
+```
+
+See [Types](/lang/types) for the full boxing and narrowing rules.
+
+---
+
+## Converting between dicts and structs
+
+A `dict[string, Any]` (or a dict literal, or a concretely-typed dict) casts to a
+struct with `as`, matching each field name to the dict key of the same name.
+Values are unboxed per field, including nested collection fields. A missing key
+raises `KeyError`:
+
+```gust
+def Point
+    x: integer
+    y: integer
+end
+
+d: dict[string, Any] = {"x": 5, "y": 9}
+p := d as Point
+print(p.x + p.y)                     # 14
+
+lit := {"x": 100, "y": 200} as Point # a dict literal casts too
+```
+
+The reverse direction also works: every struct casts to a `dict[string, Any]`
+of its fields with `as dict`. Each field value is boxed into the `Any` slot:
+
+```gust
+p := Point(x: 1, y: 2)
+back := p as dict
+print(back["x"] as integer)          # 1
+```
+
+The field-to-dict conversion is what backs struct JSON serialization, so a
+struct round-trips through a dict without hand-written boilerplate. A struct can
+override `__dict` to customize the conversion — see
+[Types](/lang/types) for the conversion protocol.
+
+---
+
+## Under the hood
+
+- `list[T]` is a `GSlice` — contiguous memory, amortized O(1) `append`.
+- `dict[K, V]` is a `GDict` — FNV-1a hash, open addressing, and automatic
+  growth across load-factor thresholds.
+- Both grow automatically. There is no need to pre-size a collection.

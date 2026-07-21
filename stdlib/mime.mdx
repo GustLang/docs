@@ -1,0 +1,206 @@
+---
+title: mime
+description: "MIME media-type helpers"
+---
+
+```gust
+use mime
+```
+
+MIME media-type helpers. `guess_type(path)` maps a filename or extension to its
+canonical media type (defaulting to `application/octet-stream`);
+`guess_extension(type)` is the reverse. `parse_media_type(header)` splits a
+`Content-Type`-style header into its type, subtype, and parameters, and
+`MediaType` renders back to a header string.
+
+A comprehensive built-in table (`EXTENSIONS`) covers the common web, document,
+image, audio, video, font, and archive types. On top of that, the system MIME
+registry is consulted: `load_system_types()` parses the first-found of the
+platform `mime.types` files in `MIME_FILES` (Apache, nginx, etc.) and overlays
+those entries on the built-ins, so a host's local additions take precedence.
+`guess_type` / `guess_extension` read this merged registry; the `*_using`
+variants take a pre-built table so a caller can read the files once and reuse
+it across many lookups.
+
+**Examples**
+
+```gust
+use mime
+
+def main() -> none
+    print(mime.guess_type("report.pdf"))      # application/pdf
+    print(mime.guess_extension("image/png"))  # .png
+end
+```
+
+**On this page:** [`MediaType`](#MediaType) · [`load_system_types`](#mime.load_system_types) · [`guess_type_using`](#mime.guess_type_using) · [`guess_extension_using`](#mime.guess_extension_using) · [`guess_type`](#mime.guess_type) · [`guess_type_builtin`](#mime.guess_type_builtin) · [`guess_extension`](#mime.guess_extension) · [`parse_media_type`](#mime.parse_media_type)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `MIME_FILES` | `list[string]` | `["/etc/mime.types", "/etc/httpd/mime.types", "/etc/httpd/con…]` |
+| `DEFAULT_TYPE` | `string` | `"application/octet-stream"` |
+| `SPACE_BYTE` | `integer` | `32` |
+| `TAB_BYTE` | `integer` | `9` |
+| `EXTENSIONS` | `dict[string, string]` | `{"js": "text/javascript", "mjs": "text/javascript", "epub":…}` |
+
+## `MediaType`
+
+<a id="MediaType" />
+A parsed media type: its `main_type`/`subtype` (e.g. `text` / `html`),
+the `full` essence string (`text/html`), and any `; key=value` parameters.
+(`type` is a reserved word in Gust, so the essence field is named `full`.)
+
+```gust
+def MediaType
+
+    full: string
+    main_type: string
+    subtype: string
+    params: dict[string, string]
+
+end
+```
+
+**Fields**
+
+- `full: string` — The full `main/subtype` string, lowercased.
+- `main_type: string` — The portion before the slash, lowercased.
+- `subtype: string` — The portion after the slash, lowercased.
+- `params: dict[string, string]` — Parameters such as `charset`, keyed by lowercased name.
+
+**Methods**
+
+<a id="MediaType.param" />
+```gust
+def MediaType.param(name: string) -> string
+```
+
+The value of parameter `name` (matched lowercased), or the empty string
+if absent.
+
+**Parameters**
+
+- `name` — The parameter name to look up.
+
+## Functions
+
+<a id="mime.load_system_types" />
+```gust
+def load_system_types() -> dict[string, string]
+```
+
+The built-in `EXTENSIONS` table overlaid with every readable system
+`mime.types` file from `MIME_FILES`, later files taking precedence. On a
+host with no such file (or a freestanding target), this is just a copy of
+`EXTENSIONS`.
+
+<Note>
+Reads the filesystem — call once and reuse the result with the
+`*_using` lookups when doing many lookups.
+</Note>
+
+---
+
+<a id="mime.guess_type_using" />
+```gust
+def guess_type_using(types: dict[string, string], path: string) -> string
+```
+
+Look up the MIME type for `path` in a caller-supplied extension→type
+table (e.g. the result of `load_system_types()`). Falls back to
+`application/octet-stream`.
+
+**Parameters**
+
+- `types: dict[string, string]` — An extension→type table to query.
+- `path: string` — A filename, path, or extension (with or without a leading dot).
+
+---
+
+<a id="mime.guess_extension_using" />
+```gust
+def guess_extension_using(
+    types: dict[string, string],
+    media_type: string,
+) -> string
+```
+
+Look up a canonical file extension (with leading dot) for `media_type`
+in a caller-supplied table, or the empty string if none is known. The type
+is matched case-insensitively and ignores any `; key=value` parameters.
+
+**Parameters**
+
+- `types: dict[string, string]` — An extension→type table to query.
+- `media_type: string` — The MIME type to look up.
+
+---
+
+<a id="mime.guess_type" />
+```gust
+def guess_type(path: string) -> string
+```
+
+The MIME type for a filename, path, or bare extension, consulting the
+merged system registry (`load_system_types`). Falls back to
+`application/octet-stream` for an unknown or missing extension.
+
+**Parameters**
+
+- `path: string` — A filename, path, or extension (with or without a leading dot).
+
+<Note>
+Reads the system `mime.types` files; for repeated lookups, prefer
+`guess_type_using(load_system_types(), path)`.
+</Note>
+
+---
+
+<a id="mime.guess_type_builtin" />
+```gust
+def guess_type_builtin(path: string) -> string
+```
+
+The MIME type for `path` using only the built-in extension table — no
+system `mime.types` files are read, so this does no I/O and suits hot
+paths like a static-file server. Falls back to `application/octet-stream`.
+
+**Parameters**
+
+- `path: string` — A filename, path, or extension (with or without a leading dot).
+
+---
+
+<a id="mime.guess_extension" />
+```gust
+def guess_extension(media_type: string) -> string
+```
+
+A canonical file extension (with leading dot) for a MIME type, or the
+empty string if none is known, consulting the merged system registry. The
+type is matched case-insensitively and ignores any parameters
+(e.g. `; charset=utf-8`).
+
+**Parameters**
+
+- `media_type: string` — The MIME type to look up.
+
+---
+
+<a id="mime.parse_media_type" />
+```gust
+def parse_media_type(header: string) -> MediaType
+```
+
+Parse a `Content-Type`-style header into a `MediaType`.
+
+`text/html; charset=utf-8` yields `main_type="text"`, `subtype="html"`,
+and `params={"charset": "utf-8"}`. The type and parameter names are
+lowercased; quoted parameter values are unquoted. A header with no slash
+leaves `subtype` empty.
+
+**Parameters**
+
+- `header: string` — The media-type header to parse.

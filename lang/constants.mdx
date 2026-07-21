@@ -1,0 +1,181 @@
+---
+title: Constants
+description: Top-level immutable constants in Gust — declaration, allowed types and values, mutability, usage, and why globals are omitted
+---
+
+Constants are the only form of top-level data in Gust. They are typed and immutable: once bound, a constant's name can never be reassigned. Scalars are inlined at every use site; heap values are initialized once, before your program's `main` runs.
+
+## Declaration
+
+A constant is a top-level declaration of the form `NAME: constant[Type] = value`:
+
+```gust
+MAX_PORT: constant[integer] = 9090
+APP_NAME: constant[string]  = "gust"
+PI:       constant[float]   = 3.14159
+DEBUG:    constant[bool]    = false
+```
+
+The `constant[T]` type annotation is required. It is the signal that you are declaring immutable, top-level data rather than a local binding.
+
+Add `private` before the name to scope the constant to its own package. Files in the same package still see it; other packages cannot:
+
+```gust
+private SECRET_KEY: constant[integer] = 42
+```
+
+By convention constants use `SCREAMING_SNAKE_CASE`. The compiler does not enforce the case, but readers expect it.
+
+Constants take no docstring. A `"""..."""` block after a constant declaration is a parse error — document a constant, if it needs it, with a nearby `#` comment or in the surrounding module docstring.
+
+## What a constant can hold
+
+Any type may be a constant. The kinds break into two groups that behave differently at compile time.
+
+**Scalars** — `integer`, `float`, `bool`, and `none` — are true compile-time values. They are inlined at every use site with no runtime cost:
+
+```gust
+RETRIES: constant[integer] = 3
+RATE:    constant[float]   = 0.05
+VERBOSE: constant[bool]    = false
+NOTHING: constant[none]    = none
+```
+
+**Heap and aggregate values** — `string`, `bytes`, `list[T]`, `dict[K, V]`, structs, enum values, and `Any`-slot collections — are real values built once at program start:
+
+```gust
+GREETING: constant[string]                = "hello"
+MAGIC:    constant[bytes]                 = b"\x00\x01"
+NAMES:    constant[list[string]]          = ["alice", "bob"]
+LIMITS:   constant[dict[string, integer]] = {"soft": 10, "hard": 100}
+MIXED:    constant[list[Any]]             = [1, "two", true]
+```
+
+A struct constant is a fully-formed value built from its constructor:
+
+```gust
+def Point
+    x: integer
+    y: integer
+end
+
+CENTER: constant[Point] = Point(x: 0, y: 0)
+```
+
+A constant of an integer- or string-backed enum type holds a specific variant:
+
+```gust
+enum Color: integer
+    red = 0
+    green = 1
+end
+
+FALLBACK: constant[Color] = Color.green
+```
+
+## The right-hand side
+
+The value expression may be:
+
+- A literal (`9090`, `"gust"`, `[]`, `{"k": 1}`, `Point(x: 0, y: 0)`).
+- A reference to another constant declared **earlier**, by bare name.
+- A composition over the above: arithmetic on scalars, string concatenation, collection or struct literals whose elements are constants or literals.
+
+```gust
+WIDTH:  constant[integer] = 80
+HEIGHT: constant[integer] = 24
+CELLS:  constant[integer] = WIDTH * HEIGHT
+
+APP:    constant[string]  = "gust"
+BANNER: constant[string]  = APP + " v1"
+```
+
+Constants initialize in declaration order, and heap constants are filled by the same startup pass. A constant may only refer to another constant declared **above** it. A forward reference to a later constant reads an uninitialized value (zero for scalars, empty for strings and collections) rather than the intended one, so keep dependent constants in order.
+
+Scalar constants (`integer`, `float`, `bool`, `none`) must reduce to a compile-time constant. Their value becomes a `const` C value, so a non-constant right-hand side such as a function call will not compile. Heap and aggregate constants, by contrast, are initialized by a runtime pass and may use any expression — including a function call:
+
+```gust
+def load_defaults() -> list[string]
+    return ["a", "b"]
+end
+
+DEFAULTS: constant[list[string]] = load_defaults()
+```
+
+## Immutability and mutable containers
+
+You cannot rebind a constant. Assigning to one is rejected with `G0501`:
+
+```gust
+MAX: constant[integer] = 10
+
+def main() -> none
+    MAX = 11        # error G0501: cannot mutate constant 'MAX'
+end
+```
+
+The **binding** is immutable, but a container's **contents** are not. A `list`, `dict`, or struct constant is typically declared empty and populated at runtime:
+
+```gust
+HOLDERS: constant[list[Server]]           = []
+SCORES:  constant[dict[string, integer]]  = {}
+
+def register(s: Server) -> none
+    HOLDERS.append(s)
+end
+```
+
+These are process-wide, shared values. Because the binding is immutable but the collection it points at is mutable, this is the one sanctioned way to keep a mutable collection that outlives any single function — a deliberate exception to "no mutable globals." Reach for it sparingly; passing state explicitly is still the default.
+
+## Using constants
+
+A constant is referenced by bare name anywhere in the program, and may be used in any expression:
+
+```gust
+MAX_RETRIES: constant[integer] = 3
+
+def send(payload: string) -> none
+    for i in range(MAX_RETRIES)
+        try
+            post(payload)
+            return
+        catch RuntimeError
+            # retry
+        end
+    end
+    raise RuntimeError(message: "gave up after retries")
+end
+```
+
+A closure captures a constant transparently — the body reads the current value, and a captured `list` or `dict` constant can be appended to through the closure:
+
+```gust
+LOG: constant[list[string]] = []
+
+def main() -> none
+    record := def(msg: string) -> none
+        LOG.append(msg)
+    end
+    record("started")
+    record("done")
+    print(LOG.length)
+end
+```
+
+A package's public (non-`private`) constants are also reachable from another package by qualified name once you `use` the package, as `pkg.NAME`.
+
+## Under the hood
+
+Scalar constants (`integer`, `float`, `bool`, `none`) lower to a `const` C value and inline at each use site, so reading one is free.
+
+A `string`, `bytes`, `list`, `dict`, struct, or `Any`-slot constant is a real value whose initializer is a runtime call. It is declared empty and filled once by a startup routine that `main` calls before any user code. Such a constant carries the same cost as the value it holds, and an empty `[]` or `{}` initializer allocates with the correct element size for its declared type.
+
+## Why not global variables?
+
+Gust deliberately omits mutable globals because:
+
+- They make concurrency unsafe — a `def!` / `for!` / `while!` body could race on a shared global. With no mutable globals, only the heap and filesystem are shared.
+- They obscure data flow — you cannot tell what a function depends on from its signature.
+- Every real need for a mutable "global" (a cache, a logger, a config) is cleaner when passed in explicitly or constructed in `main`.
+
+If you find yourself wanting one, create a struct in `main` and pass it as an argument. That struct can be as mutable as you like — it is just not an ambient global.

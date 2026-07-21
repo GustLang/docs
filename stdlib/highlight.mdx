@@ -1,0 +1,912 @@
+---
+title: highlight
+description: "Syntax highlighting"
+---
+
+```gust
+use highlight
+```
+
+Syntax highlighting. Turn a snippet of source code into colored output,
+identifying each token (keyword, string, comment, and so on) and coloring it.
+
+HTML scope class names are prefixed with `hljs-` and match the class names used
+by common highlight themes, so an existing stylesheet renders the output.
+
+**Examples**
+
+For a terminal, get ANSI-colored text ready to print:
+```gust
+print(highlight.highlight_ansi("gust", source))
+```
+
+For the web, get HTML in which each token is wrapped in a `<span>` whose class
+names a highlight theme's CSS can style:
+```gust
+result := highlight.highlight_code("python", source)
+print(result.value)
+```
+
+To highlight many snippets in the same language, compile the grammar once and
+reuse it:
+```gust
+prog := highlight.compile_named("python")
+a := highlight.highlight_with(prog, source_a, "python")
+prog.close()
+```
+
+**On this page:** [`HighlightResult`](#HighlightResult) · [`MatchMeta`](#MatchMeta) · [`MultiRegex`](#MultiRegex) · [`CompiledMode`](#CompiledMode) · [`Program`](#Program) · [`Emitter`](#Emitter) · [`ScanResult`](#ScanResult) · [`Highlighter`](#Highlighter) · [`KeywordHit`](#KeywordHit) · [`Mode`](#Mode) · [`Language`](#Language) · [`highlight_code`](#highlight.highlight_code) · [`compile_named`](#highlight.compile_named) · [`highlight_with`](#highlight.highlight_with) · [`is_supported`](#highlight.is_supported) · [`highlight_named`](#highlight.highlight_named) · [`highlight_ansi`](#highlight.highlight_ansi) · [`backslash_escape`](#highlight.backslash_escape) · [`quote_string_mode`](#highlight.quote_string_mode) · [`apos_string_mode`](#highlight.apos_string_mode) · [`comment`](#highlight.comment) · [`c_line_comment_mode`](#highlight.c_line_comment_mode) · [`c_block_comment_mode`](#highlight.c_block_comment_mode) · [`hash_comment_mode`](#highlight.hash_comment_mode) · [`c_number_mode`](#highlight.c_number_mode) · [`number_mode`](#highlight.number_mode) · [`compile_language`](#highlight.compile_language) · [`escape_html`](#highlight.escape_html) · [`scope_to_css_class`](#highlight.scope_to_css_class) · [`scan_multiregex`](#highlight.scan_multiregex) · [`compile_keywords`](#highlight.compile_keywords) · [`self_mode`](#highlight.self_mode) · [`escape`](#highlight.escape) · [`cat`](#highlight.cat) · [`lookahead`](#highlight.lookahead) · [`optional`](#highlight.optional) · [`any_number_of_times`](#highlight.any_number_of_times) · [`either`](#highlight.either) · [`count_groups`](#highlight.count_groups) · [`rewrite_backreferences`](#highlight.rewrite_backreferences) · [`ansi_for_scope`](#highlight.ansi_for_scope)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `C_NUMBER_PATTERN` | `string` | `"(-?)(\\b0[xX][a-fA-F0-9]+\|(\\b\\d+(\\.\\d*)?\|\\.\\d+)([eE][…` |
+| `NUMBER_PATTERN` | `string` | `"\\b\\d+(\\.\\d+)?"` |
+| `BINARY_NUMBER_PATTERN` | `string` | `"\\b(0b[01]+)"` |
+| `IDENT_PATTERN` | `string` | `"[a-zA-Z]\\w*"` |
+| `UNDERSCORE_IDENT_PATTERN` | `string` | `"[a-zA-Z_]\\w*"` |
+| `TYPE_BEGIN` | `integer` | `0` |
+| `TYPE_END` | `integer` | `1` |
+| `TYPE_ILLEGAL` | `integer` | `2` |
+| `FORMAT_HTML` | `integer` | `0` |
+| `FORMAT_ANSI` | `integer` | `1` |
+| `MAX_KEYWORD_HITS` | `integer` | `7` |
+| `MAX_ITERATIONS` | `integer` | `1000000` |
+| `NO_MATCH` | `integer` | `-1` |
+| `COMMON_KEYWORDS` | `list[string]` | `["of", "and", "for", "in", "not", "or", "if", "then", "paren…]` |
+| `CB_NONE` | `integer` | `0` |
+| `CB_SKIP_PRECEDING_DOT` | `integer` | `1` |
+| `CB_SHEBANG_AT_START` | `integer` | `2` |
+
+## `HighlightResult`
+
+<a id="HighlightResult" />
+The outcome of highlighting a snippet.
+
+```gust
+def HighlightResult
+
+    known: bool
+    value: string
+    relevance: integer
+    illegal: bool
+    language: string
+
+end
+```
+
+**Fields**
+
+- `known: bool` — Whether the requested language was recognized. When false, the value is the input escaped as plain text.
+- `value: string` — The highlighted HTML.
+- `relevance: integer` — A confidence score; higher means the source fits the language better.
+- `illegal: bool` — Whether an illegal construct aborted highlighting.
+- `language: string` — The language name that was applied.
+
+## `MatchMeta`
+
+<a id="MatchMeta" />
+What a rule slot in a combined matcher represents.
+
+```gust
+def MatchMeta
+
+    match_type: integer
+    rule_id: integer
+
+end
+```
+
+**Fields**
+
+- `match_type: integer` — One of `TYPE_BEGIN`, `TYPE_END`, `TYPE_ILLEGAL`.
+- `rule_id: integer` — For a begin, the compiled id of the nested mode; else -1.
+
+## `MultiRegex`
+
+<a id="MultiRegex" />
+A single combined pattern that scans for many rules at once. Each rule
+is one alternative wrapped in a capture group; the group that participates
+in a match identifies which rule fired.
+
+```gust
+def MultiRegex
+
+    combined: list[Regex]
+    metas_by_group: dict[integer, MatchMeta]
+
+end
+```
+
+**Fields**
+
+- `combined: list[Regex]` — Zero or one compiled pattern (empty when the mode has no rules to scan for).
+- `metas_by_group: dict[integer, MatchMeta]` — Map from a rule's wrapper group index to its meaning.
+
+## `CompiledMode`
+
+<a id="CompiledMode" />
+A grammar rule prepared for scanning. Immutable once compiled; the
+running highlighter keeps its own cursor state.
+
+```gust
+def CompiledMode
+
+    id: integer
+    scope: string
+    begin_pat: string
+    end_pat: string
+    end_re: list[Regex]
+    has_end_re: bool
+    illegal_pat: string
+    has_illegal: bool
+    keywords: dict[string, KeywordHit]
+    has_keywords: bool
+    keyword_pattern: string
+    keyword_re: list[Regex]
+    relevance: integer
+    contains_ids: list[integer]
+    has_starts: bool
+    starts_id: integer
+    sub_language: string
+    terminator_end: string
+    exclude_begin: bool
+    exclude_end: bool
+    return_begin: bool
+    return_end: bool
+    ends_with_parent: bool
+    ends_parent: bool
+    skip: bool
+    begin_callback: integer
+    end_callback: integer
+    matcher: MultiRegex
+
+end
+```
+
+**Fields**
+
+- `id: integer` — Index of this record in the program's mode table.
+- `scope: string` — Scope span to wrap the region in, or "".
+- `begin_pat: string` — Pattern that opens the region.
+- `end_pat: string` — Pattern verified when the region's end fires.
+- `end_re: list[Regex]` — Zero or one compiled `end_pat`.
+- `has_end_re: bool` — Whether an end pattern exists.
+- `illegal_pat: string` — Pattern that aborts on match.
+- `has_illegal: bool` — Whether an illegal pattern exists.
+- `keywords: dict[string, KeywordHit]` — Compiled keyword lookup.
+- `has_keywords: bool` — Whether keyword processing applies.
+- `keyword_pattern: string` — Pattern that carves keyword candidates from text.
+- `keyword_re: list[Regex]` — Compiled `keyword_pattern`.
+- `relevance: integer` — Confidence weight contributed when the region closes.
+- `contains_ids: list[integer]` — Compiled ids of nested modes.
+- `has_starts: bool` — Whether a follow-on mode begins when this region ends.
+- `starts_id: integer` — Compiled id of the follow-on mode, or -1.
+- `sub_language: string` — Embedded language name, or "".
+- `terminator_end: string` — End pattern used while scanning inside this region.
+- `exclude_begin: bool` — Keep the begin match out of the scope.
+- `exclude_end: bool` — Keep the end match out of the scope.
+- `return_begin: bool` — Rewind to re-scan the begin match inside the region.
+- `return_end: bool` — Rewind to let the parent re-scan the end match.
+- `ends_with_parent: bool` — End when the parent's end fires.
+- `ends_parent: bool` — Ending this region ends the parent too.
+- `skip: bool` — Buffer content into the parent rather than emitting it here.
+- `begin_callback: integer` — `CB_*` tag run on begin.
+- `end_callback: integer` — `CB_*` tag run on end.
+- `matcher: MultiRegex` — Combined scanner for the rules active inside this region.
+
+## `Program`
+
+<a id="Program" />
+A fully compiled language: an indexed table of modes plus the metadata
+the highlighter needs.
+
+```gust
+def Program
+
+    modes: list[CompiledMode]
+    root_id: integer
+    case_insensitive: bool
+    class_prefix: string
+
+end
+```
+
+**Fields**
+
+- `modes: list[CompiledMode]` — All compiled modes, addressed by id.
+- `root_id: integer` — Id of the top-level mode.
+- `case_insensitive: bool` — Whether matching ignores case.
+- `class_prefix: string` — Prefix applied to scope class names.
+
+**Methods**
+
+<a id="Program.close" />
+```gust
+def Program.close() -> none
+```
+
+Release every compiled pattern held by the program.
+
+## `Emitter`
+
+<a id="Emitter" />
+Accumulates highlighted output. All state lives in heap lists so the
+emitter behaves as a shared sink even when passed by value.
+
+```gust
+def Emitter
+
+    _chunks: list[string]
+    _open: list[string]
+    class_prefix: string
+    format: integer
+
+end
+```
+
+**Fields**
+
+- `_chunks: list[string]` — Emitted output fragments, joined on `output`.
+- `_open: list[string]` — Scopes currently open, so `finalize` can close any that remain and, for ANSI, so a close can restore the enclosing color.
+- `class_prefix: string` — Prefix applied to top-level scope class names (HTML).
+- `format: integer` — `FORMAT_HTML` for `<span>` markup or `FORMAT_ANSI` for terminal color escapes.
+
+**Methods**
+
+<a id="Emitter.add_text" />
+```gust
+def Emitter.add_text(text: string) -> none
+```
+
+Append literal text to the output, HTML-escaped in HTML mode and left
+raw for the terminal.
+
+---
+
+<a id="Emitter.open_node" />
+```gust
+def Emitter.open_node(scope: string) -> none
+```
+
+Open a scope: an HTML span, or the scope's ANSI color. A blank scope is
+ignored.
+
+---
+
+<a id="Emitter.close_node" />
+```gust
+def Emitter.close_node() -> none
+```
+
+Close the most recently opened scope. In HTML mode this closes the span;
+in ANSI mode it resets and restores the enclosing scope's color.
+
+---
+
+<a id="Emitter.add_sublanguage" />
+```gust
+def Emitter.add_sublanguage(sub: string, name: string) -> none
+```
+
+Splice already-rendered output from an embedded language into the
+output. In HTML mode a named embedding is wrapped in a language class span.
+
+**Parameters**
+
+- `sub` — Rendered output from the embedded highlight.
+- `name` — Embedded language name, or "" for anonymous embedding.
+
+---
+
+<a id="Emitter.finalize" />
+```gust
+def Emitter.finalize() -> none
+```
+
+Close any scopes still open at the end of the input.
+
+---
+
+<a id="Emitter.output" />
+```gust
+def Emitter.output() -> string
+```
+
+Return the accumulated output string.
+
+## `ScanResult`
+
+<a id="ScanResult" />
+One firing of a mode's combined scanner.
+
+```gust
+def ScanResult
+
+    found: bool
+    index: integer
+    lexeme: string
+    match_type: integer
+    rule_id: integer
+
+end
+```
+
+**Fields**
+
+- `found: bool` — Whether any rule matched.
+- `index: integer` — Byte offset where the match starts.
+- `lexeme: string` — The matched text.
+- `match_type: integer` — `TYPE_BEGIN`, `TYPE_END`, or `TYPE_ILLEGAL`.
+- `rule_id: integer` — For a begin, the nested mode's id; else -1.
+
+## `Highlighter`
+
+<a id="Highlighter" />
+Mutable state for one highlighting pass.
+
+```gust
+def Highlighter
+
+    prog: Program
+    code: string
+    ignore_illegals: bool
+    index: integer
+    relevance: integer
+    mode_buffer: string
+    iterations: integer
+    mode_stack: list[integer]
+    emitter: Emitter
+    keyword_hits: dict[string, integer]
+    illegal_found: bool
+    last_type: integer
+    last_index: integer
+    format: integer
+
+end
+```
+
+**Fields**
+
+- `prog: Program` — The compiled language being applied.
+- `code: string` — The source text.
+- `ignore_illegals: bool` — Whether illegal matches are tolerated (used when the pass is an embedded sublanguage).
+- `index: integer` — Current scan cursor.
+- `relevance: integer` — Accumulated relevance score.
+- `mode_buffer: string` — Text pending emission for the current mode.
+- `iterations: integer` — Loop guard counter.
+- `mode_stack: list[integer]` — Active mode ids from root to current; the last is the top.
+- `emitter: Emitter` — Output sink.
+- `keyword_hits: dict[string, integer]` — Per-word hit counts for capped relevance scoring.
+- `illegal_found: bool` — Set when an illegal match aborts the pass.
+- `last_type: integer` — Match type of the previous firing (for the stuck-match guard).
+- `last_index: integer` — Index of the previous firing.
+- `format: integer` — Output format passed to the emitter (`FORMAT_HTML`/`FORMAT_ANSI`).
+
+**Methods**
+
+<a id="Highlighter.run" />
+```gust
+def Highlighter.run() -> none
+```
+
+Scan `code` to completion, filling the emitter.
+
+---
+
+<a id="Highlighter.output" />
+```gust
+def Highlighter.output() -> string
+```
+
+Return the rendered output after `run`.
+
+## `KeywordHit`
+
+<a id="KeywordHit" />
+A compiled keyword: the scope to highlight it with and the relevance it
+contributes.
+
+```gust
+def KeywordHit
+
+    scope: string
+    relevance: integer
+
+end
+```
+
+**Fields**
+
+- `scope: string` — Scope name applied to the keyword (e.g. "keyword", "literal").
+- `relevance: integer` — Relevance weight added when the keyword is seen.
+
+## `Mode`
+
+<a id="Mode" />
+One grammar rule.
+
+A rule matches with `begin` (or the shorthand `match_`, which is copied
+into `begin`) and, for a spanning region, closes with `end_`. Nested rules
+listed in `contains` apply between the begin and end. Most fields are
+optional; a leaf rule often sets only `scope` and `begin`.
+
+```gust
+def Mode
+
+    scope: string
+    begin: string
+    end_: string
+    match_: string
+    illegal: string
+    contains: list[Mode]
+    keywords: dict[string, string]
+    keyword_pattern: string
+    begin_keywords: string
+    relevance: integer
+    variants: list[Mode]
+    starts: list[Mode]
+    sub_language: string
+    exclude_begin: bool
+    exclude_end: bool
+    return_begin: bool
+    return_end: bool
+    ends_with_parent: bool
+    ends_parent: bool
+    skip: bool
+    is_self: bool
+    begin_callback: integer
+    end_callback: integer
+
+end
+```
+
+**Fields**
+
+- `scope: string` — CSS scope name for the matched region (e.g. "string", "comment.line"). Empty means the region emits no wrapping span.
+- `begin: string` — Pattern that opens the region.
+- `end_: string` — Pattern that closes a spanning region. Empty for a leaf rule.
+- `match_: string` — Shorthand for a single-shot `begin` with no `end_`.
+- `illegal: string` — Pattern whose match aborts highlighting as invalid.
+- `contains: list[Mode]` — Nested rules that apply inside this region.
+- `keywords: dict[string, string]` — Map of scope name to a space-separated keyword list; a bare keyword list uses the scope "keyword".
+- `keyword_pattern: string` — Pattern that carves `keywords` candidates out of text; defaults to a word run.
+- `begin_keywords: string` — Space-separated words that open the region on a word boundary; sets up keyword scoring and dot-skipping automatically.
+- `relevance: integer` — Confidence weight; -1 leaves it at the default of 1.
+- `variants: list[Mode]` — Alternate versions of this rule; each expands into its own rule at compile time.
+- `starts: list[Mode]` — The rule to switch into after this region ends (0 or 1 entry).
+- `sub_language: string` — Name of another language to highlight the region's contents with.
+- `exclude_begin: bool` — Keep the begin match out of the region's scope.
+- `exclude_end: bool` — Keep the end match out of the region's scope.
+- `return_begin: bool` — Rewind so the begin match is re-scanned inside the region.
+- `return_end: bool` — Rewind so the end match is re-scanned by the parent.
+- `ends_with_parent: bool` — End this region when the parent's end matches.
+- `ends_parent: bool` — Ending this region also ends the parent.
+- `skip: bool` — Match and advance but emit the content into the parent buffer.
+- `is_self: bool` — Sentinel entry meaning "this mode itself" inside `contains`.
+- `begin_callback: integer` — One of the `CB_*` tags run when the begin matches.
+- `end_callback: integer` — One of the `CB_*` tags run when the end matches.
+
+## `Language`
+
+<a id="Language" />
+A complete language grammar.
+
+```gust
+def Language
+
+    name: string
+    case_insensitive: bool
+    root: Mode
+
+end
+```
+
+**Fields**
+
+- `name: string` — Canonical language name (e.g. "javascript").
+- `case_insensitive: bool` — Whether matching and keywords ignore case.
+- `root: Mode` — The top-level mode holding the language's rules.
+
+## Functions
+
+<a id="highlight.highlight_code" />
+```gust
+def highlight_code(language_name: string, code: string) -> HighlightResult
+```
+
+Highlight `code` as `language_name` and return the resulting HTML.
+
+**Parameters**
+
+- `language_name: string` — A language name or common alias (e.g. "js", "py").
+- `code: string` — The source text to highlight.
+
+**Returns** `HighlightResult`
+
+A `HighlightResult`; `known` is false for an unrecognized language, in
+which case `value` is the escaped input.
+
+**Examples**
+
+```gust
+result := highlight.highlight_code("python", "print(1)")
+print(result.value)
+```
+
+---
+
+<a id="highlight.compile_named" />
+```gust
+def compile_named(language_name: string) -> Program
+```
+
+Compile a language by name for repeated highlighting with
+`highlight_with`. Returns an empty program for an unknown language.
+
+**Parameters**
+
+- `language_name: string` — A language name or common alias.
+
+---
+
+<a id="highlight.highlight_with" />
+```gust
+def highlight_with(
+    prog: Program,
+    code: string,
+    language_name: string,
+) -> HighlightResult
+```
+
+Highlight `code` using an already-compiled program.
+
+**Parameters**
+
+- `prog: Program` — A program from `compile_named`.
+- `code: string` — The source text to highlight.
+- `language_name: string` — Name recorded on the result.
+
+**Examples**
+
+Compile a grammar once, then reuse it across many snippets:
+```gust
+prog := highlight.compile_named("python")
+print(highlight.highlight_with(prog, source, "python").value)
+prog.close()
+```
+
+---
+
+<a id="highlight.is_supported" />
+```gust
+def is_supported(language_name: string) -> bool
+```
+
+Report whether `language_name` (or an alias) has a grammar.
+
+---
+
+<a id="highlight.highlight_named" />
+```gust
+def highlight_named(
+    language_name: string,
+    code: string,
+    ignore_illegals: bool,
+) -> HighlightResult
+```
+
+Highlight `code`, tolerating illegal constructs when `ignore_illegals`
+is set (used for embedded languages).
+
+**Parameters**
+
+- `language_name: string` — A language name or common alias.
+- `code: string` — The source text to highlight.
+- `ignore_illegals: bool` — Continue past illegal matches instead of aborting.
+
+---
+
+<a id="highlight.highlight_ansi" />
+```gust
+def highlight_ansi(language_name: string, code: string) -> string
+```
+
+Highlight `code` as ANSI-colored text for a terminal.
+
+print(highlight.highlight_ansi("gust", source))
+
+Unrecognized languages and illegal constructs fall back to returning the
+source unchanged, so the result is always safe to print.
+
+**Parameters**
+
+- `language_name: string` — A language name or common alias (e.g. "gust", "py").
+- `code: string` — The source text to highlight.
+
+**Returns** `string`
+
+The source with ANSI color escapes around each token.
+
+---
+
+<a id="highlight.backslash_escape" />
+```gust
+def backslash_escape() -> Mode
+```
+
+A backslash followed by any character, as found inside string
+literals.
+
+---
+
+<a id="highlight.quote_string_mode" />
+```gust
+def quote_string_mode() -> Mode
+```
+
+A double-quoted string with backslash escapes; a raw newline is
+illegal.
+
+---
+
+<a id="highlight.apos_string_mode" />
+```gust
+def apos_string_mode() -> Mode
+```
+
+A single-quoted string with backslash escapes; a raw newline is
+illegal.
+
+---
+
+<a id="highlight.comment" />
+```gust
+def comment(begin: string, end_: string) -> Mode
+```
+
+A comment spanning from `begin` to `end_`, with `TODO`-style doc tags
+highlighted inside.
+
+---
+
+<a id="highlight.c_line_comment_mode" />
+```gust
+def c_line_comment_mode() -> Mode
+```
+
+A `//` line comment.
+
+---
+
+<a id="highlight.c_block_comment_mode" />
+```gust
+def c_block_comment_mode() -> Mode
+```
+
+A `/* ... */` block comment.
+
+---
+
+<a id="highlight.hash_comment_mode" />
+```gust
+def hash_comment_mode() -> Mode
+```
+
+A `#` line comment.
+
+---
+
+<a id="highlight.c_number_mode" />
+```gust
+def c_number_mode() -> Mode
+```
+
+A number in decimal, hexadecimal, or floating-point form.
+
+---
+
+<a id="highlight.number_mode" />
+```gust
+def number_mode() -> Mode
+```
+
+A plain decimal or floating-point number.
+
+---
+
+<a id="highlight.compile_language" />
+```gust
+def compile_language(lang: Language) -> Program
+```
+
+Compile a language grammar into a `Program` ready for highlighting.
+
+**Parameters**
+
+- `lang: Language` — The language whose `root` mode tree to compile.
+
+---
+
+<a id="highlight.escape_html" />
+```gust
+def escape_html(value: string) -> string
+```
+
+Return `value` with the five HTML-significant characters replaced by
+their entities so it renders as literal text.
+
+---
+
+<a id="highlight.scope_to_css_class" />
+```gust
+def scope_to_css_class(name: string, prefix: string) -> string
+```
+
+Translate a grammar scope name into its CSS class string.
+
+A plain scope becomes `<prefix><name>`. A tiered scope like `comment.line`
+becomes a prefixed head plus underscore-suffixed tiers. An embedded-language
+scope `language:xml` becomes `language-xml`.
+
+**Parameters**
+
+- `name: string` — The scope name from the grammar.
+- `prefix: string` — Class prefix for top-level scopes (e.g. "hljs-").
+
+---
+
+<a id="highlight.scan_multiregex" />
+```gust
+def scan_multiregex(
+    mr: MultiRegex,
+    text: string,
+    from_index: integer,
+) -> ScanResult
+```
+
+Run a combined scanner and report which rule fired, or a not-found
+result.
+
+**Parameters**
+
+- `mr: MultiRegex` — The mode's combined scanner.
+- `text: string` — Text being scanned.
+- `from_index: integer` — Where to begin scanning.
+
+---
+
+<a id="highlight.compile_keywords" />
+```gust
+def compile_keywords(
+    raw: dict[string, string],
+    case_insensitive: bool,
+) -> dict[string, KeywordHit]
+```
+
+Compile a grammar's keyword groups into a word lookup.
+
+**Parameters**
+
+- `raw: dict[string, string]` — Map of scope name to a space-separated keyword list. A single entry contains the words; the value may append `|N` to a word to force its relevance.
+- `case_insensitive: bool` — Lowercase every keyword so lookups ignore case.
+
+**Returns** `dict[string, KeywordHit]`
+
+A map from keyword text to its compiled scope and relevance.
+
+---
+
+<a id="highlight.self_mode" />
+```gust
+def self_mode() -> Mode
+```
+
+Return the sentinel that, inside a `contains` list, refers to the
+enclosing mode itself (recursive nesting).
+
+---
+
+<a id="highlight.escape" />
+```gust
+def escape(value: string) -> string
+```
+
+Return `value` with every regular-expression metacharacter escaped, so
+it matches literally.
+
+**Parameters**
+
+- `value: string` — Raw text to turn into a literal pattern.
+
+---
+
+<a id="highlight.cat" />
+```gust
+def cat(parts: list[string]) -> string
+```
+
+Concatenate pattern fragments into one pattern.
+
+---
+
+<a id="highlight.lookahead" />
+```gust
+def lookahead(pattern: string) -> string
+```
+
+Wrap `pattern` in a zero-width positive lookahead.
+
+---
+
+<a id="highlight.optional" />
+```gust
+def optional(pattern: string) -> string
+```
+
+Make `pattern` optional without introducing a capture group.
+
+---
+
+<a id="highlight.any_number_of_times" />
+```gust
+def any_number_of_times(pattern: string) -> string
+```
+
+Repeat `pattern` zero or more times without introducing a capture
+group.
+
+---
+
+<a id="highlight.either" />
+```gust
+def either(patterns: list[string]) -> string
+```
+
+Combine `patterns` into a single non-capturing alternation that matches
+any one of them.
+
+---
+
+<a id="highlight.count_groups" />
+```gust
+def count_groups(pattern: string) -> integer
+```
+
+Return the number of capturing groups in `pattern`. Lookarounds,
+non-capturing groups, escaped parentheses, and parentheses inside a
+character class are not counted.
+
+---
+
+<a id="highlight.rewrite_backreferences" />
+```gust
+def rewrite_backreferences(patterns: list[string]) -> string
+```
+
+Wrap each pattern in a capture group and join them with `|`, renumbering
+any backreferences so they keep pointing at the intended group once the
+fragments share one combined numbering.
+
+**Parameters**
+
+- `patterns: list[string]` — The individual rule patterns, in scan order.
+
+**Returns** `string`
+
+A single `(p1)|(p2)|...` pattern with corrected backreferences.
+
+---
+
+<a id="highlight.ansi_for_scope" />
+```gust
+def ansi_for_scope(scope: string) -> string
+```
+
+Return the ANSI escape sequence that colors `scope`, or "" for scopes
+with no assigned color.
+
+**Parameters**
+
+- `scope: string` — A grammar scope name, possibly tiered (e.g. "comment.line").

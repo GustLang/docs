@@ -1,0 +1,612 @@
+---
+title: string
+description: "Immutable sequence of characters"
+---
+
+Immutable sequence of characters. Backed by `char*` in the C runtime.
+
+Literals:
+
+```gust
+"hello"             # string literal
+f"value: {x}"       # f-string (interpolated)
+triple-quoted form  # wrap text in three double-quotes for a multiline string
+```
+
+Operators:
+
+```gust
++                   # concatenation: "a" + "b" → "ab"
+==, !=              # equality comparison
+< <= > >=           # lexicographic comparison
+in, not in          # substring check: "el" in "hello" → true
+```
+
+Casting:
+
+```gust
+x as integer        # parse string as integer (raises ValueError on bad input)
+x as float          # parse string as float (raises ValueError on bad input)
+42 as string        # integer to string
+3.14 as string      # float to string
+```
+
+## Fields
+
+- `length: integer` — Number of characters in the string.
+
+## Dunders
+
+<a id="string.__string" />
+```gust
+def string.__string() -> string
+```
+
+Triggered by `print(s)` and f-string interpolation. Identity.
+
+---
+
+<a id="string.__integer" />
+```gust
+def string.__integer() -> integer
+```
+
+Triggered by `s as integer`. Parses the string as a base-10 integer.
+
+**Raises**
+
+- `ValueError` — When the string is not a valid integer.
+
+---
+
+<a id="string.__float" />
+```gust
+def string.__float() -> float
+```
+
+Triggered by `s as float`. Parses the string as a floating-point number.
+
+**Raises**
+
+- `ValueError` — When the string is not a valid float.
+
+---
+
+<a id="string.__bool" />
+```gust
+def string.__bool() -> bool
+```
+
+Triggered by `s as bool`. True for any non-empty string.
+
+---
+
+<a id="string.__eq" />
+```gust
+def string.__eq(other: string) -> bool
+```
+
+Triggered by `==` and `!=` (auto-negated). Compares by value, not pointer.
+
+**Parameters**
+
+- `other: string` — The string to compare against.
+
+---
+
+<a id="string.__lt" />
+```gust
+def string.__lt(other: string) -> bool
+```
+
+Triggered by `<`. Lexicographic comparison.
+
+**Parameters**
+
+- `other: string` — The string to compare against.
+
+---
+
+<a id="string.__lte" />
+```gust
+def string.__lte(other: string) -> bool
+```
+
+Triggered by `<=`.
+
+**Parameters**
+
+- `other: string` — The string to compare against.
+
+---
+
+<a id="string.__gt" />
+```gust
+def string.__gt(other: string) -> bool
+```
+
+Triggered by `>`.
+
+**Parameters**
+
+- `other: string` — The string to compare against.
+
+---
+
+<a id="string.__gte" />
+```gust
+def string.__gte(other: string) -> bool
+```
+
+Triggered by `>=`.
+
+**Parameters**
+
+- `other: string` — The string to compare against.
+
+---
+
+<a id="string.__length" />
+```gust
+def string.__length() -> integer
+```
+
+Triggered by `s.length`. Number of characters.
+
+---
+
+<a id="string.__contains" />
+```gust
+def string.__contains(sub: string) -> bool
+```
+
+Triggered by `sub in s` and `sub not in s`.
+
+**Parameters**
+
+- `sub: string` — The substring to search for.
+
+---
+
+<a id="string.__get" />
+```gust
+def string.__get(index: integer) -> string
+```
+
+Triggered by `s[i]`. Returns the single character at the given index.
+
+**Parameters**
+
+- `index: integer` — Zero-based character position.
+
+**Raises**
+
+- `IndexError` — When `index` is outside `0..length`.
+
+## Case
+
+<a id="string.uppercase" />
+```gust
+def string.uppercase() -> string
+```
+
+Return a copy with all letters uppercased (ASCII).
+
+---
+
+<a id="string.lowercase" />
+```gust
+def string.lowercase() -> string
+```
+
+Return a copy with all letters lowercased (ASCII).
+
+## Search
+
+<a id="string.contains" />
+```gust
+def string.contains(sub: string) -> bool
+```
+
+True if sub appears anywhere in the string.
+
+**Parameters**
+
+- `sub: string` — The substring to search for.
+
+---
+
+<a id="string.starts_with" />
+```gust
+def string.starts_with(prefix: string) -> bool
+```
+
+True if the string begins with `prefix`.
+
+**Parameters**
+
+- `prefix: string` — The leading substring to test for.
+
+---
+
+<a id="string.ends_with" />
+```gust
+def string.ends_with(suffix: string) -> bool
+```
+
+True if the string ends with `suffix`.
+
+**Parameters**
+
+- `suffix: string` — The trailing substring to test for.
+
+---
+
+<a id="string.index_of" />
+```gust
+def string.index_of(sub: string) -> integer
+```
+
+Returns the index of the first occurrence, or -1 if not found.
+
+**Parameters**
+
+- `sub: string` — The substring to search for.
+
+---
+
+<a id="string.last_index_of" />
+```gust
+def string.last_index_of(sub: string) -> integer
+```
+
+Returns the index of the last occurrence, or -1 if not found.
+
+**Parameters**
+
+- `sub: string` — The substring to search for.
+
+---
+
+<a id="string.count" />
+```gust
+def string.count(sub: string) -> integer
+```
+
+Count non-overlapping occurrences of sub in the string.
+
+**Parameters**
+
+- `sub: string` — The substring to count.
+
+## Transform
+
+<a id="string.trim" />
+```gust
+def string.trim() -> string
+```
+
+Remove leading and trailing whitespace.
+
+---
+
+<a id="string.trim_left" />
+```gust
+def string.trim_left() -> string
+```
+
+Remove leading whitespace.
+
+---
+
+<a id="string.trim_right" />
+```gust
+def string.trim_right() -> string
+```
+
+Remove trailing whitespace.
+
+---
+
+<a id="string.strip_prefix" />
+```gust
+def string.strip_prefix(prefix: string) -> string
+```
+
+Return the string with `prefix` removed from the start. Returns the
+original string unchanged if the prefix isn't present.
+
+**Parameters**
+
+- `prefix: string` — The leading substring to remove.
+
+---
+
+<a id="string.strip_suffix" />
+```gust
+def string.strip_suffix(suffix: string) -> string
+```
+
+Return the string with `suffix` removed from the end. Returns the
+original string unchanged if the suffix isn't present.
+
+**Parameters**
+
+- `suffix: string` — The trailing substring to remove.
+
+---
+
+<a id="string.capitalize" />
+```gust
+def string.capitalize() -> string
+```
+
+Uppercase the first character, lowercase the rest.
+
+---
+
+<a id="string.title_case" />
+```gust
+def string.title_case() -> string
+```
+
+Uppercase the first character of each whitespace-separated word and
+lowercase the rest.
+
+---
+
+<a id="string.replace" />
+```gust
+def string.replace(old: string, new: string) -> string
+```
+
+Replace all occurrences of old with new.
+
+**Parameters**
+
+- `old: string` — The substring to find.
+- `new: string` — The replacement substring.
+
+---
+
+<a id="string.repeat" />
+```gust
+def string.repeat(n: integer) -> string
+```
+
+Repeat the string n times.
+
+**Parameters**
+
+- `n: integer` — The number of repetitions.
+
+---
+
+<a id="string.reverse" />
+```gust
+def string.reverse() -> string
+```
+
+Return a copy with the characters in reverse order.
+
+---
+
+<a id="string.substring" />
+```gust
+def string.substring(start: integer, stop: integer) -> string
+```
+
+Extract characters from index start (inclusive) to end (exclusive).
+
+**Parameters**
+
+- `start: integer` — Inclusive start index.
+- `stop: integer` — Exclusive end index.
+
+---
+
+<a id="string.char_at" />
+```gust
+def string.char_at(index: integer) -> string
+```
+
+Return the single character at the given index.
+
+**Parameters**
+
+- `index: integer` — Zero-based character position.
+
+**Raises**
+
+- `IndexError` — When `index` is outside `0..length`.
+
+---
+
+<a id="string.byte_at" />
+```gust
+def string.byte_at(index: integer) -> integer
+```
+
+Return the raw byte value (0-255) at the given index. Useful for
+decoding byte-literal payloads or walking source without paying for
+UTF-8 interpretation.
+
+**Parameters**
+
+- `index: integer` — Zero-based byte position.
+
+**Raises**
+
+- `IndexError` — When `index` is outside `0..length`.
+
+## Padding
+
+<a id="string.pad_left" />
+```gust
+def string.pad_left(width: integer, char: string) -> string
+```
+
+Pad the string on the left to the given width.
+
+**Parameters**
+
+- `width: integer` — Target total width in characters.
+- `char: string` — The single character to pad with.
+
+---
+
+<a id="string.pad_right" />
+```gust
+def string.pad_right(width: integer, char: string) -> string
+```
+
+Pad the string on the right to the given width.
+
+**Parameters**
+
+- `width: integer` — Target total width in characters.
+- `char: string` — The single character to pad with.
+
+---
+
+<a id="string.zfill" />
+```gust
+def string.zfill(width: integer) -> string
+```
+
+Pad with zeros on the left to the given width.
+
+**Parameters**
+
+- `width: integer` — Target total width in characters.
+
+## Split / Join
+
+<a id="string.split" />
+```gust
+def string.split(sep: string) -> list[string]
+```
+
+Split the string by separator. Empty sep splits by character.
+
+**Parameters**
+
+- `sep: string` — The separator to split on; empty string splits into characters.
+
+---
+
+<a id="string.join" />
+```gust
+def string.join(parts: list[string]) -> string
+```
+
+Join a list of strings using this string as separator.
+
+**Parameters**
+
+- `parts: list[string]` — The strings to join.
+
+**Examples**
+
+```gust
+", ".join(["a", "b", "c"]) → "a, b, c"
+```
+
+## Character checks
+
+<a id="string.is_digit" />
+```gust
+def string.is_digit() -> bool
+```
+
+True if all characters are digits (0-9).
+
+---
+
+<a id="string.is_alpha" />
+```gust
+def string.is_alpha() -> bool
+```
+
+True if all characters are alphabetic (a-z, A-Z).
+
+---
+
+<a id="string.is_upper" />
+```gust
+def string.is_upper() -> bool
+```
+
+True if all alphabetic characters are uppercase.
+
+---
+
+<a id="string.is_lower" />
+```gust
+def string.is_lower() -> bool
+```
+
+True if all alphabetic characters are lowercase.
+
+---
+
+<a id="string.is_space" />
+```gust
+def string.is_space() -> bool
+```
+
+True if all characters are whitespace.
+
+---
+
+<a id="string.is_empty" />
+```gust
+def string.is_empty() -> bool
+```
+
+True if the string has length 0.
+
+## Codecs
+
+<a id="string.encode" />
+```gust
+def string.encode(format: string) -> string
+```
+
+Encode this string's bytes using the named scheme, returning text.
+Supported formats:
+
+```gust
+* `"base64"` — RFC 4648 standard alphabet with `=` padding.
+* `"hex"`    — lowercase hex, two chars per byte.
+```
+
+Length-aware: a string containing `0x00` is encoded in full, not truncated
+at the first NUL.
+
+**Parameters**
+
+- `format: string` — The codec name, `"base64"` or `"hex"`.
+
+**Raises**
+
+- `ValueError` — When `format` is not `"base64"` or `"hex"`.
+
+---
+
+<a id="string.decode" />
+```gust
+def string.decode(format: string) -> bytes
+```
+
+Decode text previously produced by `.encode(format)` back to raw bytes.
+Returns `bytes` (not a string) so a decoded payload containing `0x00` keeps
+its true length. Same supported formats as `encode`.
+
+**Parameters**
+
+- `format: string` — The codec name, `"base64"` or `"hex"`.
+
+**Raises**
+
+- `ValueError` — When the input is malformed (bad length or an invalid character), or `format` is not `"base64"` or `"hex"`.

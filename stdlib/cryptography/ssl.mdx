@@ -1,0 +1,460 @@
+---
+title: cryptography.ssl
+description: "TLS/SSL for byte-stream sockets, layered over the `socket` package"
+---
+
+```gust
+use cryptography.ssl
+```
+
+TLS/SSL for byte-stream sockets, layered over the `socket` package.
+
+This is the secure counterpart to `socket`: it takes the raw TCP plumbing that
+`socket` exposes and wraps it in a TLS session, so that `https://` / `wss://`
+style protocols can be written in Gust on top of an encrypted, authenticated
+stream. The handshake, encryption, and certificate verification are handled by
+the system OpenSSL (`libssl` / `libcrypto`) — this package is the thin Gust
+surface over it.
+
+Client side, the quick path is `connect(host, port)`: it opens a TCP connection,
+performs a verifying TLS handshake (system trust store, SNI + hostname check),
+and hands back an `SSLSocket` whose `send` / `recv` mirror `socket.Socket`. For
+finer control build an `SSLContext` with `client_context(...)` and pass it to
+`connect_with` or `wrap_socket`.
+
+Server side, build a `server_context(cert_file, key_file)` and call
+`wrap_accepted(sock, ctx)` on each socket returned by `socket.Listener.accept`
+to complete the server handshake.
+
+Errors are scoped by failure category: `CertificateError` for a certificate
+that fails verification, `TLSError` for any other handshake or session-setup
+failure, and `IOError` for byte-stream failures once the session is up (and for
+the underlying TCP connect / context-config). `recv` returning empty `bytes`
+means the peer closed the connection. (Gust errors don't subclass, so catch
+`CertificateError`/`TLSError` explicitly — a bare `catch IOError` won't see
+them.)
+
+Requires OpenSSL at build time:
+
+```gust
+Debian/Ubuntu:  sudo apt install libssl-dev
+macOS (brew):   brew install openssl
+```
+
+**Examples**
+
+```gust
+use cryptography.ssl
+
+def main() -> none
+    conn := ssl.connect("example.com", 443)
+    conn.send("GET / HTTP/1.0\r\nHost: example.com\r\n\r\n")
+    print(conn.recv_string(4096))
+    conn.close()
+end
+```
+
+**On this page:** [`SSLContext`](#SSLContext) · [`SSLSocket`](#SSLSocket) · [`TLSError`](#TLSError) · [`CertificateError`](#CertificateError) · [`client_context`](#cryptography.ssl.client_context) · [`server_context`](#cryptography.ssl.server_context) · [`connect`](#cryptography.ssl.connect) · [`connect_with`](#cryptography.ssl.connect_with) · [`wrap_socket`](#cryptography.ssl.wrap_socket) · [`wrap_accepted`](#cryptography.ssl.wrap_accepted)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `SSL_MAX_CHUNK` | `integer` | `16777216` |
+
+## `SSLContext`
+
+<a id="SSLContext" />
+Reusable TLS configuration — a wrapper over an OpenSSL `SSL_CTX`.
+
+Create one with `client_context(...)` or `server_context(...)` and reuse it
+across many connections. When you are done with every connection it backs,
+call `close()` to release it.
+
+```gust
+def SSLContext
+
+    _ctx: integer
+    _verify: bool
+    _open: bool
+
+end
+```
+
+**Fields**
+
+- `_ctx: integer` — Opaque handle to the underlying `SSL_CTX`.
+- `_verify: bool` — Whether peer certificates are verified (client contexts).
+- `_open: bool` — False once `close()` has been called.
+
+**Methods**
+
+<a id="SSLContext.close" />
+```gust
+def SSLContext.close() -> none
+```
+
+Release the underlying `SSL_CTX`. Idempotent. Only call this once every
+`SSLSocket` created from the context has itself been closed.
+
+## `SSLSocket`
+
+<a id="SSLSocket" />
+A connected, encrypted socket — the TLS counterpart to `socket.Socket`.
+
+Obtain one from `connect(...)` / `connect_with(...)` / `wrap_socket(...)` on
+the client side, or `wrap_accepted(...)` on the server side. The send/recv
+methods mirror `socket.Socket`; `recv` returning empty `bytes` means the
+peer closed the connection.
+
+**Implements:** [`Stream`](#Stream)
+
+```gust
+def SSLSocket implements Stream
+
+    _ssl: integer
+    _sock: Socket
+    _open: bool
+
+end
+```
+
+**Fields**
+
+- `_ssl: integer` — Opaque handle to the underlying `SSL` session.
+- `_sock: Socket` — The underlying plaintext TCP socket (for fd / peer-ip / close).
+- `_open: bool` — False once `close()` has been called locally.
+
+**Methods**
+
+<a id="SSLSocket.send" />
+```gust
+def SSLSocket.send(text: string) -> none
+```
+
+Encrypt and send `text` in full, looping over short writes.
+
+This is for text protocols: the string is sent up to its first NUL byte. For
+arbitrary binary data (which may contain NULs) use `send_bytes`.
+
+**Parameters**
+
+- `text` — The text to send.
+
+**Raises**
+
+- `IOError` — The connection drops mid-send.
+
+---
+
+<a id="SSLSocket.send_bytes" />
+```gust
+def SSLSocket.send_bytes(data: bytes) -> none
+```
+
+Encrypt and send every byte of `data` in full, looping over short writes.
+Length-aware, so embedded NUL bytes are sent correctly.
+
+**Parameters**
+
+- `data` — The raw bytes to send.
+
+**Raises**
+
+- `IOError` — The connection drops mid-send.
+
+---
+
+<a id="SSLSocket.recv" />
+```gust
+def SSLSocket.recv(max: integer) -> bytes
+```
+
+Decrypt and return whatever bytes are available now, up to `max`.
+
+Blocks until at least one byte arrives, then returns immediately — it does
+not wait for `max` bytes. An empty result means the peer closed the
+connection (EOF); use that to end a read loop. At most 16 MiB is returned
+per call regardless of `max`.
+
+**Parameters**
+
+- `max` — Maximum number of bytes to read in this call.
+
+**Raises**
+
+- `IOError` — A TLS or socket error occurs. An orderly peer close is not an error — it returns empty `bytes`.
+
+---
+
+<a id="SSLSocket.recv_string" />
+```gust
+def SSLSocket.recv_string(max: integer) -> string
+```
+
+Like `recv`, but decode the bytes as a string. Convenient for text
+protocols; an empty string means EOF.
+
+**Parameters**
+
+- `max` — Maximum number of bytes to read in this call.
+
+**Raises**
+
+- `IOError` — A TLS or socket error occurs.
+
+---
+
+<a id="SSLSocket.recv_exact" />
+```gust
+def SSLSocket.recv_exact(n: integer) -> bytes
+```
+
+Decrypt and return exactly `n` bytes, looping until all of them arrive.
+
+Useful for framed protocols where the next field's length is known.
+
+**Parameters**
+
+- `n` — The exact number of bytes to read.
+
+**Raises**
+
+- `IOError` — The peer closes before `n` bytes arrive, or a TLS/socket error occurs.
+
+---
+
+<a id="SSLSocket.cipher" />
+```gust
+def SSLSocket.cipher() -> string
+```
+
+The name of the negotiated cipher suite (e.g. "TLS_AES_256_GCM_SHA384"),
+or "" if the handshake has not completed.
+
+---
+
+<a id="SSLSocket.protocol" />
+```gust
+def SSLSocket.protocol() -> string
+```
+
+The negotiated protocol version (e.g. "TLSv1.3"), or "" if unknown.
+
+---
+
+<a id="SSLSocket.peer_ip" />
+```gust
+def SSLSocket.peer_ip() -> string
+```
+
+The remote peer's IP address as text (IPv4 or IPv6), or "" if it cannot
+be determined.
+
+---
+
+<a id="SSLSocket.fd" />
+```gust
+def SSLSocket.fd() -> integer
+```
+
+The raw file descriptor of the underlying socket, for callers that need
+to poll it directly.
+
+---
+
+<a id="SSLSocket.close" />
+```gust
+def SSLSocket.close() -> none
+```
+
+Send a TLS close-notify, then close the underlying socket. Idempotent.
+
+---
+
+<a id="SSLSocket.is_open" />
+```gust
+def SSLSocket.is_open() -> bool
+```
+
+True while the connection has not been closed locally. This does not
+detect a peer-side close — a `recv` returning empty `bytes` is the signal
+for that.
+
+## Functions
+
+<a id="cryptography.ssl.client_context" />
+```gust
+def client_context(verify: bool, ca_file: string) -> SSLContext
+```
+
+Build a client TLS context.
+
+When `verify` is true the server's certificate is checked against a trust
+store and the later handshake fails (raising `CertificateError`) if the
+certificate is untrusted or the hostname does not match. If `ca_file` names a PEM bundle it
+is used as the trust store; otherwise the system default trust paths are
+used. When `verify` is false no certificate is checked — convenient for
+talking to a host with a self-signed certificate, but insecure.
+
+**Parameters**
+
+- `verify: bool` — Whether to verify the peer certificate and hostname.
+- `ca_file: string` — Path to a PEM CA bundle, or "" for the system trust store.
+
+<Warning>
+Passing `verify: false` disables all certificate and hostname
+checking, leaving the connection open to interception. Only use it for
+local testing, never in production.
+</Warning>
+
+---
+
+<a id="cryptography.ssl.server_context" />
+```gust
+def server_context(cert_file: string, key_file: string) -> SSLContext
+```
+
+Build a server TLS context from a PEM certificate chain and private key.
+
+`cert_file` is the server certificate (optionally followed by intermediate
+certificates, leaf first); `key_file` is the matching PEM private key.
+
+**Parameters**
+
+- `cert_file: string` — Path to the PEM certificate (chain) file.
+- `key_file: string` — Path to the PEM private key file.
+
+**Raises**
+
+- `IOError` — A certificate or key file cannot be loaded, or the private key does not match the certificate.
+
+---
+
+<a id="cryptography.ssl.connect" />
+```gust
+def connect(host: string, port: integer) -> SSLSocket
+```
+
+Open a verifying TLS connection to `host:port` and return it.
+
+This is the quick path: it connects over TCP, performs a TLS handshake with
+a default verifying client context (system trust store, SNI set to `host`,
+hostname checked), and returns the ready `SSLSocket`.
+
+**Parameters**
+
+- `host: string` — Hostname (or IP) to connect to.
+- `port: integer` — TCP port to connect to.
+
+**Raises**
+
+- `CertificateError` — The server certificate fails verification.
+- `TLSError` — The TLS handshake fails for any other reason.
+- `IOError` — The underlying TCP connection fails.
+
+---
+
+<a id="cryptography.ssl.connect_with" />
+```gust
+def connect_with(host: string, port: integer, ctx: SSLContext) -> SSLSocket
+```
+
+Open a TLS connection to `host:port` using a caller-supplied context.
+
+Unlike `connect`, the `SSLContext` is not closed for you — it is meant to be
+reused across connections, so close it yourself when you are finished with
+all of them. SNI and (if the context verifies) the hostname check use
+`host`.
+
+**Parameters**
+
+- `host: string` — Hostname (or IP) to connect to.
+- `port: integer` — TCP port to connect to.
+- `ctx: SSLContext` — A context built with `client_context(...)`.
+
+**Raises**
+
+- `CertificateError` — The server certificate fails verification.
+- `TLSError` — The TLS handshake fails for any other reason.
+- `IOError` — The underlying TCP connection fails.
+
+---
+
+<a id="cryptography.ssl.wrap_socket" />
+```gust
+def wrap_socket(sock: Socket, hostname: string, ctx: SSLContext) -> SSLSocket
+```
+
+Perform a client TLS handshake over an already-connected `socket.Socket`.
+
+Use this when the TCP connection already exists (e.g. handed up from a lower
+layer) and you only need to add TLS. `hostname` drives SNI and, if the
+context verifies, the certificate hostname check. The context is not closed
+for you.
+
+**Parameters**
+
+- `sock: Socket` — A connected plaintext socket to start TLS over.
+- `hostname: string` — Server name for SNI / hostname verification.
+- `ctx: SSLContext` — A context built with `client_context(...)`.
+
+**Raises**
+
+- `CertificateError` — The server certificate fails verification.
+- `TLSError` — The TLS handshake fails for any other reason.
+
+---
+
+<a id="cryptography.ssl.wrap_accepted" />
+```gust
+def wrap_accepted(sock: Socket, ctx: SSLContext) -> SSLSocket
+```
+
+Complete a server-side TLS handshake over an accepted `socket.Socket`.
+
+Call this on each socket returned by `socket.Listener.accept` using a
+`server_context(...)`. On failure the underlying socket is left for the
+caller to close.
+
+**Parameters**
+
+- `sock: Socket` — A socket just accepted from a `socket.Listener`.
+- `ctx: SSLContext` — A context built with `server_context(...)`.
+
+**Raises**
+
+- `TLSError` — The server-side handshake fails.
+
+## Errors
+
+<a id="TLSError" />
+```gust
+error TLSError(message: string)
+```
+
+Raised when the TLS layer itself fails to establish a session — a
+failed handshake, an SSL protocol error, or per-connection setup (`SSL_new`,
+SNI, binding the socket). Distinct from a certificate-trust failure
+(`CertificateError`) and from byte-stream I/O failures after the handshake
+(`IOError`), so callers can tell "couldn't negotiate TLS" apart from
+"the connection dropped mid-transfer".
+
+Fields:
+message: Human-readable description, including the OpenSSL error text.
+
+---
+
+<a id="CertificateError" />
+```gust
+error CertificateError(message: string)
+```
+
+Raised when the peer's certificate fails verification during a client
+handshake (untrusted CA, hostname mismatch, expired/not-yet-valid, …). A
+trust decision, not a transient failure — retrying won't help; the caller
+must pin the cert, fix the trust store, or refuse the connection. Separate
+from `TLSError` so this security-relevant case is catchable on its own.
+
+Fields:
+message: Description, including the X.509 verification reason.

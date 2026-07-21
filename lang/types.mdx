@@ -1,0 +1,515 @@
+---
+title: Types
+description: A single reference of every type Gust knows about, from primitives to unions and tuples
+---
+
+A single reference of every type Gust knows about.
+
+## Primitives
+
+| Type      | Description                       | Example          | C mapping   |
+|-----------|-----------------------------------|------------------|-------------|
+| `string`  | UTF-8 text (heap-allocated)       | `"hello"`        | `GStr*`     |
+| `integer` | 64-bit signed integer             | `8080`           | `int64_t`   |
+| `float`   | 64-bit double-precision float     | `3.14`           | `double`    |
+| `bool`    | Boolean                           | `true` / `false` | `bool`      |
+| `none`    | The unit / void type              | `none`           | `void`      |
+| `Any`     | Tagged union that can hold any value | anything       | `GValue`    |
+| `bytes`   | Mutable sequence of raw octets (0-255) | `b"\x00\xff"`  | `GBytes*`   |
+
+### `Any`
+
+`Any` is a tagged union — it knows its runtime type. Use it sparingly: when you reach for `Any`, you're opting out of compile-time guarantees. Prefer a union type (`A | B`) when you actually mean "one of these specific types."
+
+```gust
+def echo(v: Any) -> string
+    return f"{v}"
+end
+```
+
+`list[Any]` and `dict[string, Any]` accept heterogeneous literals directly —
+each element is boxed for you. Recover a concrete value with `as`:
+
+```gust
+xs: list[Any] = [1, "two", 3.0, true]
+d: dict[string, Any] = {"n": 1, "s": "x"}
+print(d["n"] as integer + 1)      # 2
+```
+
+`Any` is not allowed as a **dict key** (`G0207`) — keys must be `string` or
+`integer`. You can test what an `Any` holds at runtime with `is` or a `match`
+type pattern, and recover the value with `as`. See
+[Runtime type tests](#runtime-type-tests) below for the full set of forms.
+
+### `bytes`
+
+A mutable, growable sequence of raw octets (0-255). Unlike `string`, it can hold
+embedded NUL bytes and arbitrary non-UTF-8 data, which makes it the type for
+binary I/O (e.g. `socket.recv`). Write literals with `b"..."` and convert to/from
+text with `as string` / `as bytes`.
+
+```gust
+data := b"\x89PNG\r\n"        # raw octets via \xNN
+print(data.length)            # 6
+print(data[0])                # 137  (index → integer 0-255)
+text := b"hello" as string    # decode bytes → string
+raw := "hi" as bytes          # encode string → bytes
+```
+
+Full reference → [bytes](/builtins/bytes).
+
+## Collections
+
+### `list[T]`
+
+Homogeneous, dynamically sized sequence. Elements must all be `T`. Methods
+include `append`, `insert`, `pop`, `pop_at`, `extend`, `delete`, `sort`,
+`reverse`, and more.
+
+```gust
+servers: list[string] = ["s1", "s2", "s3"]
+servers.append("s4")
+print(servers.length)
+print(servers[0])
+servers[1] = "new-s2"
+```
+
+Full method list → [Collections](/lang/collections).
+
+### `dict[K, V]`
+
+Hash map. Keys are `string` or `integer`; values are any type.
+
+```gust
+status: dict[string, string] = {
+    "web": "online",
+    "db":  "offline",
+}
+status["cache"] = "online"
+v := status["web"]            # fatal runtime error if missing — use .get() to test
+```
+
+## Union types (`A | B`)
+
+A value whose type is one of several alternatives:
+
+```gust
+def stringify(v: string | integer) -> string
+    return f"{v}"
+end
+```
+
+Operators don't apply to a union directly (`v + 1` on a `string | integer` is
+a compile error) — branch on the held type with a `match` type pattern or an
+`is` test, then recover the concrete value with `as`:
+
+```gust
+def describe(v: string | integer) -> string
+    match v
+        case string
+            return "str:" + (v as string)
+        case integer
+            return f"int:{(v as integer) + 1}"
+    end
+    return "?"
+end
+```
+
+### Optionals: `T | none`
+
+A union with `none` is Gust's optional. `is none` / `is not none` **narrows**
+the value in the guarded branch — no cast needed. The one-argument
+`dict.get(k)` returns `V | none`:
+
+```gust
+d := {"a": 1}
+v := d.get("a")           # integer | none
+if v is not none
+    print(v + 1)          # v is a plain integer here
+end
+```
+
+A `A | B` union holds one of several *existing* types as-is. When you want each
+alternative to carry its own named fields, declare a **tagged union** — a
+sum-type `enum` — instead; see [Tagged unions](#tagged-unions-sum-type-enums).
+
+## Tagged unions (sum-type enums)
+
+A named type whose value is one of a fixed set of **variants**, each carrying its
+own fields. Declared with `enum` and **no** backing-type clause; destructured
+with `match`:
+
+```gust
+enum Shape
+    case Circle(radius: float)
+    case Rect(width: integer, height: integer)
+    case Empty
+end
+```
+
+Full treatment → [Tagged unions](/lang/unions).
+
+## Function types `Function(ArgT, ...)[ReturnT]`
+
+Functions are first-class values — their type is `Function` followed by the
+parameter list in `(...)` and the return type in `[...]`. See
+[Functions](/lang/functions#first-class-functions) for details.
+
+```gust
+reducer: Function(integer, integer)[integer] = add
+op: Function(string)[string] = shout              # any matching def works
+```
+
+## Tuple types `(A, B, ...)`
+
+Tuples show up most often as multiple return values:
+
+```gust
+def parse_port(raw: string) -> tuple[string, integer]
+    host := raw.split(":")[0]
+    port := raw.split(":")[1] as integer
+    return (host, port)
+end
+
+host, port := parse_port("web:8080")
+```
+
+Tuples are structural — two `(integer, string)` tuples are interchangeable.
+
+## Structs
+
+User-defined records. Declared with `def`, just like functions:
+
+```gust
+def Server
+    name: string
+    ip:   string
+    online: bool
+end
+```
+
+A struct that `extends` another (`def Dog extends Animal`) becomes a **class**
+— a refcounted reference type with virtual dispatch. See
+[Structs → Classes](/lang/structs#classes-and-inheritance-extends).
+
+Full treatment → [Structs](/lang/structs).
+
+## Interfaces
+
+Method contracts, dispatched through a vtable:
+
+```gust
+interface Pingable
+    def ping() -> bool
+    def status() -> string
+end
+```
+
+Full treatment → [Interfaces](/lang/interfaces).
+
+## Error types
+
+Named error records. Declared at the top level:
+
+```gust
+error NetError(message: string, host: string)
+```
+
+Full treatment → [Error handling](/lang/errors).
+
+## Enums
+
+Named finite sets, backed by `integer` or `string`. Two flavors — explicit values or auto-assigned:
+
+```gust
+enum Priority: integer
+    low    = 10
+    medium = 20
+    high   = 30
+end
+
+auto_enum Status: integer
+    online        # 1
+    offline       # 2
+    maintenance   # 3
+end
+```
+
+A backed enum value coerces to its backing primitive with no cast
+(`n: integer = Priority.high`). An `enum` with **no** backing clause is a
+sum type — see [Tagged unions](/lang/unions).
+
+Full treatment → [Enums](/lang/enums).
+
+## References `ref[T]`
+
+A reference wraps a value of type `T` in a refcounted heap cell; read or write
+the pointee through its `.value` field. Several variables can hold the same
+`ref[T]` and see each other's writes. It's a first-class type you can spell in
+annotations, though most code never needs it — structs, classes, and
+collections already share by reference where it matters.
+
+```gust
+cell: ref[integer] = ref(0)
+cell.value = 42
+print(cell.value)         # 42
+```
+
+## Type conversions
+
+Gust does almost no implicit conversion. The one exception is numeric widening;
+everything else uses the explicit `as` operator.
+
+### Numeric widening (implicit)
+
+An `integer` flows into a `float` slot with no cast — assignment, a parameter,
+a return, or a field all accept the promotion:
+
+```gust
+ratio: float = 3          # widened to 3.0
+```
+
+Widening is symmetric only for the type checker's purposes: mixed arithmetic
+(`2 + 1.5`) promotes the integer side and yields a `float`. There is no implicit
+narrowing in the other direction — a `float` in an `integer` slot is a compile
+error until you cast it.
+
+### The `as` operator
+
+`as` converts a value from one type to another. Every conversion path is
+listed below; a path that isn't defined is a compile error (`G0403`), and a
+conversion that can only fail at runtime raises `ValueError`.
+
+```gust
+n := 42
+s := n as string          # "42"
+i := "8080" as integer    # 8080
+f := 3.9 as integer       # 3   (truncates toward zero)
+```
+
+### Casts between primitives
+
+Each primitive defines the conversions that make sense for it. The `as` operator
+dispatches through per-type conversion methods (`__string`, `__integer`,
+`__float`, `__bool`).
+
+| From → to    | `string`               | `integer`         | `float`         | `bool`             |
+|--------------|------------------------|-------------------|-----------------|--------------------|
+| `integer`    | decimal text           | identity          | exact value     | `0` → `false`, else `true` |
+| `float`      | decimal text           | truncate toward 0 | identity        | `0.0` → `false`, else `true` |
+| `string`     | identity               | parse (or raise)  | parse (or raise)| `""` → `false`, else `true` |
+| `bool`       | `"true"` / `"false"`   | `1` / `0`         | `1.0` / `0.0`   | identity           |
+
+A `string as integer` or `string as float` on non-numeric input raises
+`ValueError`:
+
+```gust
+try
+    bad := "abc" as integer
+catch ValueError
+    print("not a number")
+end
+```
+
+Casting an operand to the type it already has is a no-op. `x as integer` where
+`x` is already an `integer` is flagged as unnecessary (`W0506`).
+
+### Struct conversions with dunders
+
+A struct converts to a primitive or collection when it defines the matching
+zero-argument conversion method. The `as` target selects the method:
+
+| Target        | Method     |
+|---------------|------------|
+| `integer`     | `__integer`|
+| `float`       | `__float`  |
+| `string`      | `__string` |
+| `bool`        | `__bool`   |
+| `list[T]`     | `__list`   |
+| `dict[K, V]`  | `__dict`   |
+| a tuple type  | `__tuple`  |
+
+```gust
+def Point
+    x: integer
+    y: integer
+end
+
+def Point.__dict() -> dict[string, integer]
+    d: dict[string, integer] = {}
+    d["x"] = x
+    d["y"] = y
+    return d
+end
+
+p := Point(x: 1, y: 2)
+back := p as dict[string, integer]    # {"x": 1, "y": 2}
+```
+
+The method must take no arguments and return exactly the target type, or the
+cast is rejected. Casting a struct to a target with no matching dunder is a
+compile error that names the method to add.
+
+### A dict as a struct
+
+Casting a `dict` to a struct type builds the struct by reading each field from
+the dict under its own name. The dict's value type may be `Any` (each value is
+unboxed to its field type) or already concrete:
+
+```gust
+def Person
+    name: string
+    age:  integer
+end
+
+d: dict[string, Any] = {"name": "Ada", "age": 36}
+person := d as Person             # Person(name: "Ada", age: 36)
+
+# A dict literal works the same way.
+p := {"name": "Bo", "age": 9} as Person
+```
+
+A missing key raises `KeyError` at runtime; extra dict keys are ignored. This is
+the inverse of the `__dict` conversion above, so a struct round-trips through a
+dict in both directions.
+
+### Class up- and downcasts
+
+A class (a struct that `extends` another) casts along its hierarchy. An
+**upcast** to an ancestor is a static pointer conversion. A **downcast** to a
+descendant is checked against the value's real class at runtime and raises
+`ValueError` on a mismatch. Pair the downcast with an `is` test to narrow
+safely:
+
+```gust
+a: Animal = Dog(name: "Rex", breed: "Lab")
+if a is Dog
+    d := a as Dog           # narrowed — d.breed is in scope
+    print(d.breed)
+end
+```
+
+### Boxing into and out of `Any`
+
+Casting any value `as Any` boxes it into a `GValue`; casting an `Any` back to a
+concrete type unboxes it and checks the runtime tag, raising `ValueError` on a
+mismatch. A boxed container keeps its element type — the tag captured at box
+time is what a later `is`/`as` compares against, so element types are not
+erased.
+
+```gust
+box: Any = [1, 2, 3]        # tag remembers list[integer]
+xs := box as list[integer]  # unboxed back to the concrete list
+```
+
+Assigning or passing a concrete container where an `Any`-slot container is
+expected widens it — `list[T]` → `list[Any]` and `dict[K, T]` → `dict[K, Any]`
+rebuild the container with every element boxed:
+
+```gust
+strs: list[string] = ["a", "b"]
+anys: list[Any] = strs               # each element boxed
+cast := strs as list[Any]            # explicit form of the same widening
+```
+
+### What you cannot cast
+
+A collection (`list`, `dict`, or tuple) and `none` are pointer/unit values, so
+the only conversions defined for them are `as string` (a textual form),
+`as bool` (truthiness), the identity cast, and boxing through `Any`. A
+same-kind re-typing such as `[] as list[string]` or
+`dict[Any, Any] as dict[string, integer]` is a safe pointer no-op. Any other
+target — a collection to a number, a scalar to a collection, or anything
+`as none` — is a compile error (`G0403`).
+
+## Runtime type tests
+
+Test what an `Any` or union value holds at runtime with `is` (and its negation
+`is not`), or with a `match` type pattern. Both are real runtime checks, not
+compile-time guesses.
+
+### `is` and `is not`
+
+`is` yields a `bool`. On an optional or union, a successful `is`/`is not none`
+test **narrows** the value inside the guarded branch, so the concrete value is
+available with no cast:
+
+```gust
+d := {"a": 1}
+v := d.get("a")               # integer | none
+if v is not none
+    print(v + 1)              # v is a plain integer here
+end
+```
+
+The right-hand side may be a primitive (`x is integer`, `x is string`) or a full
+container type. Container tests match the element type exactly — there is no
+covariance, and `Any` anywhere in the tested type is rejected:
+
+```gust
+x is list[string]
+x is dict[string, integer]
+```
+
+A bare `x is list` (no element type) is a compile error — spell the element type
+as `list[T]`.
+
+### Type patterns in `match`
+
+A `match` arm can be a type instead of a literal. Each `case` narrows the
+scrutinee to that type within the arm:
+
+```gust
+def describe(v: Any) -> string
+    match v
+        case integer
+            return f"int:{(v as integer) + 1}"
+        case list[string]
+            return "list of strings"
+        case dict[string, integer]
+            return "dict"
+        else
+            return "other"
+    end
+end
+```
+
+The same forms drive a `match` on a union type; see
+[Union types](#union-types-a--b) above.
+
+## Generic type annotations
+
+A generic struct or function can be named in a type position by writing its type
+arguments in brackets, `Name[Arg, ...]`. This is the type you annotate a
+variable, field, parameter, or return with:
+
+```gust
+def Cell[T]
+    value: T
+end
+
+def cell[T](v: T) -> Cell[T]
+    return Cell(value: v)
+end
+
+c: Cell[integer] = cell(7)
+print(c.value)
+```
+
+The built-in generics — `list[T]`, `dict[K, V]`, `tuple[...]`, `ref[T]`, and
+`Function(...)[R]` — use the same bracket syntax.
+
+## Inference rules (quick reference)
+
+| You wrote                | Inferred type             |
+|--------------------------|---------------------------|
+| `x := 3`                 | `integer`                 |
+| `x := 3.0`               | `float`                   |
+| `x := "s"`               | `string`                  |
+| `x := [1, 2]`            | `list[integer]`           |
+| `x := []`                | **error** — annotate      |
+| `x := {"a": 1}`          | `dict[string, integer]`   |
+| `x := (1, "y")`          | `(integer, string)`       |
+| `x := f(y)`              | f's declared return type  |
+| `x := 7 / 2`             | `float`                   |
+| `x := 7 // 2`            | `integer`                 |

@@ -1,0 +1,194 @@
+---
+title: Install
+description: Install the Gust toolchain and verify it builds and runs a program
+---
+
+Gust compiles your `.g` source into native binaries by way of C and GCC. To build and run Gust programs you need the Gust toolchain plus a working GCC. The compiler is self-hosted and ships as a single native binary — there is no runtime interpreter and no language dependency.
+
+## Requirements
+
+| Dependency | Version | Notes |
+|---|---|---|
+| **GCC**      | 13+      | Used to compile the generated C. Clang also works. |
+| **pthreads** | —        | Required for concurrency (the `!` async constructs). Present by default on Linux and macOS. |
+| **libcurl**  | optional | Only needed if you `use requests`. |
+
+<Tip>
+**Windows**
+
+Native Windows is not yet supported. Use WSL2 with a recent Ubuntu image — installation is identical to Linux from inside the WSL shell.
+</Tip>
+
+## Install Gust
+
+Pick the method that matches your platform. All three give you the same `gust` command on your `PATH`.
+
+<Tabs>
+  <Tab title="Debian / Ubuntu (`.deb`)">
+
+  Download the latest `gust_<version>_all.deb` from the [releases page](https://github.com/GustLang/gust/releases) and install it with `dpkg`:
+
+  ```bash
+  curl -LO https://github.com/GustLang/gust/releases/latest/download/gust_0.1.0_all.deb
+  sudo dpkg -i gust_0.1.0_all.deb
+  sudo apt-get install -f          # pulls in gcc if you don't already have it
+  ```
+
+  The package declares `gcc` as its only dependency; `apt-get install -f` fetches it if it is missing. To **upgrade**, download the newer `.deb` and install it the same way — `dpkg` replaces the old version in place. To **uninstall**:
+
+  ```bash
+  sudo apt remove gust
+  ```
+
+  ### What gets installed
+
+  | Path | Contents |
+  |---|---|
+  | `/usr/bin/gust` | A small wrapper that sets `GUST_ROOT` and execs the compiler. |
+  | `/usr/lib/gust/bin/gustc` | The self-hosted native compiler binary. |
+  | `/usr/lib/gust/runtime/` | C runtime linked into every binary you compile. |
+  | `/usr/lib/gust/stdlib/` | Standard library packages. |
+  | `/usr/lib/gust/packaging/completion/` | Shell-completion scripts. |
+
+  The wrapper points `GUST_ROOT` at `/usr/lib/gust` so the compiler finds its sibling `runtime/` and `stdlib/` trees regardless of where you invoke it from.
+
+  </Tab>
+  <Tab title="macOS / Linux (Homebrew)">
+
+  Add the tap and install:
+
+  ```bash
+  brew tap GustLang/gust
+  brew install gust
+  ```
+
+  Homebrew pulls in the required dependencies automatically. On macOS you also need the Xcode Command Line Tools for a C compiler — `xcode-select --install` if you don't have them.
+
+  To **upgrade**:
+
+  ```bash
+  brew update
+  brew upgrade gust
+  ```
+
+  To **uninstall** (the second line optionally removes the tap too):
+
+  ```bash
+  brew uninstall gust
+  brew untap GustLang/gust
+  ```
+
+  </Tab>
+  <Tab title="From source">
+
+  Clone the repository and use the prebuilt self-hosted compiler that ships in the checkout:
+
+  ```bash
+  git clone https://github.com/GustLang/gust.git
+  cd gust
+  ./gustc/build/gustc version          # the prebuilt self-hosted compiler
+  ```
+
+  The binary at `gustc/build/gustc` locates the `runtime/` and `stdlib/` trees as siblings of the repo root. It finds them by walking up from its own location, so running it from inside the checkout works with no configuration. To run it from elsewhere, set `GUST_ROOT` to the repo root (see [How Gust finds its files](#how-gust-finds-its-files)).
+
+  To put `gust` on your `PATH`, symlink the binary and export `GUST_ROOT`:
+
+  ```bash
+  export GUST_ROOT="$PWD"
+  ln -s "$PWD/gustc/build/gustc" ~/.local/bin/gust
+  ```
+
+  ### Rebuild the compiler
+
+  The shipped binary is already self-hosted, so you rarely need to rebuild. When you do, the compiler builds itself:
+
+  ```bash
+  gust build gustc/gustc.g -o gustc/build/gustc
+  ```
+
+  </Tab>
+</Tabs>
+
+### How Gust finds its files
+
+The compiler needs to locate its `runtime/` and `stdlib/` trees. It resolves them in this order:
+
+1. **`$GUST_ROOT`**, if set — used verbatim as the install root. Packaged installs set this in their wrapper; export it yourself for a bare binary.
+2. Otherwise it walks up from the running binary's own location looking for a sibling `runtime/` directory — this is how the in-tree `gustc/build/gustc` finds the repo root.
+3. As a last resort it falls back to the current working directory.
+
+A bare binary copied to somewhere like `~/.local/bin` with no `runtime/` alongside it will not find the trees on its own, so set `GUST_ROOT` in that case.
+
+## Verify
+
+```bash
+$ gust version
+Gust 0.1.0
+```
+
+Then run the smallest possible program:
+
+```bash
+$ echo 'def main() -> none
+    print("ready")
+end' > first.g
+
+$ gust run first.g
+ready
+```
+
+If that printed `ready`, you're done. If it didn't, the error message names the missing dependency — usually GCC.
+
+## Shell completion
+
+The toolchain ships completion scripts for Bash, Zsh, and Fish. `gust completion <shell>` writes the script for that shell to stdout; redirect it into the location your shell reads.
+
+<Tabs>
+  <Tab title="Bash">
+
+  ```bash
+  gust completion bash > ~/.local/share/bash-completion/completions/gust
+  ```
+
+  Or install it system-wide (requires `sudo`):
+
+  ```bash
+  gust completion bash | sudo tee /etc/bash_completion.d/gust
+  ```
+
+  </Tab>
+  <Tab title="Zsh">
+
+  ```bash
+  gust completion zsh > "${fpath[1]}/_gust"
+  ```
+
+  Then restart your shell, or reload completions with `autoload -U compinit && compinit`.
+
+  </Tab>
+  <Tab title="Fish">
+
+  ```bash
+  gust completion fish > ~/.config/fish/completions/gust.fish
+  ```
+
+  </Tab>
+</Tabs>
+
+Passing any other shell name exits with an error listing the supported shells.
+
+## Editor support
+
+- **VS Code** — install the [Gust extension](/tooling/vscode) for syntax highlighting, hover types, completion, diagnostics, and go-to-definition.
+- **Any LSP-aware editor** — point it at `gust lsp`. Setup notes in [LSP](/tooling/lsp).
+
+## Troubleshooting
+
+- **`gust: command not found`** — the install directory isn't on your `PATH`. For the `.deb`, `/usr/bin` should already be there; for a from-source symlink, make sure `~/.local/bin` is on your `PATH`.
+- **`gcc: not found` when building** — install GCC (`sudo apt install gcc`, `brew install gcc`, or your distro's package manager). Gust invokes `gcc` under the hood to turn the generated C into a native binary.
+- **A stdlib import fails with a path error** — the compiler can't find its `stdlib/` tree. Set `GUST_ROOT` to your install root (see [How Gust finds its files](#how-gust-finds-its-files)).
+- **Homebrew reports an old version** — run `brew update && brew upgrade gust`, then confirm with `gust version`.
+
+## Next step
+
+→ [Write your first program](/start/hello-world)

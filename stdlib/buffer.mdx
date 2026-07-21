@@ -1,0 +1,99 @@
+---
+title: buffer
+description: "A growable string builder"
+---
+
+```gust
+use buffer
+```
+
+A growable string builder. Use it instead of repeated `s = s + x`
+concatenation when assembling a large string in a loop. Construct one with
+`new_buffer()`, then `append` to it, read its `length`, materialize its
+contents with `to_string`, and reset it with `clear`.
+
+**Examples**
+
+```gust
+use buffer
+
+def main() -> none
+    b := buffer.new_buffer()
+    for i in range(3)
+        b.append(f"line {i}\n")
+    end
+    print(b.to_string())
+end
+```
+
+**On this page:** [`Buffer`](#Buffer) · [`new_buffer`](#buffer.new_buffer)
+
+## `Buffer`
+
+<a id="Buffer" />
+A growable string builder. Construct with `new_buffer()`. Appended
+segments are accumulated and joined once when the contents are read, so
+building a large string costs one final concatenation instead of one per
+append.
+
+```gust
+def Buffer
+
+    _parts: list[string]
+
+end
+```
+
+**Fields**
+
+- `_parts: list[string]` — Accumulated string segments in append order — don't touch this directly.
+
+**Methods**
+
+<a id="Buffer.append" />
+```gust
+def Buffer.append(s: string) -> none
+```
+
+Append `s` to the end of the buffer.
+
+**Parameters**
+
+- `s` — The string to append.
+
+---
+
+<a id="Buffer.to_string" />
+```gust
+def Buffer.to_string() -> string
+```
+
+Return the buffer's contents as a single string.
+
+---
+
+<a id="Buffer.clear" />
+```gust
+def Buffer.clear() -> none
+```
+
+Reset the buffer to empty.
+
+---
+
+<a id="Buffer.close" />
+```gust
+def Buffer.close() -> none
+```
+
+Does nothing. The buffer's storage is managed and reclaimed
+automatically; this method remains so existing callers keep compiling.
+
+## Functions
+
+<a id="buffer.new_buffer" />
+```gust
+def new_buffer() -> Buffer
+```
+
+Create a new empty buffer.

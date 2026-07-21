@@ -1,0 +1,299 @@
+---
+title: Cookbook
+description: Task-oriented Gust recipes you can copy, paste, and run
+---
+
+Task-oriented recipes. Each one is a complete program — copy, paste, run.
+
+## Read a line from stdin and echo it
+
+```gust
+def main() -> none
+    name := input("your name: ")
+    print(f"hi, {name}")
+end
+```
+
+## Parse command-line args
+
+```gust
+use os
+
+def main() -> none
+    args := os.args()
+    if args.length < 2
+        os.stderr_write("usage: greet <name>\n")
+        exit(2)
+    end
+    print(f"hi, {args[1]}")
+end
+```
+
+## Read a file, line by line
+
+```gust
+use fs
+
+def main() -> none
+    body := fs.read_file("notes.txt")
+    for line in body.split("\n")
+        print(f"- {line}")
+    end
+end
+```
+
+## Count words in a file
+
+```gust
+use fs
+
+def main() -> none
+    text := fs.read_file("book.txt")
+    words: dict[string, integer] = {}
+
+    for token in text.split(" ")
+        clean := token.trim().lowercase()
+        if clean.is_empty()
+            # skip
+        else if clean in words
+            words[clean] = words[clean] + 1
+        else
+            words[clean] = 1
+        end
+    end
+
+    print(f"unique words: {words.length}")
+end
+```
+
+## Call an HTTP API and parse the status
+
+```gust
+use http.client
+
+def main() -> none
+    r := client.get("https://httpbin.org/status/200")
+    if r.ok()
+        print("up")
+    else
+        print(f"down: {r.status_code}")
+    end
+end
+```
+
+## POST a JSON body
+
+```gust
+use http.client
+
+def main() -> none
+    r := client.post("https://httpbin.org/post", json: {"name": "widget", "qty": 3})
+    if r.ok() and r.is_json()
+        data := r.json() as dict[string, Any]
+        print(data["url"] as string)
+    end
+    print(r.content_type)          # "application/json"
+    print(r.cookies["session"])    # any cookie the server set
+end
+```
+
+The `json` argument serializes the value and sets `Content-Type: application/json`
+for you. The response carries the request `method` and final `url`, the parsed
+`content_type`, the server's `cookies`, and case-insensitive `headers`.
+
+## Retry with backoff
+
+```gust
+use http.client
+use time
+
+def get_with_retry(url: string, attempts: integer) -> string
+    i := 0
+    while i < attempts
+        r := client.get(url)
+        if r.ok()
+            return r.body
+        end
+        time.sleep(200 * (i + 1))
+        i = i + 1
+    end
+    raise RuntimeError(message: "gave up")
+end
+
+def main() -> none
+    body := get_with_retry("https://httpbin.org/status/200", 3)
+    print(f"got {body.length} bytes")
+end
+```
+
+## Benchmark two implementations
+
+```gust
+use time
+
+def do_thing(i: integer) -> integer
+    return i * i
+end
+
+def bench(label: string, iters: integer) -> none
+    start := time.now_ms()
+    for i in range(iters)
+        do_thing(i)
+    end
+    print(f"{label}: {time.now_ms() - start} ms")
+end
+
+def main() -> none
+    bench("square", 1000000)
+end
+```
+
+## Throw-and-catch a custom error
+
+```gust
+error ParseError(message: string, line: integer)
+
+def parse(text: string) -> integer
+    if text.is_empty()
+        raise ParseError(message: "empty input", line: 1)
+    end
+    return text as integer
+end
+
+def main() -> none
+    try
+        print(parse(""))
+    catch ParseError as e
+        print(f"line {e.line}: {e.message}")
+    end
+end
+```
+
+## Deterministic dice roll
+
+```gust
+use cryptography.random
+
+def roll(n: integer) -> integer
+    total := 0
+    for _ in range(n)
+        total = total + random.int_in(1, 6)
+    end
+    return total
+end
+
+def main() -> none
+    random.seed(42)
+    print(f"sum of 5d6 = {roll(5)}")
+end
+```
+
+## Parallel ping
+
+Concurrency is explicit: the `!` suffix on a `for` loop spawns each iteration on its own thread, joining them all at loop end. A plain `for` runs sequentially.
+
+```gust
+use time
+
+def ping(host: string) -> integer
+    """Imagine this calls out to a real prober."""
+    time.sleep(100)
+    return 10 * host.length
+end
+
+def main() -> none
+    hosts: list[string] = ["10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4"]
+
+    # Each iteration spawns its own thread.
+    for! h in hosts
+        ms := ping(h)
+        print(f"{h}: {ms} ms")
+    end
+end
+```
+
+## Parse JSON
+
+Gust ships a JSON parser in the `json` stdlib package. `json.parse` returns native Gust data — an object becomes a `dict[string, Any]`, an array a `list[Any]`, and scalars their matching primitives. Cast with `as` to read the values:
+
+```gust
+use json
+
+def main() -> none
+    doc := json.parse("{\"name\": \"ada\", \"score\": 99}") as dict[string, Any]
+    name := doc["name"] as string
+    score := doc["score"] as integer
+    print(f"{name} → {score}")
+end
+```
+
+For simple `key = value` config files you control, splitting is enough:
+
+```gust
+def parse_pair(line: string) -> tuple[string, string]
+    parts := line.split("=")
+    return (parts[0].trim(), parts[1].trim())
+end
+
+def main() -> none
+    body := "name = ada\nscore = 99\n"
+    for line in body.split("\n")
+        if line.is_empty()
+            # skip
+        else
+            k, v := parse_pair(line)
+            print(f"{k} → {v}")
+        end
+    end
+end
+```
+
+## Dispatch on an enum variant
+
+```gust
+enum Command: string
+    start = "start"
+    stop  = "stop"
+    status = "status"
+end
+
+def run(c: Command) -> none
+    match c
+        case Command.start
+            print("starting...")
+        case Command.stop
+            print("stopping...")
+        case Command.status
+            print("running")
+    end
+end
+
+def main() -> none
+    run(Command.start)
+    run(Command.status)
+end
+```
+
+## Group values by key
+
+```gust
+def group_by_first_letter(words: list[string]) -> dict[string, list[string]]
+    out: dict[string, list[string]] = {}
+    for w in words
+        key := w.char_at(0)
+        if key in out
+            bucket := out[key]
+            bucket.append(w)
+        else
+            out[key] = [w]
+        end
+    end
+    return out
+end
+
+def main() -> none
+    groups := group_by_first_letter(["ant", "ape", "bee", "cow"])
+    print(groups["a"].length)
+    print(groups["b"])
+end
+```

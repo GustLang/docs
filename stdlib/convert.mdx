@@ -1,0 +1,309 @@
+---
+title: convert
+description: "Integer base conversions: format an integer as a hex, octal, or binary string (with the conventional `0x` / `0o` / `0b` prefix) and parse such strings back to integers, honoring an optional sign and prefix"
+---
+
+```gust
+use convert
+```
+
+Integer base conversions: format an integer as a hex, octal, or binary string
+(with the conventional `0x` / `0o` / `0b` prefix) and parse such strings back
+to integers, honoring an optional sign and prefix.
+
+Standard base64 and hex codecs live on the built-in string/bytes methods
+(`s.encode("base64")`, `s.decode("hex")` → `bytes`, `b.encode("hex")`, etc.) —
+all length-aware, so `0x00` octets round-trip. URL percent-encoding lives in the
+`url` package. The `base64_url_encode_bytes` wrapper here adds the URL- and
+filename-safe alphabet (RFC 4648 §5), which the built-in codec does not.
+
+**On this page:** [`format_base`](#convert.format_base) · [`hex_digit`](#convert.hex_digit) · [`hex_digit_char`](#convert.hex_digit_char) · [`is_digit`](#convert.is_digit) · [`byte_hex`](#convert.byte_hex) · [`bytes_to_hex`](#convert.bytes_to_hex) · [`bytes_to_ints`](#convert.bytes_to_ints) · [`ints_to_bytes`](#convert.ints_to_bytes) · [`utf8_encode`](#convert.utf8_encode) · [`parse_base`](#convert.parse_base) · [`parse_int_or`](#convert.parse_int_or) · [`int_to_hex`](#convert.int_to_hex) · [`int_to_oct`](#convert.int_to_oct) · [`int_to_bin`](#convert.int_to_bin) · [`hex_to_int`](#convert.hex_to_int) · [`oct_to_int`](#convert.oct_to_int) · [`bin_to_int`](#convert.bin_to_int) · [`base64_encode_bytes`](#convert.base64_encode_bytes) · [`base64_url_encode_bytes`](#convert.base64_url_encode_bytes)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `HEX_DIGITS` | `string` | `"0123456789abcdef"` |
+| `ASCII_0` | `integer` | `48` |
+| `ASCII_9` | `integer` | `57` |
+| `ASCII_LOWER_A` | `integer` | `97` |
+| `ASCII_LOWER_F` | `integer` | `102` |
+| `ASCII_UPPER_A` | `integer` | `65` |
+| `ASCII_UPPER_F` | `integer` | `70` |
+
+## Functions
+
+<a id="convert.format_base" />
+```gust
+def format_base(n: integer, base: integer, prefix: string) -> string
+```
+
+Format an integer in the given base with a base prefix and sign.
+
+**Parameters**
+
+- `n: integer` — The integer to format.
+- `base: integer` — Numeric base to render the digits in (e.g. 16, 8, 2).
+- `prefix: string` — String prepended after any sign (e.g. "0x", "0o", "0b").
+
+---
+
+<a id="convert.hex_digit" />
+```gust
+def hex_digit(b: integer) -> integer
+```
+
+The numeric value 0-15 of an ASCII hex-digit byte (`0`-`9`, `a`-`f`,
+`A`-`F`), or -1 if `b` is not a hex digit. The single source of truth for
+hex-nibble decoding — `url`, `uuid`, `toml`, and `yaml` all route through
+it.
+
+**Parameters**
+
+- `b: integer` — ASCII byte value to decode.
+
+---
+
+<a id="convert.hex_digit_char" />
+```gust
+def hex_digit_char(ch: string) -> integer
+```
+
+The numeric value 0-15 of the single hex-digit character `ch`, or -1
+when `ch` is empty or not a hex digit. String-facing companion to
+`hex_digit`, which works on a raw byte.
+
+**Parameters**
+
+- `ch: string` — One-character string to decode.
+
+---
+
+<a id="convert.is_digit" />
+```gust
+def is_digit(ch: string) -> bool
+```
+
+True when `ch` is a single ASCII decimal digit (`0`-`9`).
+
+**Parameters**
+
+- `ch: string` — One-character string to test.
+
+---
+
+<a id="convert.byte_hex" />
+```gust
+def byte_hex(b: integer) -> string
+```
+
+Format the low byte of `b` (0-255) as two lowercase hex digits — the
+encode counterpart to `hex_digit`. Binary-safe (operates on the integer
+value, never a NUL-terminable string), so it suits digests and UUIDs.
+
+**Parameters**
+
+- `b: integer` — The byte value to format.
+
+---
+
+<a id="convert.bytes_to_hex" />
+```gust
+def bytes_to_hex(data: bytes) -> string
+```
+
+Lowercase hex of every byte in `data`, e.g. `b"\x0f\xa0"` → `"0fa0"`.
+Binary-safe — the single source of truth for hex-encoding a digest, which
+is why `cryptography.sha` and `cryptography.hmac` route through it.
+
+**Parameters**
+
+- `data: bytes` — The bytes to hex-encode.
+
+---
+
+<a id="convert.bytes_to_ints" />
+```gust
+def bytes_to_ints(data: bytes) -> list[integer]
+```
+
+The byte values of a `bytes` value, in order, each masked to 0-255.
+
+**Parameters**
+
+- `data: bytes` — The bytes to expand into an integer list.
+
+---
+
+<a id="convert.ints_to_bytes" />
+```gust
+def ints_to_bytes(values: list[integer]) -> bytes
+```
+
+Pack a list of byte values into a `bytes` value — the inverse of
+`bytes_to_ints`.
+
+**Parameters**
+
+- `values: list[integer]` — The byte values (0-255) to pack.
+
+---
+
+<a id="convert.utf8_encode" />
+```gust
+def utf8_encode(cp: integer) -> string
+```
+
+Encode a Unicode code point as its UTF-8 byte string. The single source
+of truth for `\u` / `\U` escape decoding — `json`, `toml`, and `yaml` all
+route through it.
+
+**Parameters**
+
+- `cp: integer` — The Unicode code point to encode.
+
+---
+
+<a id="convert.parse_base" />
+```gust
+def parse_base(
+    s: string,
+    base: integer,
+    pre_lo: string,
+    pre_hi: string,
+) -> integer
+```
+
+Parse a string in the given base, honoring an optional sign and prefix.
+
+**Parameters**
+
+- `s: string` — The string to parse.
+- `base: integer` — Numeric base the digits are in (e.g. 16, 8, 2).
+- `pre_lo: string` — Lowercase prefix letter to skip after `0` (e.g. "x", "o", "b").
+- `pre_hi: string` — Uppercase prefix letter to skip after `0` (e.g. "X", "O", "B").
+
+---
+
+<a id="convert.parse_int_or" />
+```gust
+def parse_int_or(s: string, fallback: integer) -> integer
+```
+
+Parse a base-10 integer from `s`, honoring an optional leading `+`/`-`
+sign and ignoring any non-digit characters. Returns `fallback` when `s`
+holds no digits at all. Used for lenient decimal parsing of header values,
+port strings, and validated numeric tokens.
+
+**Parameters**
+
+- `s: string` — The string to parse.
+- `fallback: integer` — Value to return when `s` contains no digits.
+
+---
+
+<a id="convert.int_to_hex" />
+```gust
+def int_to_hex(n: integer) -> string
+```
+
+Format an integer as a hex string prefixed with `0x`.
+
+**Parameters**
+
+- `n: integer` — The integer to format.
+
+---
+
+<a id="convert.int_to_oct" />
+```gust
+def int_to_oct(n: integer) -> string
+```
+
+Format an integer as an octal string prefixed with `0o`.
+
+**Parameters**
+
+- `n: integer` — The integer to format.
+
+---
+
+<a id="convert.int_to_bin" />
+```gust
+def int_to_bin(n: integer) -> string
+```
+
+Format an integer as a binary string prefixed with `0b`.
+
+**Parameters**
+
+- `n: integer` — The integer to format.
+
+---
+
+<a id="convert.hex_to_int" />
+```gust
+def hex_to_int(s: string) -> integer
+```
+
+Parse a hex string (with or without `0x` prefix) as an integer.
+
+**Parameters**
+
+- `s: string` — The hex string to parse.
+
+---
+
+<a id="convert.oct_to_int" />
+```gust
+def oct_to_int(s: string) -> integer
+```
+
+Parse an octal string (with or without `0o` prefix) as an integer.
+
+**Parameters**
+
+- `s: string` — The octal string to parse.
+
+---
+
+<a id="convert.bin_to_int" />
+```gust
+def bin_to_int(s: string) -> integer
+```
+
+Parse a binary string (with or without `0b` prefix) as an integer.
+
+**Parameters**
+
+- `s: string` — The binary string to parse.
+
+---
+
+<a id="convert.base64_encode_bytes" />
+```gust
+def base64_encode_bytes(data: bytes) -> string
+```
+
+Standard (RFC 4648) base64 of `data`, with `=` padding. Equivalent to
+the built-in `data.encode("base64")`; kept as a function form for callers
+that prefer it. Suits digests, keys, and other raw-octet payloads.
+
+**Parameters**
+
+- `data: bytes` — The bytes to encode.
+
+---
+
+<a id="convert.base64_url_encode_bytes" />
+```gust
+def base64_url_encode_bytes(data: bytes) -> string
+```
+
+URL- and filename-safe base64 of `data` (RFC 4648 §5): like
+`base64_encode_bytes` but with `-`/`_` substituted for `+`/`/` and the `=`
+padding omitted. Suits tokens carried in URLs, cookies, and headers.
+
+**Parameters**
+
+- `data: bytes` — The bytes to encode.

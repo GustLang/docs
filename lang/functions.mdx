@@ -1,0 +1,397 @@
+---
+title: Functions
+description: Declaring and calling Gust functions — parameters, defaults, named and inout arguments, multiple returns, generics, closures, foreign functions, and concurrency
+---
+
+## Declaration
+
+```gust
+def add(a: integer, b: integer) -> integer
+    return a + b
+end
+```
+
+- `def` introduces a function.
+- Every parameter has a name and a type annotation. Types are never inferred for parameters.
+- The return type is required and follows `->`. Use `-> none` when the function returns no value; a named `def` with no `->` clause is an error.
+- The body ends with a plain `end`.
+
+Inside a `-> none` function, a bare `return` with no value exits early:
+
+```gust
+def log(msg: string) -> none
+    if msg == ""
+        return
+    end
+    print(msg)
+end
+```
+
+## Calling
+
+Arguments can be passed positionally, by name, or as a mix — positional first, then named:
+
+```gust
+x := add(2, 3)              # positional
+x := add(a: 2, b: 3)       # named — order-independent
+x := add(2, b: 3)          # positional then named
+```
+
+Named arguments document intent at the call site and let you reorder freely. They are especially useful when a boolean flag or one argument among several would otherwise be unclear.
+
+## Return values
+
+### A single value
+
+Return the value directly. Control leaves the function at the first `return` it reaches:
+
+```gust
+def abs(n: integer) -> integer
+    if n < 0
+        return -n
+    end
+    return n
+end
+```
+
+### Multiple values
+
+Declare a tuple return type and return a tuple literal:
+
+```gust
+def divide(a: integer, b: integer) -> tuple[integer, integer]
+    return (a // b, a % b)
+end
+
+q, r := divide(10, 3)
+```
+
+Destructure the result on assignment. Ignore a slot you don't need by binding it to `_`:
+
+```gust
+_, remainder := divide(10, 3)
+```
+
+## Parameters
+
+### Default values
+
+A parameter may declare a default with `= <expr>`. Defaulted parameters are optional at the call site; when omitted, the default is substituted:
+
+```gust
+def greet(name: string, greeting: string = "Hello", loud: bool = false) -> string
+    msg := greeting + ", " + name
+    return msg.uppercase() if loud else msg
+end
+
+def main() -> none
+    print(greet("Sam"))                    # Hello, Sam
+    print(greet("Sam", greeting: "Hi"))    # Hi, Sam
+    print(greet("Sam", "Yo", true))        # YO, SAM
+    print(greet(loud: true, name: "Al"))   # HELLO, AL — named args reorder freely
+end
+```
+
+Defaults compose with named arguments: you can skip a middle parameter that has a default and set a later one by name.
+
+### `inout` parameters
+
+Prefix a parameter with `inout` to pass it by reference. The callee's writes to the parameter are reflected in the caller's variable after the call returns. The call site must also mark the argument with `inout`, so a by-reference pass is always visible on both sides:
+
+```gust
+def bump(inout n: integer) -> none
+    n = n + 1
+end
+
+def main() -> none
+    x := 5
+    bump(inout x)
+    print(f"{x}")          # 6
+end
+```
+
+An `inout` argument must be a mutable variable (an lvalue), not a literal or an expression. The marker keyword `inout` is only special when a real parameter name follows it, so a parameter literally named `inout` is still allowed.
+
+## First-class functions
+
+Functions are values: you can pass them as arguments, return them, and store them in variables. The type of a function value is written `Function(ArgT, ArgT, ...)[ReturnT]` — parameter types inside `(...)`, the return type inside `[...]`:
+
+```gust
+def apply(f: Function(integer)[integer], x: integer) -> integer
+    return f(x)
+end
+
+def square(n: integer) -> integer
+    return n * n
+end
+
+def main() -> none
+    print(apply(square, 7))     # 49
+end
+```
+
+Storing a function in a variable and invoking it indirectly works the same way. The same variable can be reassigned to any value with a matching signature:
+
+```gust
+op: Function(integer, integer)[integer] = add
+print(op(2, 3))                 # 5
+```
+
+Omit the `[ReturnT]` for a function value that returns nothing — `Function()` is a zero-argument, no-return callback, `Function(string)` takes a string and returns nothing:
+
+```gust
+def run_callback(cb: Function()) -> none
+    cb()
+end
+```
+
+Interfaces remain the right choice for method-style dispatch (`x.ping()`), especially when the callable carries state. For simple callbacks, function values are shorter. See [Interfaces](/lang/interfaces).
+
+## Lambdas and closures
+
+A `def(params) -> ReturnT ... end` expression is an anonymous function value — a lambda. Unlike a top-level `def`, a lambda **captures** the locals in scope where it is written:
+
+```gust
+def make_adder(n: integer) -> Function(integer)[integer]
+    return def(x: integer) -> integer
+        return x + n            # captures n
+    end
+end
+
+def main() -> none
+    add5 := make_adder(5)
+    print(add5(10))             # 15
+end
+```
+
+### Body forms
+
+A lambda whose body is a single expression can drop the inner `return` and the block — the expression is the result:
+
+```gust
+dbl := def(x: integer) -> integer x * 2 end
+```
+
+The multi-line block form uses explicit `return` and closes with `end`:
+
+```gust
+inc := def(x: integer) -> integer
+    return x + 1
+end
+```
+
+Omit the `-> ReturnT` for a void lambda that runs for its side effects:
+
+```gust
+record := def(s: string)
+    seen.append(s)
+end
+```
+
+Lambdas are ordinary values: pass them as arguments (including directly inside a call's parentheses), store them in lists and struct fields, return them, and nest them. A block-form lambda can be passed as any argument, not just the last one:
+
+```gust
+fns: list[Function(integer)[integer]] = [inc, dbl, make_adder(10)]
+b := Box(op: def(x: integer) -> integer x * x end, label: "square")
+```
+
+### Capture by value
+
+Captures are by value by default: the captured value is snapshotted when the closure is built. Reassigning the source after capture does not change what the closure sees:
+
+```gust
+base := 100
+addbase := def(x: integer) -> integer x + base end
+base = 999
+print(addbase(5))               # 105 — captured the old value
+```
+
+### Mutable capture
+
+A captured local that the lambda **reassigns** is promoted to a shared heap cell. Writes are then visible on both sides — inside the lambda, in the enclosing scope, and across sibling closures that captured the same variable:
+
+```gust
+def counter() -> Function()[integer]
+    n := 0
+    return def() -> integer
+        n = n + 1               # mutates the shared captured cell
+        return n
+    end
+end
+
+def main() -> none
+    c := counter()
+    print(c())                  # 1
+    print(c())                  # 2 — the cell persists across calls
+end
+```
+
+Two closures over the same reassigned local share one cell, so one can mutate what the other reads:
+
+```gust
+def make_pair() -> tuple[Function()[integer], Function()[integer]]
+    n := 0
+    inc := def() -> integer
+        n = n + 10
+        return n
+    end
+    get := def() -> integer n end
+    return (inc, get)
+end
+```
+
+## Generic functions
+
+Type parameters go in `[...]` after the function name. Each acts as a placeholder type the compiler fills in per call site, generating one specialization per concrete type used:
+
+```gust
+def identity[T](x: T) -> T
+    return x
+end
+```
+
+A generic function may take several type parameters, and they can appear in the return type:
+
+```gust
+def pair[A, B](a: A, b: B) -> tuple[A, B]
+    return (a, b)
+end
+
+def swap[A, B](a: A, b: B) -> tuple[B, A]
+    return (b, a)
+end
+```
+
+Type parameters can stand in for element types of containers, and one generic can call another — both instantiate at the concrete type:
+
+```gust
+def first[T](xs: list[T]) -> T
+    return xs[0]
+end
+
+def wrap_in_list[T](x: T) -> list[T]
+    return [x]
+end
+
+def double_wrap[T](x: T) -> list[T]
+    return wrap_in_list(x)
+end
+```
+
+The type argument is usually inferred from the call. Supply it explicitly with `name[Type](...)` when you want to pin it:
+
+```gust
+print(identity(42))             # inferred T = integer
+print(identity[integer](42))    # explicit
+```
+
+Structs and enums take type parameters the same way. See [Structs](/lang/structs) for generic types.
+
+## Recursion
+
+Recursive functions work as you'd expect:
+
+```gust
+def fact(n: integer) -> integer
+    if n <= 1
+        return 1
+    end
+    return n * fact(n - 1)
+end
+```
+
+**Tail-call optimization** applies to self-recursion in tail position. The compiler rewrites the call into a jump, so direct self-recursion runs in O(1) stack:
+
+```gust
+def sum(xs: list[integer], i: integer, acc: integer) -> integer
+    if i >= xs.length
+        return acc
+    end
+    return sum(xs, i + 1, acc + xs[i])      # tail call → compiled to a jump
+end
+```
+
+Tail calls inside `try` / `for` / `while` are **not** optimized and still grow the stack — refactor to a plain tail position if you need O(1) space for those patterns.
+
+## Methods on structs
+
+Methods are declared with a dotted name, `def Struct.method(...)`:
+
+```gust
+def Server.status() -> string
+    return "online" if online else "offline"
+end
+```
+
+Inside a method the struct's fields are in scope directly — write `online`, never `self.online`. Methods take parameters, defaults, generics, and multiple returns exactly like free functions. See [Structs](/lang/structs) for the full story.
+
+## Foreign functions
+
+`def foreign` declares a function whose implementation is supplied by a linked C symbol. The declaration has a signature and a docstring but no body — it ends immediately at `end`:
+
+```gust
+def foreign now_ms() -> integer
+end
+
+def foreign sleep_ms(ms: integer) -> none
+end
+```
+
+The C side supplies a function of the same name with the matching argument and return types. Foreign declarations let Gust call into C runtime helpers and system libraries while keeping typed call sites.
+
+### Foreign methods
+
+Attach a foreign implementation to a struct with `def foreign Struct.method(...)`. The C symbol `Struct_method(Struct* self, ...)` provides the body and can read the struct's fields directly:
+
+```gust
+def Point
+    x: integer
+    y: integer
+end
+
+def foreign Point.magnitude() -> integer
+end
+```
+
+Call it like any method — `p.magnitude()`.
+
+## `def` everywhere
+
+`def` is a single keyword that introduces functions, methods, and struct types. Which one it declares depends on the shape that follows:
+
+```gust
+def greet(name: string) -> string ... end     # function
+def Server                                    # struct
+    name: string
+end
+def Server.status() -> string ... end         # method on Server
+```
+
+Reading Gust, `def` always means "I'm declaring a named thing." Context says which kind.
+
+## Decorators
+
+A function or method can be annotated with `@name` (or `@name(args...)`) on the line before its `def`. Decorators cover built-in compiler hints as well as your own wrapper functions:
+
+```gust
+@inline
+def square(n: integer) -> integer
+    return n * n
+end
+```
+
+See [Decorators](/lang/decorators) for the full list and semantics.
+
+## Concurrency
+
+Functions run **sequentially** by default — nothing is parallelized unless you ask for it. Opt in with a `!` suffix on `def`. Inside a `def!` body, consecutive independent call sequences are spawned on parallel threads and joined before the next dependent use:
+
+```gust
+def! gather() -> none
+    a := fetch("10.0.0.1")
+    b := fetch("10.0.0.2")      # spawns in parallel with the previous call
+    print(a + b)
+end
+```
+
+The `!` suffix also works on methods (`def! Struct.method(...)`) and on `for!` and `while!` loops. See [Concurrency](/lang/concurrency) for the full rules.

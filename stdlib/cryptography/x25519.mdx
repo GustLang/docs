@@ -1,0 +1,114 @@
+---
+title: cryptography.x25519
+description: "X25519 Elliptic-Curve Diffie-Hellman key exchange, backed by the system OpenSSL (`libcrypto`)"
+---
+
+```gust
+use cryptography.x25519
+```
+
+X25519 Elliptic-Curve Diffie-Hellman key exchange, backed by the system
+OpenSSL (`libcrypto`). It lets two parties who each hold a key pair derive a
+shared 32-byte secret over an untrusted channel, without ever transmitting the
+secret: each side combines its own private key with the other's public key and
+arrives at the same value. This is the key-agreement half of modern protocols
+(TLS 1.3, Signal, WireGuard, age).
+
+Keys are 32 bytes each. `generate()` makes an `X25519KeyPair`; exchange public
+keys with the peer, then call `shared_secret(my_private, their_public)`.
+
+IMPORTANT: the raw shared secret is NOT uniformly random and must not be used
+directly as an encryption key. Run it through a KDF first — typically
+`cryptography.kdf.hkdf_sha256(shared, salt, info, length)` — to obtain actual
+key material. Pairs naturally with `cryptography.aes` for the encryption step.
+
+**Examples**
+
+```gust
+use cryptography.kdf
+use cryptography.x25519
+
+def main() -> none
+    alice := x25519.generate()
+    bob := x25519.generate()
+
+    # Each side combines its own private key with the peer's public key.
+    shared := x25519.shared_secret(alice.private_key, bob.public_key)
+    key := kdf.hkdf_sha256(shared, b"", "chat-v1" as bytes, 32)
+    print(key.length)   # 32 — ready to use with cryptography.aes
+end
+```
+
+**On this page:** [`X25519KeyPair`](#X25519KeyPair) · [`generate`](#cryptography.x25519.generate) · [`public_key`](#cryptography.x25519.public_key) · [`shared_secret`](#cryptography.x25519.shared_secret)
+
+## `X25519KeyPair`
+
+<a id="X25519KeyPair" />
+An X25519 key pair: a 32-byte private key (keep secret) and its 32-byte
+public key (share with the peer).
+
+```gust
+def X25519KeyPair
+
+    private_key: bytes
+    public_key: bytes
+
+end
+```
+
+**Fields**
+
+- `private_key: bytes` — The 32-byte secret key.
+- `public_key: bytes` — The 32-byte public key.
+
+<Warning>
+Anyone holding `private_key` can derive the shared secret. Keep it
+secret and never transmit or log it.
+</Warning>
+
+## Functions
+
+<a id="cryptography.x25519.generate" />
+```gust
+def generate() -> X25519KeyPair
+```
+
+Generate a fresh X25519 key pair from the system CSPRNG.
+
+---
+
+<a id="cryptography.x25519.public_key" />
+```gust
+def public_key(private_key: bytes) -> bytes
+```
+
+Derive the 32-byte public key for a 32-byte X25519 `private_key`.
+
+**Parameters**
+
+- `private_key: bytes` — The 32-byte secret key.
+
+---
+
+<a id="cryptography.x25519.shared_secret" />
+```gust
+def shared_secret(private_key: bytes, peer_public: bytes) -> bytes
+```
+
+Compute the 32-byte X25519 shared secret from your `private_key` and the
+peer's `peer_public` key. Both sides arrive at the same value.
+
+**Parameters**
+
+- `private_key: bytes` — Your 32-byte secret key.
+- `peer_public: bytes` — The peer's 32-byte public key.
+
+**Raises**
+
+- `ValueError` — `private_key` or `peer_public` is not 32 bytes.
+
+<Warning>
+The raw shared secret is not uniformly random and must not be used
+directly as an encryption key. Run it through a KDF first — for example
+`cryptography.kdf.hkdf_sha256(shared, salt, info, length)`.
+</Warning>

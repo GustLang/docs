@@ -1,0 +1,387 @@
+---
+title: Error handling
+description: First-class typed errors in Gust — declaring, raising, catching, re-raising, propagation, catchable runtime errors, and the built-in error types
+---
+
+Errors in Gust are first-class typed values. You declare them with `error`,
+raise them with `raise`, and catch them with `try` / `catch`. Every catch arm
+matches on the error's type, so handling is exhaustive and precise rather than
+string-based.
+
+## Declaring an error type
+
+`error` declarations are top-level. The **first** field must be exactly
+`message: string` — the compiler enforces this (`G0602`) so the runtime can
+read the message of any uncaught error. Additional fields may follow, in any
+order and of any type:
+
+```gust
+error LatencyError(message: string, server: string)
+error ConfigError(message: string, key: string, value: string)
+```
+
+An extra field can itself be a struct, a list, a dict, an enum, or another
+declared type:
+
+```gust
+def SourcePos
+    file: string
+    line: integer
+end
+
+error ParseError(message: string, pos: SourcePos)
+```
+
+Two rules govern the shape of an error type:
+
+- **`message: string` must come first.** Omitting it, or placing another field
+  before it, is a compile error (`G0602`, `invalid-error-layout`).
+- **The name should end in `Error`.** This is a convention, not a hard rule; a
+  name that does not end in `Error` triggers the style warning `W0109`.
+
+## Raising
+
+```gust
+def divide(a: integer, b: integer) -> integer
+    if b == 0
+        raise ValueError(message: "division by zero")
+    end
+    return a / b
+end
+```
+
+`raise` takes an error value constructed inline with **named arguments**,
+exactly like a struct literal. A trailing comma after the last argument is
+allowed:
+
+```gust
+raise ConfigError(
+    message: "missing key",
+    key: "port",
+    value: "",
+)
+```
+
+The value is always constructed at the `raise` site — you write
+`raise ErrorName(...)`, never `raise some_variable`. Once raised, control leaves
+the current function immediately and unwinds outward until a matching `catch` is
+found (or the program terminates; see [Unhandled errors](#unhandled-errors)).
+
+The analyzer checks each `raise` against the error type's declaration and
+rejects any of the following with `G0802` (`invalid-error-usage`):
+
+- an unknown error type name,
+- a named argument that is not a field of that type,
+- an argument whose value type does not match the field, or
+- a duplicated field name.
+
+## Catching
+
+A `try` block runs its body; if any statement in it raises, control transfers to
+the first matching `catch` arm.
+
+```gust
+try
+    d := divide(10, 0)
+    print(f"d = {d}")
+catch ValueError as e
+    print(f"ValueError: {e.message}")
+end
+```
+
+Inside the arm, the bound variable is the caught error. You read its fields with
+ordinary field access — `e.message`, plus any type-specific fields:
+
+```gust
+try
+    contents := os.read_file("/no/such/file")
+    print(contents)
+catch IOError as e
+    print(f"{e.message} (path: {e.path})")
+end
+```
+
+The bound `e` is a borrow valid only within its own arm.
+
+### Multiple typed arms
+
+List several `catch` clauses to handle different types. Arms are tested
+top-to-bottom against the raised error's type, and the first matching arm runs:
+
+```gust
+try
+    do_work()
+catch IOError as e
+    print(f"IO: {e.message} ({e.path})")
+catch ValueError as e
+    print(f"bad input: {e.message}")
+end
+```
+
+### Omitting the binding
+
+The `as e` binding is **optional** — leave it off when the body does not read
+the error:
+
+```gust
+try
+    do_work()
+catch IOError
+    print("I/O failed, retrying")
+end
+```
+
+### Catch-all
+
+A bare `catch` with **no type** matches any error, whatever its type. It binds
+nothing, so read the message only through the specific arms above it. A
+catch-all must be the **last** arm — arms after it are unreachable, and placing
+one before another arm is a compile error (`G0802`):
+
+```gust
+try
+    do_work()
+catch ValueError as e
+    print(f"bad input: {e.message}")
+catch
+    print("something else went wrong")
+end
+```
+
+A catch-all may also stand alone as the only arm, catching everything the body
+can raise:
+
+```gust
+try
+    risky()
+catch
+    print("recovered")
+end
+```
+
+### No matching arm
+
+If none of the typed arms match the raised error and there is no catch-all, the
+error keeps propagating to the next enclosing `try` — as if this `try` had not
+been entered. A catch-all is the only way to guarantee an error is stopped here.
+
+There is no `finally` clause. Run cleanup either after the `try` (on the success
+path) or inside each arm.
+
+## Re-raising
+
+A bare `raise` inside a `catch` re-throws the error currently being handled,
+unchanged, to the caller:
+
+```gust
+def rethrow() -> none
+    try
+        risky()
+    catch ValueError as e
+        log(e.message)
+        raise
+    end
+end
+```
+
+A bare `raise` is legal **only** inside a `catch` clause. Writing one anywhere
+else is a compile error (`G0802`).
+
+## Propagation
+
+An unhandled `raise` unwinds the call stack: it leaves the raising function,
+then its caller, and so on, until it reaches a `try` whose `catch` arms match.
+The enclosing `try` need not be in the same function — it can be several frames
+up.
+
+```gust
+def read_port() -> integer
+    raw := fs.read_file("port.txt")     # may raise IOError
+    return raw.trim() as integer        # may raise ValueError
+end
+
+def main() -> none
+    try
+        port := read_port()
+        print(f"port = {port}")
+    catch IOError as e
+        print(f"cannot read config: {e.message}")
+    catch ValueError as e
+        print(f"malformed port: {e.message}")
+    end
+end
+```
+
+`return`, `break`, and `continue` inside a `try` body are all handled correctly:
+leaving a `try` early keeps the internal try-frame bookkeeping balanced, so
+later raises still find the right handler. You do not need to catch an error just
+to return early.
+
+### Unhandled errors
+
+If an error reaches `main` uncaught, the program prints a one-line,
+human-readable message (in red) and exits with code 1 — never a C traceback:
+
+```
+error: unhandled LatencyError: too slow
+```
+
+The line is the error type name plus its `message` field. When the binary is
+built with frame tracing (a `--debug` build), the message is followed by a
+Gust-level traceback pointing at the raise site:
+
+```
+error: unhandled LatencyError: too slow
+gust traceback (most recent call last):
+  in main (line 12)
+  in serve (line 40)
+  in handle_request (line 58)
+```
+
+The same traceback is printed for fatal signals such as a segfault. A release
+build (the default) prints only the one-line message, so build with `--debug`
+when you need the frames.
+
+## Catchable runtime errors
+
+Several runtime faults raise ordinary, catchable errors of the built-in types —
+so a bad index or a divide-by-zero behaves exactly like an explicit `raise` and
+can be handled with the same `try` / `catch`:
+
+- **Division or modulo by zero** raises `ValueError` (message `"division by
+  zero"`, `"integer division by zero"`, or `"integer modulo by zero"`).
+- **List, string, or `bytes` index out of range** raises `IndexError`, as does
+  popping from an empty list.
+- **A missing dict key** raises `KeyError`.
+- **A failed cast or parse** — such as `s as integer` on non-numeric text, or an
+  `Any` value cast to the wrong type — raises `ValueError`.
+
+```gust
+def safe_at(xs: list[integer], i: integer) -> integer
+    try
+        return xs[i]
+    catch IndexError as e
+        print(f"out of range: {e.message}")
+        return -1
+    end
+end
+```
+
+Because these are the same types you can raise yourself, a single `catch
+ValueError` arm handles both your own `raise ValueError(...)` and a
+divide-by-zero from deep inside a call.
+
+## Built-in error types
+
+Five error types are available in every program without `use`. They are also
+documented on the [built-in error types](/builtins/errors) page.
+
+<a id="ValueError" />
+**`error ValueError(message: string)`**
+
+Invalid input: parse failure, out-of-range value, an argument that violates a
+precondition, division by zero, or a failed cast.
+
+**Fields**
+
+- `message: string` — human-readable description.
+
+```gust
+raise ValueError(message: "port must be positive")
+```
+
+<a id="IOError" />
+**`error IOError(message: string, path: string)`**
+
+Filesystem, network, or device I/O failure.
+
+**Fields**
+
+- `message: string`
+- `path: string` — the path or URL involved (may be empty).
+
+<a id="IndexError" />
+**`error IndexError(message: string, index: integer)`**
+
+Out-of-range access on a `list`, `string`, or `bytes`.
+
+**Fields**
+
+- `message: string`
+- `index: integer` — the offending index.
+
+<a id="KeyError" />
+**`error KeyError(message: string, key: string)`**
+
+Missing dict key.
+
+**Fields**
+
+- `message: string`
+- `key: string` — the key that wasn't present.
+
+<a id="RuntimeError" />
+**`error RuntimeError(message: string)`**
+
+Anything that doesn't fit the more specific errors: not-implemented paths,
+invariant violations, unexpected state.
+
+**Fields**
+
+- `message: string`
+
+## Patterns
+
+### Validate at boundaries, trust inside
+
+Wrap user input, file I/O, and network calls in `try`. Inside your domain
+logic, assume arguments are already valid.
+
+### Don't swallow
+
+Catching an error only to discard it (`catch X end` with no body) is almost
+always wrong. At minimum, log it. If you really mean "ignore," comment why.
+
+### Avoid control-flow errors
+
+Don't use `raise` for non-error state transitions — use a union return type.
+Reserve errors for *exceptional* conditions.
+
+```gust
+# wrong — using errors for control flow
+def find(xs: list[integer], target: integer) -> integer
+    for i in range(xs.length)
+        if xs[i] == target
+            return i
+        end
+    end
+    raise RuntimeError(message: "not found")   # don't do this
+end
+
+# right — return a signal value in the type
+def find(xs: list[integer], target: integer) -> integer
+    for i in range(xs.length)
+        if xs[i] == target
+            return i
+        end
+    end
+    return -1
+end
+```
+
+### Enrich errors at boundaries
+
+When a low-level error bubbles up, catch it and raise a domain error with
+added context:
+
+```gust
+try
+    raw := fs.read_file(cfg_path)
+catch IOError as e
+    raise ConfigError(
+        message: "could not load config",
+        key: "",
+        value: e.path,
+    )
+end
+```
