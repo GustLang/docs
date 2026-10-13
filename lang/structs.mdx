@@ -1,6 +1,6 @@
 ---
 title: Structs
-description: Declaring Gust structs — fields, constructors, methods, ownership, subclassing, dunders, and struct/dict casting
+description: Declaring Gust structs — fields, constructors, methods, ownership, subclassing, type values, dunders, and struct/dict casting
 ---
 
 Gust structs are named records — data plus methods. Same keyword (`def`) as functions, just with a body of typed fields instead of statements.
@@ -19,6 +19,7 @@ end
 - One field per line: `name: Type`.
 - A field may declare a **default** with `= value` (`port: integer = 8080`); fields with a default can be omitted at construction.
 - Prefix a field with `private` to make it package-internal: `private secret: string`.
+- Prefix a field with `readonly` to close it to outside writes: `readonly id: string`. See [Read-only fields](#read-only-fields).
 - Struct names are conventionally `PascalCase`. The compiler uses the uppercase-first-letter rule to parse call sites as struct initialization.
 
 ```gust
@@ -85,6 +86,8 @@ Inside a method, the struct's fields are in scope directly — you write `online
 
 Prefix a method with `@static` to make it an **associated function** — a function namespaced under the type, with **no** `self` receiver. You call it on the type itself, `Type.fn(...)`, the way Rust spells `User::new` or Swift spells a `static func`. It's the idiomatic place for constructors and factories:
 
+An associated function is also a first-class value: written without a call it is a `Function(...)` you can pass, store, or return. See [Functions](/lang/functions#first-class-functions).
+
 ```gust
 def Server
     name: string
@@ -141,6 +144,42 @@ print(s.status())          # "offline"
 
 Field reads, assignments, and method calls use the same `.` syntax. A struct-valued variable can be reassigned to a different value of the same struct type, or have its fields individually updated.
 
+### Read-only fields
+
+A field marked `readonly` is set at construction and cannot be reassigned from outside the struct that declares it:
+
+```gust
+def Session
+    readonly id:  string
+    readonly tags: list[string]
+    hits: integer = 0
+end
+
+s := Session(id: "a91f", tags: [])
+print(s.id)                # reading is unrestricted
+
+s.id = "b02c"              # G0504 — cannot assign to readonly field 'id'
+s.hits = s.hits + 1        # fine, `hits` is an ordinary field
+```
+
+The declaring struct keeps write access, so a method — including a `@post_init` hook — can still maintain the invariant the modifier protects:
+
+```gust
+def Session.rotate(new_id: string) -> none
+    id = new_id            # allowed: Session's own method
+    hits = 0
+end
+```
+
+`readonly` fixes the *binding*, not the value behind it, the same way a `constant` does. A `readonly` list may still be appended to:
+
+```gust
+s.tags.append("beta")      # allowed — the field still names the same list
+s.tags = []                # G0504 — this would rebind the field
+```
+
+`readonly` and `private` are independent and may be combined in either order (`private readonly key: string`): `private` controls who can *see* a field, `readonly` who can *write* it. Subclasses inherit the modifier along with the field.
+
 ## Structs in collections
 
 ```gust
@@ -173,6 +212,8 @@ print(b.name)     # "changed"
 ```
 
 Reassigning a whole struct variable replaces its value; updating a single field mutates only that binding's copy.
+
+A `for` loop over a list of structs is the exception: the loop variable refers to the list element itself, so updates through it reach the list (see [Control flow](/lang/control-flow#lists)).
 
 A struct **owns** its managed fields — `string`, `list`, `dict`, `bytes`, and nested managed structs. Copying the struct deep-retains those fields, and the struct is torn down (its fields released) when it goes out of scope. You never manage this by hand; the compiler synthesizes the retain/drop logic.
 
@@ -272,7 +313,11 @@ print(p.speak())    # "Rex barks" — still dispatches to Dog
 
 animals: list[Animal] = [a, d]
 print(animals[1].speak())   # "Rex barks"
+
+pets := [a, d]              # bare literal infers list[Animal]
 ```
+
+A bare list or dict literal whose elements are different classes from the same hierarchy types as the nearest common ancestor — a literal mixing sibling subclasses infers a container of their shared base and can be passed anywhere the base-typed container is expected.
 
 ### Calling the parent with `super`
 
@@ -322,6 +367,30 @@ if p is not Dog
 end
 ```
 
+The same test works when the value sits in a union arm — an optional `Animal | none`, say. `is` walks the object's runtime class, so a test against any ancestor matches, and the branch narrows to the class you named:
+
+```gust
+pet: Animal | none = d
+if pet is Dog
+    print(pet.fetch())      # narrowed to Dog, out of the union
+else if pet is Animal
+    print(pet.name)         # narrowed to Animal
+end
+```
+
+A `match` reads the same union with bare class names as its `case` arms, narrowing each arm's body the way `is` does. Order the arms most-specific first — a `Dog` also matches an `Animal` arm:
+
+```gust
+match pet
+    case Dog
+        print(pet.fetch())
+    case Animal
+        print(pet.name)
+    else
+        print("no pet")
+end
+```
+
 The `as` operator performs a **checked downcast**. It returns the value at the subclass type on success and raises `ValueError` if the object is not actually that class, so you can guard it with `try`/`catch`:
 
 ```gust
@@ -359,6 +428,38 @@ end
 ```
 
 Only structs participate in a hierarchy; see [interfaces](/lang/interfaces) for the shape-based alternative. Generic and `@raw` structs cannot take part in a hierarchy.
+
+## Passing a type as a value
+
+A bare struct name is also a **value** — a type value carrying that struct's identity. Its type is written `Struct[Bound]`, a parameter, field, or local that accepts the type `Bound` or any subtype of it. `Struct[Any]` (or the bare `Struct`) accepts any struct type.
+
+```gust
+def Shape
+    sides: integer
+end
+
+def Square extends Shape
+    side: integer
+end
+
+def register(kind: Struct[Shape]) -> none
+    print(kind)
+end
+
+register(Square)   # ok — Square extends Shape
+register(Shape)    # ok — the bound itself
+```
+
+The bound is checked where the value is passed: a type whose struct does not extend `Bound` is rejected, exactly as a mismatched argument is. A type value and an *instance* of that type are distinct — passing `Square` where a `Square` instance is expected is a type error, and vice versa.
+
+Type values compare by identity and carry their name, so they can be stored, forwarded, and printed:
+
+```gust
+kinds: list[Struct[Shape]] = [Shape, Square]
+first := kinds[0]
+print(first == Shape)   # true
+print(Square)           # Square
+```
 
 ## Dunders
 
@@ -415,6 +516,20 @@ print(f"{g}")         # __string -> "Grid(1 cells)"
 `__iter` returns a concrete collection; `for x in t` iterates the list (or dict)
 it hands back, binding `x` to that collection's element type.
 
+The built-in types implement these dunders natively rather than by declaring
+them, and they implement different subsets: a `string` compares, contains,
+indexes, and iterates, while a `list` indexes and iterates but does not order.
+`dir(<value>)` lists the ones a value answers to, after its named members:
+
+```gust
+print(dir(1))       # ["__string", "__integer", "__float", "__bool", "__eq", "__lt", ...]
+print(dir([1, 2]))  # ["length", "append", ..., "__string", "__bool", "__list", "__eq", ...]
+```
+
+An operator a built-in does not implement is a compile error, the same as it is
+for a struct with no matching dunder — `[1] < [2]` and `for x in (1, 2)` are
+both rejected.
+
 ### Conversions
 
 The `as` cast routes through a matching dunder, letting a struct convert to a
@@ -429,9 +544,9 @@ builtin type:
 | `t as list[X]` | `__list` | `def T.__list() -> list[X]` |
 | `t as dict[K, V]` | `__dict` | `def T.__dict() -> dict[K, V]` |
 
-## Struct and dict casting
+## Struct, dict, and list casting
 
-You can convert between a struct and a `dict` in both directions without defining any dunder — the compiler synthesizes the mapping from the struct's fields.
+You can convert between a struct and a `dict`, and cast a `list` into a struct, without defining any dunder — the compiler synthesizes the mapping from the struct's fields.
 
 **A dict casts *to* a struct** (`<dict> as StructName`). Each struct field is filled from the dict entry under its own name; the value is coerced to the field's declared type. The source may be a `dict[string, Any]` (values are unboxed per field) or a concrete `dict[string, T]`. Extra dict keys are ignored; a **missing key raises `KeyError`** at runtime:
 
@@ -453,6 +568,20 @@ print(back["x"])         # 3
 ```
 
 This round-trip is the bridge between typed structs and dynamic `dict[string, Any]` data such as parsed JSON.
+
+**A list casts *to* a struct** (`<list> as StructName`). Each struct field is filled from the list by position, in declaration order — there's no key to match against, so the *n*th element fills the *n*th field. The source may be a `list[Any]` (elements are unboxed per field — a numeric or `bool` field parses a string element rather than demanding the exact type, since a list is often built from already-stringified pieces like `split()`) or a concrete `list[T]`. Extra list elements past the struct's field count are ignored; a **list too short to supply a required field raises `IndexError`**, unless the field declares a default, in which case the default is used:
+
+```gust
+def Reading
+    label: string
+    value: float
+end
+
+fields := "cpu 24.2".split(" ")
+r := fields as Reading   # Reading(label: "cpu", value: 24.2)
+```
+
+There is no struct-to-list reverse cast — a struct's fields have names, and a list would discard them.
 
 ## Foreign methods
 
