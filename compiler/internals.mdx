@@ -210,7 +210,7 @@ Beyond the native host, `gustc` cross-compiles and emits for other backends, all
 
 The C runtime (`runtime/`) provides:
 
-- **`GSlice`** — `list[T]` backing type. Functions: `g_slice_new`, `g_slice_append`, `g_slice_get`, `g_slice_free`.
+- **`GSlice`** — `list[T]` backing type. Functions: `g_slice_new`, `g_slice_append`, `g_slice_get`; release an owned slice with `g_dec_ref`.
 - **`GDict`** — `dict[K, V]` backing type. FNV-1a hash, open addressing.
 - **`GValue`** — tagged union for `Any` / union types.
 - **`GBytes`** — `bytes` backing type.
