@@ -41,6 +41,8 @@ a >  b    a >= b
 
 Comparisons work on `integer`, `float`, `string`, `bool`, and enum variants, and always produce a `bool`. Strings compare lexicographically by code point. A comparison between an `integer` and a `float` widens to `float` before comparing.
 
+`==` and `!=` also work on `bytes` and on `list[T]`, comparing contents rather than object identity — two separately built values are equal when they hold the same elements. For `bytes` the comparison is length-aware, so an embedded NUL is compared like any other octet. A struct compares by identity unless it defines an `__eq` dunder.
+
 The two operands must be compatible. Comparing unrelated types (for example a `bool` against an `integer`) is a compile-time error.
 
 <Note>
@@ -155,9 +157,9 @@ f := 42   as float       # integer → float
 i := 3.9  as integer     # float → integer (truncates toward zero)
 ```
 
-`as` converts between the primitive types and unboxes a value from an `Any` or union slot. When a conversion can fail at runtime — for example `"foo" as integer` — it raises `ValueError`. Wrap it in `try` / `catch` when the input is user-controlled.
+`as` converts between the primitive types and unboxes a value from an `Any` or union slot. Unboxing to a number or `bool` parses a boxed string the same way a direct `string as integer` does, so a value pulled from a `dict[string, Any]` or a JSON field casts without an intermediate step — `user["uid"] as integer` parses `"0"` to `0`. When a conversion can fail at runtime — for example `"foo" as integer` — it raises `ValueError`. Wrap it in `try` / `catch` when the input is user-controlled.
 
-`as` also serves structural conversions documented elsewhere: casting a `dict` to a struct fills each field from the matching key, and casting a struct back to a `dict` produces its field map. See [Structs](/lang/structs).
+`as` also serves structural conversions documented elsewhere: casting a `dict` to a struct fills each field from the matching key, casting a struct back to a `dict` produces its field map, and casting a `list` to a struct fills each field by position. See [Structs](/lang/structs).
 
 ## Compound assignment
 

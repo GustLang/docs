@@ -54,6 +54,10 @@ def main() -> none
 end
 ```
 
+<Note>
+Only available where `target == "native" or has("tls")`.
+</Note>
+
 **On this page:** [`SSLContext`](#SSLContext) · [`SSLSocket`](#SSLSocket) · [`TLSError`](#TLSError) · [`CertificateError`](#CertificateError) · [`client_context`](#cryptography.ssl.client_context) · [`server_context`](#cryptography.ssl.server_context) · [`connect`](#cryptography.ssl.connect) · [`connect_with`](#cryptography.ssl.connect_with) · [`wrap_socket`](#cryptography.ssl.wrap_socket) · [`wrap_accepted`](#cryptography.ssl.wrap_accepted)
 
 ## Constants
@@ -107,14 +111,15 @@ the client side, or `wrap_accepted(...)` on the server side. The send/recv
 methods mirror `socket.Socket`; `recv` returning empty `bytes` means the
 peer closed the connection.
 
-**Implements:** [`Stream`](#Stream)
+**Implements:** [`socket.Stream`](#socket.Stream)
 
 ```gust
-def SSLSocket implements Stream
+def SSLSocket implements socket.Stream
 
     _ssl: integer
-    _sock: Socket
+    _sock: socket.Socket
     _open: bool
+    _ctx: integer
 
 end
 ```
@@ -122,8 +127,9 @@ end
 **Fields**
 
 - `_ssl: integer` — Opaque handle to the underlying `SSL` session.
-- `_sock: Socket` — The underlying plaintext TCP socket (for fd / peer-ip / close).
+- `_sock: socket.Socket` — The underlying plaintext TCP socket (for fd / peer-ip / close).
 - `_open: bool` — False once `close()` has been called locally.
+- `_ctx: integer` — Handle to the `SSL_CTX` this socket is responsible for releasing when it closes, or 0 when the context belongs to somebody else. Only `connect` sets it: it builds a context per call, so without an owner that context — and the whole system trust store parsed into it — outlives every reference to it.
 
 **Methods**
 
@@ -224,6 +230,24 @@ Useful for framed protocols where the next field's length is known.
 
 ---
 
+<a id="SSLSocket.wait_readable" />
+```gust
+def SSLSocket.wait_readable(timeout_ms: integer) -> bool
+```
+
+Wait until a `recv` on this connection would return without blocking, or
+until `timeout_ms` elapses. False means the timeout won.
+
+A TLS record already decrypted into the session buffer counts as readable
+even though the socket itself has nothing left to deliver, so a poll loop
+never strands plaintext that has already arrived.
+
+**Parameters**
+
+- `timeout_ms` — Milliseconds to wait; 0 polls, negative waits indefinitely.
+
+---
+
 <a id="SSLSocket.cipher" />
 ```gust
 def SSLSocket.cipher() -> string
@@ -240,6 +264,17 @@ def SSLSocket.protocol() -> string
 ```
 
 The negotiated protocol version (e.g. "TLSv1.3"), or "" if unknown.
+
+---
+
+<a id="SSLSocket.selected_protocol" />
+```gust
+def SSLSocket.selected_protocol() -> string
+```
+
+The application protocol chosen by ALPN during the handshake (e.g. "h2"
+or "http/1.1"), or "" when none was negotiated — the peer offered no ALPN,
+offered nothing this side supports, or no ALPN protocols were configured.
 
 ---
 
@@ -268,7 +303,8 @@ to poll it directly.
 def SSLSocket.close() -> none
 ```
 
-Send a TLS close-notify, then close the underlying socket. Idempotent.
+Send a TLS close-notify, then close the underlying socket, releasing the
+context as well when this socket is the thing that owns it. Idempotent.
 
 ---
 
@@ -281,11 +317,62 @@ True while the connection has not been closed locally. This does not
 detect a peer-side close — a `recv` returning empty `bytes` is the signal
 for that.
 
+## `TLSError`
+
+<a id="TLSError" />
+Raised when the TLS layer itself fails to establish a session — a
+failed handshake, an SSL protocol error, or per-connection setup (`SSL_new`,
+SNI, binding the socket). Distinct from a certificate-trust failure
+(`CertificateError`) and from byte-stream I/O failures after the handshake
+(`IOError`), so callers can tell "couldn't negotiate TLS" apart from
+"the connection dropped mid-transfer".
+
+**Implements:** [`Error`](#Error)
+
+```gust
+def TLSError implements Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — Human-readable description, including the OpenSSL error text.
+
+## `CertificateError`
+
+<a id="CertificateError" />
+Raised when the peer's certificate fails verification during a client
+handshake (untrusted CA, hostname mismatch, expired/not-yet-valid, …). A
+trust decision, not a transient failure — retrying won't help; the caller
+must pin the cert, fix the trust store, or refuse the connection. Separate
+from `TLSError` so this security-relevant case is catchable on its own.
+
+**Implements:** [`Error`](#Error)
+
+```gust
+def CertificateError implements Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — Description, including the X.509 verification reason.
+
 ## Functions
 
 <a id="cryptography.ssl.client_context" />
 ```gust
-def client_context(verify: bool, ca_file: string) -> SSLContext
+def client_context(
+    verify: bool,
+    ca_file: string,
+    alpn: list[string],
+) -> SSLContext
 ```
 
 Build a client TLS context.
@@ -297,10 +384,15 @@ is used as the trust store; otherwise the system default trust paths are
 used. When `verify` is false no certificate is checked — convenient for
 talking to a host with a self-signed certificate, but insecure.
 
+When `alpn` lists protocol names (e.g. `["h2", "http/1.1"]`) they are offered
+during the handshake in preference order; the negotiated choice is read back
+with `SSLSocket.selected_protocol`. An empty list offers nothing.
+
 **Parameters**
 
 - `verify: bool` — Whether to verify the peer certificate and hostname.
 - `ca_file: string` — Path to a PEM CA bundle, or "" for the system trust store.
+- `alpn: list[string]` — Application protocols to offer via ALPN, in preference order.
 
 <Warning>
 Passing `verify: false` disables all certificate and hostname
@@ -312,7 +404,11 @@ local testing, never in production.
 
 <a id="cryptography.ssl.server_context" />
 ```gust
-def server_context(cert_file: string, key_file: string) -> SSLContext
+def server_context(
+    cert_file: string,
+    key_file: string,
+    alpn: list[string],
+) -> SSLContext
 ```
 
 Build a server TLS context from a PEM certificate chain and private key.
@@ -320,10 +416,16 @@ Build a server TLS context from a PEM certificate chain and private key.
 `cert_file` is the server certificate (optionally followed by intermediate
 certificates, leaf first); `key_file` is the matching PEM private key.
 
+When `alpn` lists protocol names (e.g. `["h2", "http/1.1"]`) the server
+selects, for each client, the first of these the client also offered; the
+choice is read back with `SSLSocket.selected_protocol`. A client that offers
+none of them, or no ALPN at all, negotiates no protocol.
+
 **Parameters**
 
 - `cert_file: string` — Path to the PEM certificate (chain) file.
 - `key_file: string` — Path to the PEM private key file.
+- `alpn: list[string]` — Application protocols the server supports, in preference order.
 
 **Raises**
 
@@ -333,7 +435,7 @@ certificates, leaf first); `key_file` is the matching PEM private key.
 
 <a id="cryptography.ssl.connect" />
 ```gust
-def connect(host: string, port: integer) -> SSLSocket
+def connect(host: string, port: integer, alpn: list[string]) -> SSLSocket
 ```
 
 Open a verifying TLS connection to `host:port` and return it.
@@ -342,10 +444,21 @@ This is the quick path: it connects over TCP, performs a TLS handshake with
 a default verifying client context (system trust store, SNI set to `host`,
 hostname checked), and returns the ready `SSLSocket`.
 
+The context is built for this connection alone and is released when the
+returned socket is closed, so closing the socket is all a caller has to do.
+Code that opens connections in a loop should prefer `client_context` plus
+`connect_with`: the context here is cheap to hold but expensive to build,
+since making one parses the entire system trust store.
+
+When `alpn` lists protocol names (e.g. `["h2", "http/1.1"]`) they are offered
+during the handshake; the negotiated choice is read back with
+`SSLSocket.selected_protocol`. An empty list offers nothing.
+
 **Parameters**
 
 - `host: string` — Hostname (or IP) to connect to.
 - `port: integer` — TCP port to connect to.
+- `alpn: list[string]` — Application protocols to offer via ALPN, in preference order.
 
 **Raises**
 
@@ -383,7 +496,11 @@ all of them. SNI and (if the context verifies) the hostname check use
 
 <a id="cryptography.ssl.wrap_socket" />
 ```gust
-def wrap_socket(sock: Socket, hostname: string, ctx: SSLContext) -> SSLSocket
+def wrap_socket(
+    sock: socket.Socket,
+    hostname: string,
+    ctx: SSLContext,
+) -> SSLSocket
 ```
 
 Perform a client TLS handshake over an already-connected `socket.Socket`.
@@ -395,7 +512,7 @@ for you.
 
 **Parameters**
 
-- `sock: Socket` — A connected plaintext socket to start TLS over.
+- `sock: socket.Socket` — A connected plaintext socket to start TLS over.
 - `hostname: string` — Server name for SNI / hostname verification.
 - `ctx: SSLContext` — A context built with `client_context(...)`.
 
@@ -408,7 +525,7 @@ for you.
 
 <a id="cryptography.ssl.wrap_accepted" />
 ```gust
-def wrap_accepted(sock: Socket, ctx: SSLContext) -> SSLSocket
+def wrap_accepted(sock: socket.Socket, ctx: SSLContext) -> SSLSocket
 ```
 
 Complete a server-side TLS handshake over an accepted `socket.Socket`.
@@ -419,42 +536,9 @@ caller to close.
 
 **Parameters**
 
-- `sock: Socket` — A socket just accepted from a `socket.Listener`.
+- `sock: socket.Socket` — A socket just accepted from a `socket.Listener`.
 - `ctx: SSLContext` — A context built with `server_context(...)`.
 
 **Raises**
 
 - `TLSError` — The server-side handshake fails.
-
-## Errors
-
-<a id="TLSError" />
-```gust
-error TLSError(message: string)
-```
-
-Raised when the TLS layer itself fails to establish a session — a
-failed handshake, an SSL protocol error, or per-connection setup (`SSL_new`,
-SNI, binding the socket). Distinct from a certificate-trust failure
-(`CertificateError`) and from byte-stream I/O failures after the handshake
-(`IOError`), so callers can tell "couldn't negotiate TLS" apart from
-"the connection dropped mid-transfer".
-
-Fields:
-message: Human-readable description, including the OpenSSL error text.
-
----
-
-<a id="CertificateError" />
-```gust
-error CertificateError(message: string)
-```
-
-Raised when the peer's certificate fails verification during a client
-handshake (untrusted CA, hostname mismatch, expired/not-yet-valid, …). A
-trust decision, not a transient failure — retrying won't help; the caller
-must pin the cert, fix the trust store, or refuse the connection. Separate
-from `TLSError` so this security-relevant case is catchable on its own.
-
-Fields:
-message: Description, including the X.509 verification reason.

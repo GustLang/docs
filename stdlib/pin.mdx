@@ -1,107 +1,379 @@
 ---
 title: pin
-description: "Cross-platform GPIO line access through one neutral, handle-based API with a backend per platform:"
+description: "Cross-platform GPIO line access through one neutral API with a backend per platform:"
 ---
 
 ```gust
 use pin
 ```
 
-Cross-platform GPIO line access through one neutral, handle-based API with a
-backend per platform:
+Cross-platform GPIO line access through one neutral API with a backend per
+platform:
 
 - Linux: the `/dev/gpiochip<chip>` character device (the kernel v2 line
   uABI from &lt;linux/gpio.h>, so no extra library). Needs Linux 5.10+ for the
   v2 ioctls.
 - Raspberry Pi Pico (freestanding / Pico SDK): the `hardware_gpio` block.
-- macOS / Windows: no GPIO — every call fails gracefully.
+- ESP32 (ESP-IDF): the `driver/gpio.h` API.
 
-A line is addressed by (`chip`, `line`). On the Pico there is one bank, so
-`chip` is ignored and `line` is the GPIO number. `open_*` requests the line
-and returns a handle to pass to the other calls.
+Targets with no GPIO — macOS, Windows, the browser — have no `pin` package: an
+import there resolves to nothing and every reference is a compile error.
+
+A line is addressed by (`chip`, `line`): `chip` is the GPIO controller the line
+sits on, `line` its number within that controller. Controller 0 is the part's
+own GPIO bank; a board that hangs lines off a companion chip — the LED of a
+wireless Pico lives on the radio, not on any GPIO — numbers those controllers
+after it. `output` and `input` request the line and return the object the rest
+of the calls go through.
+
+The generated `board` package names both halves for every pin its descriptor
+routes, so a program says which pin it means rather than a number that is only
+right for one board.
+
+A driver that has to drive a line — a display's data/command select, a sensor's
+reset — takes a `DigitalOut` rather than a chip and a number, so the same
+driver runs against a GPIO on one board and against whatever else implements
+the interface on the next.
+
+An input can be read, or watched. `read` asks what the line is doing now;
+`watch` asks the hardware to queue every edge as it happens, so a program
+collects what went past instead of having to be looking at the right moment.
+See `edge.g` for what that buys and what it costs — the short version is that
+no polling interval is short enough for a pulse that fits inside it, and that a
+queue which overflows must be asked about rather than believed.
 
 **Examples**
+
+```gust
+use board
+use pin
+
+def main() -> none
+    led := pin.output(board.LED_CHIP, board.LED)
+    led.write(true)
+    led.close()
+end
+```
+
+Counting a line that moves faster than a loop can watch it:
 
 ```gust
 use pin
 
 def main() -> none
-    led := pin.open_output(0, 25)
-    pin.write(led, true)
-    pin.close(led)
+    line := pin.input(0, 2, pullup: true)
+    _ := line.watch(pin.Edge.both, settle_us: 500)
+    ticks := 0
+    while true
+        event := line.next_edge()
+        while event.ok()
+            ticks = ticks + 1
+            event = line.next_edge()
+        end
+        print("edges so far: " + ticks as string)
+    end
 end
 ```
 
-**On this page:** [`open_output`](#pin.open_output) · [`open_input`](#pin.open_input) · [`write`](#pin.write) · [`read`](#pin.read) · [`close`](#pin.close)
+**On this page:** [`Edge`](#Edge) · [`EdgeEvent`](#EdgeEvent) · [`Output`](#Output) · [`Input`](#Input) · [`DigitalOut`](#DigitalOut) · [`output`](#pin.output) · [`input`](#pin.input)
+
+## `Edge`
+
+<a id="Edge" />
+```gust
+enum Edge: integer
+```
+
+Which transitions on a line are worth queueing. The values are a bit
+pair, so `both` is the two single edges together.
+
+**Variants**
+
+- `rising = 1` — Only low-to-high transitions.
+- `falling = 2` — Only high-to-low transitions.
+- `both = 3` — Every transition, which is what anything counting or timing a line wants.
+
+## `EdgeEvent`
+
+<a id="EdgeEvent" />
+One edge, with the level the line went to and when it went there.
+
+An event with `level` below zero is the empty queue rather than an edge:
+`next_edge` has nothing to hand over. Check `ok` before reading the rest.
+
+```gust
+def EdgeEvent
+
+    level: integer
+    at_us: integer
+
+end
+```
+
+**Fields**
+
+- `level: integer` — The level the line moved to — 1 for a rising edge, 0 for a falling one — or -1 when no edge was queued.
+- `at_us: integer` — When the edge happened, in microseconds on the platform's monotonic clock. Meaningful against other edges, and against nothing else.
+
+**Methods**
+
+<a id="EdgeEvent.ok" />
+```gust
+def EdgeEvent.ok() -> bool
+```
+
+Whether this is an edge rather than an empty queue.
+
+---
+
+<a id="EdgeEvent.rising" />
+```gust
+def EdgeEvent.rising() -> bool
+```
+
+Whether the line went high. False for a falling edge and for an empty
+queue, so test `ok` first if the difference matters.
+
+## `Output`
+
+<a id="Output" />
+<Note>
+Only available where `os == "linux" or has("gpio")`.
+</Note>
+
+A GPIO line held open as an output.
+
+**Implements:** [`DigitalOut`](#DigitalOut)
+
+```gust
+def Output implements DigitalOut
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The backend's line handle, or -1 if the line could not be requested.
+
+**Methods**
+
+<a id="Output.ok" />
+```gust
+def Output.ok() -> bool
+```
+
+Whether the line was requested successfully.
+
+---
+
+<a id="Output.write" />
+```gust
+def Output.write(on: bool) -> integer
+```
+
+Drive the line high (true) or low (false). Returns 0 on success,
+non-zero on error.
+
+**Parameters**
+
+- `on` — True drives the line high, false drives it low.
+
+---
+
+<a id="Output.close" />
+```gust
+def Output.close() -> none
+```
+
+Release the line. Driving it afterwards is an error, not a crash.
+
+## `Input`
+
+<a id="Input" />
+<Note>
+Only available where `os == "linux" or has("gpio")`.
+</Note>
+
+A GPIO line held open as an input.
+
+```gust
+def Input
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The backend's line handle, or -1 if the line could not be requested.
+
+**Methods**
+
+<a id="Input.ok" />
+```gust
+def Input.ok() -> bool
+```
+
+Whether the line was requested successfully.
+
+---
+
+<a id="Input.read" />
+```gust
+def Input.read() -> integer
+```
+
+The level on the line: 1 (high), 0 (low), or -1 on error.
+
+---
+
+<a id="Input.watch" />
+```gust
+def Input.watch(edges: Edge, settle_us: integer) -> integer
+```
+
+Ask the hardware to queue the named edges on this line as they happen,
+ignoring any that follow another within `settle_us`. Returns 0 on success,
+non-zero if the line cannot be watched.
+
+Watching does not change what `read` does. It adds a record of what the
+line did between two reads, which is the part a program cannot recover by
+reading harder.
+
+`settle_us` is not optional politeness on a mechanical contact, and getting
+it wrong is the classic way to make watching look worse than polling. Two
+pieces of metal meeting bounce apart and back several times over some
+hundreds of microseconds, and each bounce is a genuine edge — a reading
+loop never saw them because it happened to look before and after the whole
+event, and an interrupt sees every one. A queue sized for a person turning
+a knob then overflows in the first millisecond, and the edges lost are the
+real ones. A window longer than the bounce and shorter than the fastest
+real interval collapses each burst back to the one transition that
+physically happened.
+
+Pass 0 for a line driven by something that does not bounce — a logic
+output, an interrupt line from a sensor — where every edge is real and the
+filter would only add latency.
+
+Not every line can be watched even on a part whose GPIO can: a line on a
+companion controller reached by message rather than by register — the radio
+a wireless board hangs its LED off — has no interrupt to offer, and says so
+here rather than by quietly queueing nothing.
+
+**Parameters**
+
+- `edges` — Which transitions to queue.
+- `settle_us` — How long after an edge to ignore further edges on this line, in microseconds. 0 queues every edge.
+
+---
+
+<a id="Input.next_edge" />
+```gust
+def Input.next_edge() -> EdgeEvent
+```
+
+The oldest edge the line has queued, removing it.
+
+Returns an event with `ok` false once the queue is empty, which is how a
+caller drains it: take edges until one comes back empty, then get on with
+something else.
+
+---
+
+<a id="Input.dropped" />
+```gust
+def Input.dropped() -> integer
+```
+
+How many edges the queue had to throw away since this was last asked,
+and zero if none were.
+
+An edge is dropped when the queue is full, which means the program did not
+drain it in time. Anything counted from a run with a non-zero count here is
+short by at least that much, and the honest thing to do with it is say so
+rather than report a total that is quietly wrong.
+
+---
+
+<a id="Input.close" />
+```gust
+def Input.close() -> none
+```
+
+Release the line. Reading it afterwards is an error, not a crash.
+
+## `DigitalOut`
+
+<a id="DigitalOut" />
+<Note>
+Only available where `os == "linux" or has("gpio")`.
+</Note>
+
+A line something can drive high or low.
+
+A driver names this as the type of a control line it owns — a reset, a
+chip-select, a data/command select — instead of naming a GPIO controller
+and a line number. `Output` is the implementation backed by real hardware.
+
+**Implemented by:** [`Output`](#Output)
+
+**Methods**
+
+<a id="DigitalOut.write" />
+```gust
+def DigitalOut.write(on: bool) -> integer
+```
+
+---
+
+<a id="DigitalOut.close" />
+```gust
+def DigitalOut.close() -> none
+```
 
 ## Functions
 
-<a id="pin.open_output" />
+<a id="pin.output" />
 ```gust
-def foreign open_output(chip: integer, line: integer) -> integer
+def output(chip: integer, line: integer) -> Output
 ```
 
-Request `line` on `chip` as an output. Returns a handle (>= 0) or -1
-on error.
+<Note>
+Only available where `os == "linux" or has("gpio")`.
+</Note>
+
+Request `line` on `chip` as an output.
+
+Check `ok` before driving it: a line that could not be requested is
+returned closed rather than raising, so a program can fall back.
 
 **Parameters**
 
-- `chip: integer` — GPIO chip index (ignored on the Pico).
-- `line: integer` — GPIO line / pin number.
+- `chip: integer` — The GPIO controller the line sits on.
+- `line: integer` — The line number within that controller.
 
 ---
 
-<a id="pin.open_input" />
+<a id="pin.input" />
 ```gust
-def foreign open_input(chip: integer, line: integer, pullup: bool) -> integer
+def foreign input(chip: integer, line: integer, pullup: bool) -> Input
 ```
+
+<Note>
+Only available where `os == "linux" or has("gpio")`.
+</Note>
 
 Request `line` on `chip` as an input, optionally with the internal
-pull-up enabled. Returns a handle (>= 0) or -1 on error.
+pull-up enabled.
+
+Check `ok` before reading it: a line that could not be requested is
+returned closed rather than raising, so a program can fall back.
 
 **Parameters**
 
-- `chip: integer` — GPIO chip index (ignored on the Pico).
-- `line: integer` — GPIO line / pin number.
+- `chip: integer` — The GPIO controller the line sits on.
+- `line: integer` — The line number within that controller.
 - `pullup: bool` — When true, enable the internal pull-up resistor.
-
----
-
-<a id="pin.write" />
-```gust
-def foreign write(handle: integer, on: bool) -> integer
-```
-
-Drive an output `handle` high (true) or low (false). Returns 0 on
-success, non-zero on error.
-
-**Parameters**
-
-- `handle: integer` — The line handle from `open_output`.
-- `on: bool` — True drives the line high, false drives it low.
-
----
-
-<a id="pin.read" />
-```gust
-def foreign read(handle: integer) -> integer
-```
-
-Read the level of `handle`: 1 (high), 0 (low), or -1 on error.
-
-**Parameters**
-
-- `handle: integer` — The line handle from `open_input`.
-
----
-
-<a id="pin.close" />
-```gust
-def foreign close(handle: integer) -> none
-```
-
-Release a handle returned by `open_output` / `open_input`.
-
-**Parameters**
-
-- `handle: integer` — The line handle to release.

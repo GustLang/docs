@@ -711,6 +711,11 @@ TYPE_DESC = {
     "dict": "The built-in dict[K, V] type and its methods",
     "none": "The built-in none (unit) type and its methods",
     "bytes": "The built-in bytes type — a mutable sequence of raw octets — and its methods",
+    "tuple": "The built-in tuple type — a fixed-length group of differently typed values — and its methods",
+    "ref": "The built-in ref[T] type — a refcounted, shared, mutable cell — and its members",
+    "struct": "Structs (def Name) — their fields, the __dict conversion, and reflection properties",
+    "enum": "Enums (enum Name) — their members and reflection properties",
+    "function": "Functions (def name) — the reflection properties on a function name",
 }
 
 
@@ -800,6 +805,11 @@ def main():
         "dict",
         "none",
         "bytes",
+        "tuple",
+        "ref",
+        "struct",
+        "enum",
+        "function",
     ]
     prelude_decls = []
     for f in sorted(glob.glob(os.path.join(STDLIB, "prelude", "*.g"))):

@@ -46,3 +46,19 @@ def none.__bool() -> bool
 ```
 
 Triggered by `x as bool`. Always false.
+
+---
+
+<a id="none.__eq" />
+```gust
+def none.__eq(other: none) -> bool
+```
+
+Triggered by `==` and `!=` (auto-negated). `none` equals only `none`.
+
+Use `is none` / `is not none` to test for `none`; the analyzer rewrites
+`== none` into that form.
+
+**Parameters**
+
+- `other: none` — The value to compare against.

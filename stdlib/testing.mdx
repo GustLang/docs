@@ -1,32 +1,37 @@
 ---
 title: testing
-description: "The test context `T` handed to every `@test` function, plus the two control errors the harness uses to unwind a test early"
+description: "The `testing` package: a structured test framework for `test_*.g` / `*_test.g` files"
 ---
 
 ```gust
 use testing
 ```
 
-The test context `T` handed to every `@test` function, plus the two control
-errors the harness uses to unwind a test early.
+The `testing` package: a structured test framework for `test_*.g` / `*_test.g`
+files. Mark test functions with `@test`; each takes a test context `T` and is
+run in isolation by `gust test`, which reports every test by name with its
+outcome and timing.
 
-Soft failures (`t.fail`, the `expect_*` helpers) accumulate and let the test
-keep running so one run surfaces every problem at once. `t.fatal` records a
-failure and stops the current test; `t.skip` marks it skipped. Neither affects
-the other tests in the file — the harness isolates each one.
-
-A test receives a `T` and reports outcomes through it:
+There are two assertion families. The `assert_*` functions raise
+`AssertionError` on failure, which stops the current test — use them when a
+later check depends on this one holding. The `expect_*` helpers (see
+`expect.g`) record a failure on the context and let the test continue, so a
+single run surfaces every problem. Both leave the other tests in the file
+untouched: the harness isolates each one.
 
 **Examples**
 
 ```gust
+use testing
+
 @test
-def parses_port(t: testing.T) -> none
-    u := url.parse("http://host:8443/")
-    testing.expect_str(t, u.port, "8443", "port")
-    if u.scheme != "http"
-        t.fatal("scheme parse broke — aborting the rest of this test")
-    end
+def arithmetic(t: testing.T) -> none
+    testing.assert_eq(2 + 2, 4, "sum")
+end
+
+@test
+def prefix(t: testing.T) -> none
+    testing.expect_true(t, "gust".starts_with("g"), "prefix")
 end
 ```
 
@@ -154,6 +159,66 @@ end
 
 - `name: string` — the test function's name, shown in the report.
 - `fn: Function(T)[none]` — the test body, invoked with the test context.
+
+## `SkipError`
+
+<a id="SkipError" />
+Raised by `T.skip` to unwind the current test as skipped. Caught by the
+harness; never propagates to the process.
+
+**Implements:** [`Error`](#Error)
+
+```gust
+def SkipError implements Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — the skip reason, surfaced in the report.
+
+## `FailNowError`
+
+<a id="FailNowError" />
+Raised by `T.fatal` to stop the current test after a failure has already
+been recorded. Caught by the harness; never propagates to the process.
+
+**Implements:** [`Error`](#Error)
+
+```gust
+def FailNowError implements Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — the failure message, already appended to the test's failures.
+
+## `AssertionError`
+
+<a id="AssertionError" />
+Raised by a failing `assert_*`. The harness records its message and marks
+the current test failed.
+
+**Implements:** [`Error`](#Error)
+
+```gust
+def AssertionError implements Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — the failure description.
 
 ## Functions
 
@@ -353,8 +418,8 @@ def run_registered(cases: list[TestCase]) -> none
 ```
 
 Run every registered test in order, each with a fresh context and full
-isolation, emit the result stream, then exit with the number of failed
-tests as the process status (0 when all pass).
+isolation, emit the result stream — closed by the `done` marker — then exit
+with the number of failed tests as the process status (0 when all pass).
 
 **Parameters**
 
@@ -568,42 +633,3 @@ Fail unless `got < ceil`.
 **Raises**
 
 - `AssertionError` — when `got >= ceil`.
-
-## Errors
-
-<a id="SkipError" />
-```gust
-error SkipError(message: string)
-```
-
-Raised by `T.skip` to unwind the current test as skipped. Caught by the
-harness; never propagates to the process.
-
-Fields:
-message: the skip reason, surfaced in the report.
-
----
-
-<a id="FailNowError" />
-```gust
-error FailNowError(message: string)
-```
-
-Raised by `T.fatal` to stop the current test after a failure has already
-been recorded. Caught by the harness; never propagates to the process.
-
-Fields:
-message: the failure message, already appended to the test's failures.
-
----
-
-<a id="AssertionError" />
-```gust
-error AssertionError(message: string)
-```
-
-Raised by a failing `assert_*`. The harness records its message and marks
-the current test failed.
-
-Fields:
-message: the failure description.

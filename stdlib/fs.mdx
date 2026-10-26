@@ -28,7 +28,25 @@ def main() -> none
 end
 ```
 
-**On this page:** [`Path`](#Path) · [`Event`](#Event) · [`Watcher`](#Watcher) · [`cwd`](#fs.cwd) · [`chdir`](#fs.chdir) · [`remove`](#fs.remove) · [`rename`](#fs.rename) · [`mkdir`](#fs.mkdir) · [`rmdir`](#fs.rmdir) · [`list_dir`](#fs.list_dir) · [`cpu_count`](#fs.cpu_count) · [`canonicalize`](#fs.canonicalize) · [`glob`](#fs.glob) · [`home_dir`](#fs.home_dir) · [`tmp_dir`](#fs.tmp_dir) · [`sep`](#fs.sep) · [`join_path`](#fs.join_path) · [`abs_path`](#fs.abs_path) · [`read_file`](#fs.read_file) · [`read_bytes`](#fs.read_bytes) · [`write_file`](#fs.write_file) · [`append_file`](#fs.append_file) · [`mkdir_all`](#fs.mkdir_all) · [`remove_tree`](#fs.remove_tree) · [`tempfile`](#fs.tempfile) · [`tempdir`](#fs.tempdir) · [`walk`](#fs.walk) · [`copy_file`](#fs.copy_file) · [`watch`](#fs.watch)
+On an embedded target the filesystem is stored in flash and formatted the first
+time it is used: on the Raspberry Pi Pico a region reserved at the top of
+on-chip flash, on the ESP32 a partition the firmware image reserves for it.
+File reads and writes, directory creation and listing, `stat`, `remove`, and
+`rename` all work against paths under the root `/` on both. Neither flash store
+keeps timestamps, permissions, or symbolic links, so a `Stat` there carries only
+the entry's kind and size. On the Pico the working directory, globbing,
+canonicalization, and temp files are unavailable as well.
+
+The TI calculators store data as operating-system variables rather than as
+files under a root, and their C library has no file descriptors to reach one
+with, so the package does not exist on that family: `use fs` there is a compile
+error naming the target rather than a read that fails on the device.
+
+<Note>
+Only available on Linux.
+</Note>
+
+**On this page:** [`Event`](#Event) · [`Watcher`](#Watcher) · [`Path`](#Path) · [`Stat`](#Stat) · [`cwd`](#fs.cwd) · [`chdir`](#fs.chdir) · [`remove`](#fs.remove) · [`rename`](#fs.rename) · [`mkdir`](#fs.mkdir) · [`rmdir`](#fs.rmdir) · [`list_dir`](#fs.list_dir) · [`cpu_count`](#fs.cpu_count) · [`canonicalize`](#fs.canonicalize) · [`glob`](#fs.glob) · [`home_dir`](#fs.home_dir) · [`tmp_dir`](#fs.tmp_dir) · [`sep`](#fs.sep) · [`join_path`](#fs.join_path) · [`abs_path`](#fs.abs_path) · [`read_file`](#fs.read_file) · [`read_bytes`](#fs.read_bytes) · [`write_file`](#fs.write_file) · [`append_file`](#fs.append_file) · [`mkdir_all`](#fs.mkdir_all) · [`remove_tree`](#fs.remove_tree) · [`tempfile`](#fs.tempfile) · [`tempdir`](#fs.tempdir) · [`walk`](#fs.walk) · [`copy_file`](#fs.copy_file) · [`watch`](#fs.watch) · [`stat`](#fs.stat) · [`lstat`](#fs.lstat)
 
 ## Constants
 
@@ -58,228 +76,6 @@ end
 | `IN_CLOSE` | `integer` | `24` |
 | `IN_MOVE` | `integer` | `192` |
 | `IN_ALL_EVENTS` | `integer` | `4095` |
-
-## `Path`
-
-<a id="Path" />
-A filesystem path. Wrap a string with `Path(path: "...")` to use the
-method-style helpers (`.read()`, `.write()`, `.parent()`, `.ext()`, etc.).
-
-```gust
-def Path
-
-    path: string
-
-end
-```
-
-**Fields**
-
-- `path: string` — The path string this wrapper holds.
-
-**Methods**
-
-<a id="Path.exists" />
-```gust
-def foreign Path.exists() -> bool
-```
-
-True if anything exists at this path (file, directory, symlink, ...).
-
----
-
-<a id="Path.is_file" />
-```gust
-def foreign Path.is_file() -> bool
-```
-
-True if this path points to a regular file.
-
----
-
-<a id="Path.is_dir" />
-```gust
-def foreign Path.is_dir() -> bool
-```
-
-True if this path points to a directory.
-
----
-
-<a id="Path.is_link" />
-```gust
-def foreign Path.is_link() -> bool
-```
-
-True if this path is a symbolic link (without following it).
-
----
-
-<a id="Path.size" />
-```gust
-def foreign Path.size() -> integer
-```
-
-Size of the file in bytes.
-
-**Raises**
-
-- `IOError` — when the path can't be stat'd.
-
----
-
-<a id="Path.mtime" />
-```gust
-def foreign Path.mtime() -> integer
-```
-
-Last-modification time in milliseconds since the Unix epoch, matching the
-`time` package's millisecond epoch convention (`time.now_ms`). Sub-second
-precision is preserved where the platform records it.
-
-**Raises**
-
-- `IOError` — when the path can't be stat'd — call `exists()` first to distinguish a missing file from a stat failure.
-
----
-
-<a id="Path.name" />
-```gust
-def Path.name() -> string
-```
-
-The final segment of the path, e.g. `"main.g"` from `"/src/main.g"`.
-
----
-
-<a id="Path.stem" />
-```gust
-def Path.stem() -> string
-```
-
-The filename without its extension, e.g. `"main"` from `"/src/main.g"`.
-
----
-
-<a id="Path.ext" />
-```gust
-def Path.ext() -> string
-```
-
-The file extension including the dot, e.g. `".g"`. Empty string if none.
-
----
-
-<a id="Path.parent" />
-```gust
-def Path.parent() -> Path
-```
-
-The directory containing this path. Returns `"."` for a bare filename
-and the filesystem root for a top-level absolute path.
-
----
-
-<a id="Path.join" />
-```gust
-def Path.join(other: string) -> Path
-```
-
-Append a segment to this path using the platform separator.
-
-**Parameters**
-
-- `other` — The segment to append.
-
----
-
-<a id="Path.abs" />
-```gust
-def Path.abs() -> Path
-```
-
-Return this path resolved to its absolute form.
-
----
-
-<a id="Path.read" />
-```gust
-def Path.read() -> string
-```
-
-Read the file's contents as a string.
-
-**Raises**
-
-- `IOError` — when the file can't be read.
-
----
-
-<a id="Path.write" />
-```gust
-def Path.write(content: string) -> none
-```
-
-Write `content` to the file, creating or truncating it.
-
-**Parameters**
-
-- `content` — The data to write.
-
-**Raises**
-
-- `IOError` — when the file can't be written.
-
-<Warning>
-Truncates any existing file at this path.
-</Warning>
-
----
-
-<a id="Path.canonicalize" />
-```gust
-def Path.canonicalize() -> Path
-```
-
-Return this path with symlinks resolved and absolute.
-
-**Raises**
-
-- `IOError` — when the path doesn't exist.
-
----
-
-<a id="Path.walk" />
-```gust
-def Path.walk() -> list[string]
-```
-
-Recursively list every regular file under this directory as relative paths.
-
-**Raises**
-
-- `IOError` — when the directory can't be read.
-
----
-
-<a id="Path.copy_to" />
-```gust
-def Path.copy_to(other: string) -> none
-```
-
-Copy this file to `other`, overwriting if it exists.
-
-**Parameters**
-
-- `other` — The destination path.
-
-**Raises**
-
-- `IOError` — when the copy fails.
-
-<Warning>
-Overwrites any existing file at `other`.
-</Warning>
 
 ## `Event`
 
@@ -520,12 +316,329 @@ def Watcher.fd() -> integer
 The raw inotify file descriptor, for callers polling it alongside other
 descriptors in their own event loop.
 
+## `Path`
+
+<a id="Path" />
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
+A filesystem path. Wrap a string with `Path(path: "...")` to use the
+method-style helpers (`.read()`, `.write()`, `.parent()`, `.ext()`, etc.).
+
+```gust
+def Path
+
+    path: string
+
+end
+```
+
+**Fields**
+
+- `path: string` — The path string this wrapper holds.
+
+**Methods**
+
+<a id="Path.exists" />
+```gust
+def Path.exists() -> bool
+```
+
+True if anything exists at this path (file, directory, symlink, ...).
+
+---
+
+<a id="Path.is_file" />
+```gust
+def Path.is_file() -> bool
+```
+
+True if this path points to a regular file.
+
+---
+
+<a id="Path.is_dir" />
+```gust
+def Path.is_dir() -> bool
+```
+
+True if this path points to a directory.
+
+---
+
+<a id="Path.is_link" />
+```gust
+def Path.is_link() -> bool
+```
+
+True if this path is a symbolic link (without following it).
+
+---
+
+<a id="Path.size" />
+```gust
+def Path.size() -> integer
+```
+
+Size of the file in bytes.
+
+**Raises**
+
+- `IOError` — when the path can't be stat'd.
+
+---
+
+<a id="Path.stat" />
+```gust
+def Path.stat() -> Stat
+```
+
+All of this path's metadata in one `Stat`, following symbolic links.
+See `lstat()` to inspect a link itself.
+
+**Raises**
+
+- `IOError` — when the path does not exist or cannot be stat'd.
+
+---
+
+<a id="Path.name" />
+```gust
+def Path.name() -> string
+```
+
+The final segment of the path, e.g. `"main.g"` from `"/src/main.g"`.
+
+---
+
+<a id="Path.stem" />
+```gust
+def Path.stem() -> string
+```
+
+The filename without its extension, e.g. `"main"` from `"/src/main.g"`.
+
+---
+
+<a id="Path.ext" />
+```gust
+def Path.ext() -> string
+```
+
+The file extension including the dot, e.g. `".g"`. Empty string if none.
+
+---
+
+<a id="Path.parent" />
+```gust
+def Path.parent() -> Path
+```
+
+The directory containing this path. Returns `"."` for a bare filename
+and the filesystem root for a top-level absolute path.
+
+---
+
+<a id="Path.join" />
+```gust
+def Path.join(other: string) -> Path
+```
+
+Append a segment to this path using the platform separator.
+
+**Parameters**
+
+- `other` — The segment to append.
+
+---
+
+<a id="Path.abs" />
+```gust
+def Path.abs() -> Path
+```
+
+Return this path resolved to its absolute form.
+
+---
+
+<a id="Path.read" />
+```gust
+def Path.read() -> string
+```
+
+Read the file's contents as a string.
+
+**Raises**
+
+- `IOError` — when the file can't be read.
+
+---
+
+<a id="Path.write" />
+```gust
+def Path.write(content: string) -> none
+```
+
+Write `content` to the file, creating or truncating it.
+
+**Parameters**
+
+- `content` — The data to write.
+
+**Raises**
+
+- `IOError` — when the file can't be written.
+
+<Warning>
+Truncates any existing file at this path.
+</Warning>
+
+---
+
+<a id="Path.canonicalize" />
+```gust
+def Path.canonicalize() -> Path
+```
+
+<Note>
+Not available on the Pico.
+</Note>
+
+Return this path with symlinks resolved and absolute.
+
+**Raises**
+
+- `IOError` — when the path doesn't exist.
+
+---
+
+<a id="Path.walk" />
+```gust
+def Path.walk() -> list[string]
+```
+
+Recursively list every regular file under this directory as relative paths.
+
+**Raises**
+
+- `IOError` — when the directory can't be read.
+
+---
+
+<a id="Path.copy_to" />
+```gust
+def Path.copy_to(other: string) -> none
+```
+
+Copy this file to `other`, overwriting if it exists.
+
+**Parameters**
+
+- `other` — The destination path.
+
+**Raises**
+
+- `IOError` — when the copy fails.
+
+<Warning>
+Overwrites any existing file at `other`.
+</Warning>
+
+## `Stat`
+
+<a id="Stat" />
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
+Metadata for one filesystem entry, as returned by `stat()` and `lstat()`.
+
+Times are milliseconds since the Unix epoch, matching the `time` package's
+millisecond convention; sub-second precision is kept where the platform
+records it. `dev` and `ino` together identify the file: two paths reporting
+the same pair are the same file. A field the filesystem does not record
+reads 0.
+
+```gust
+def Stat
+
+    size: integer
+    mode: integer
+    mtime: integer
+    atime: integer
+    ctime: integer
+    dev: integer
+    ino: integer
+    nlink: integer
+    uid: integer
+    gid: integer
+
+end
+```
+
+**Fields**
+
+- `size: integer` — Size in bytes. For a symbolic link read through `lstat()`, the length of the target path it holds.
+- `mode: integer` — The raw mode word — file type and permission bits together. Use `permissions()` for the permission bits alone and `is_file()`, `is_dir()`, `is_link()` for the type.
+- `mtime: integer` — Last modification of the file's contents.
+- `atime: integer` — Last access.
+- `ctime: integer` — Last change to the file's metadata (owner, mode, link count) or contents.
+- `dev: integer` — Identifier of the device the file lives on.
+- `ino: integer` — Inode number, unique within `dev`.
+- `nlink: integer` — Number of hard links to the file.
+- `uid: integer` — User ID of the owner.
+- `gid: integer` — Group ID of the owner.
+
+**Methods**
+
+<a id="Stat.is_file" />
+```gust
+def Stat.is_file() -> bool
+```
+
+True if the entry is a regular file.
+
+---
+
+<a id="Stat.is_dir" />
+```gust
+def Stat.is_dir() -> bool
+```
+
+True if the entry is a directory.
+
+---
+
+<a id="Stat.is_link" />
+```gust
+def Stat.is_link() -> bool
+```
+
+True if the entry is a symbolic link. Only an `lstat()` result can be
+one — `stat()` follows links to their target.
+
+---
+
+<a id="Stat.permissions" />
+```gust
+def Stat.permissions() -> integer
+```
+
+The permission bits of `mode` — owner/group/other read, write, and
+execute plus setuid, setgid, and sticky — without the file-type bits.
+`0o644` reads back as `420`.
+
 ## Functions
 
 <a id="fs.cwd" />
 ```gust
 def foreign cwd() -> Path
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Return the current working directory as a `Path`.
 
@@ -535,6 +648,10 @@ Return the current working directory as a `Path`.
 ```gust
 def foreign chdir(path: string) -> none
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Change the current working directory.
 
@@ -553,6 +670,10 @@ Change the current working directory.
 def foreign remove(path: string) -> none
 ```
 
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
 Delete a file. Use `rmdir` for directories.
 
 **Parameters**
@@ -569,6 +690,10 @@ Delete a file. Use `rmdir` for directories.
 ```gust
 def foreign rename(old_path: string, new_path: string) -> none
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Rename or move a file or directory.
 
@@ -592,6 +717,10 @@ Overwrites any existing file at `new_path`.
 def foreign mkdir(path: string) -> none
 ```
 
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
 Create a single directory.
 
 **Parameters**
@@ -608,6 +737,10 @@ Create a single directory.
 ```gust
 def foreign rmdir(path: string) -> none
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Remove an empty directory.
 
@@ -626,6 +759,10 @@ Remove an empty directory.
 def foreign list_dir(path: string) -> list[string]
 ```
 
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
 List the entries of a directory (no leading `.` or `..`).
 
 **Parameters**
@@ -643,6 +780,10 @@ List the entries of a directory (no leading `.` or `..`).
 def foreign cpu_count() -> integer
 ```
 
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
 Number of logical CPUs available to the process.
 
 ---
@@ -651,6 +792,10 @@ Number of logical CPUs available to the process.
 ```gust
 def foreign canonicalize(path: string) -> Path
 ```
+
+<Note>
+Not available on the Pico.
+</Note>
 
 Resolve symlinks and return the absolute canonical path as a `Path`.
 
@@ -669,6 +814,10 @@ Resolve symlinks and return the absolute canonical path as a `Path`.
 def foreign glob(pattern: string) -> list[string]
 ```
 
+<Note>
+Not available on the Pico.
+</Note>
+
 Shell-style glob match. Returns the list of matching paths (empty if none).
 
 **Parameters**
@@ -681,6 +830,10 @@ Shell-style glob match. Returns the list of matching paths (empty if none).
 ```gust
 def home_dir() -> Path
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Return the current user's home directory as a `Path`.
 
@@ -695,6 +848,10 @@ Return the current user's home directory as a `Path`.
 def tmp_dir() -> Path
 ```
 
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
 Return the system temp directory (`$TMPDIR`, or `/tmp` when unset) as a
 `Path`.
 
@@ -705,6 +862,10 @@ Return the system temp directory (`$TMPDIR`, or `/tmp` when unset) as a
 def sep() -> string
 ```
 
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
 Platform path separator (`/` on Unix, `\` on Windows).
 
 ---
@@ -713,6 +874,10 @@ Platform path separator (`/` on Unix, `\` on Windows).
 ```gust
 def join_path(a: string, b: string) -> string
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Join two path segments using the platform separator.
 
@@ -728,6 +893,10 @@ Join two path segments using the platform separator.
 def abs_path(path: string) -> Path
 ```
 
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
 Resolve a path to its absolute form, returned as a `Path`.
 
 **Parameters**
@@ -740,6 +909,10 @@ Resolve a path to its absolute form, returned as a `Path`.
 ```gust
 def read_file(path: string) -> string
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Read the entire contents of a file as a string.
 
@@ -755,8 +928,12 @@ Read the entire contents of a file as a string.
 
 <a id="fs.read_bytes" />
 ```gust
-def read_bytes(path: string) -> bytes
+def foreign read_bytes(path: string) -> bytes
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Read the entire contents of a file as raw `bytes`. Unlike `read_file`
 this is binary-safe — it does not stop at a NUL and does not assume text.
@@ -775,6 +952,10 @@ this is binary-safe — it does not stop at a NUL and does not assume text.
 ```gust
 def write_file(path: string, content: string) -> none
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Write `content` to a file, creating or truncating it.
 
@@ -798,6 +979,10 @@ Truncates any existing file at `path`.
 def append_file(path: string, content: string) -> none
 ```
 
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
 Append `content` to a file, creating it if it doesn't exist.
 
 **Parameters**
@@ -816,6 +1001,10 @@ Append `content` to a file, creating it if it doesn't exist.
 def mkdir_all(path: string) -> none
 ```
 
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
 Create a directory and any missing parents.
 
 **Parameters**
@@ -832,6 +1021,10 @@ Create a directory and any missing parents.
 ```gust
 def remove_tree(path: string) -> none
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Recursively delete `path` and everything under it. Files are unlinked;
 directories are cleared bottom-up and then removed. Symbolic links are
@@ -857,6 +1050,10 @@ Permanently deletes `path` and its entire subtree.
 def tempfile() -> Path
 ```
 
+<Note>
+Not available on the Pico.
+</Note>
+
 Create a new empty 0-byte file with a unique name in `$TMPDIR`.
 
 <Note>
@@ -870,6 +1067,10 @@ The caller is responsible for removing it.
 def tempdir() -> Path
 ```
 
+<Note>
+Not available on the Pico.
+</Note>
+
 Create a new empty directory with a unique name in `$TMPDIR`.
 
 ---
@@ -878,6 +1079,10 @@ Create a new empty directory with a unique name in `$TMPDIR`.
 ```gust
 def walk(path: string) -> list[string]
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Recursively enumerate every regular file under `path`, returning relative paths.
 
@@ -895,6 +1100,10 @@ Recursively enumerate every regular file under `path`, returning relative paths.
 ```gust
 def copy_file(src: string, dst: string) -> none
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Copy `src` to `dst`, overwriting `dst` if it exists.
 
@@ -920,3 +1129,47 @@ def watch() -> Watcher
 
 Create a new, empty inotify watcher. Register paths on it with `add`.
 Raises `IOError` if the inotify instance can't be created.
+
+---
+
+<a id="fs.stat" />
+```gust
+def stat(path: string) -> Stat
+```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
+Read the metadata of the entry at `path`, following symbolic links to
+their target.
+
+**Parameters**
+
+- `path: string` — The file, directory, or link to inspect.
+
+**Raises**
+
+- `IOError` — when the path does not exist or cannot be stat'd.
+
+---
+
+<a id="fs.lstat" />
+```gust
+def lstat(path: string) -> Stat
+```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
+Read the metadata of the entry at `path` without following a symbolic
+link: a link reports itself, with `is_link()` true.
+
+**Parameters**
+
+- `path: string` — The file, directory, or link to inspect.
+
+**Raises**
+
+- `IOError` — when the path does not exist or cannot be stat'd.

@@ -113,7 +113,7 @@ in a match identifies which rule fired.
 ```gust
 def MultiRegex
 
-    combined: list[Regex]
+    combined: list[regex.Regex]
     metas_by_group: dict[integer, MatchMeta]
 
 end
@@ -121,7 +121,7 @@ end
 
 **Fields**
 
-- `combined: list[Regex]` — Zero or one compiled pattern (empty when the mode has no rules to scan for).
+- `combined: list[regex.Regex]` — Zero or one compiled pattern (empty when the mode has no rules to scan for).
 - `metas_by_group: dict[integer, MatchMeta]` — Map from a rule's wrapper group index to its meaning.
 
 ## `CompiledMode`
@@ -137,14 +137,14 @@ def CompiledMode
     scope: string
     begin_pat: string
     end_pat: string
-    end_re: list[Regex]
+    end_re: list[regex.Regex]
     has_end_re: bool
     illegal_pat: string
     has_illegal: bool
     keywords: dict[string, KeywordHit]
     has_keywords: bool
     keyword_pattern: string
-    keyword_re: list[Regex]
+    keyword_re: list[regex.Regex]
     relevance: integer
     contains_ids: list[integer]
     has_starts: bool
@@ -171,14 +171,14 @@ end
 - `scope: string` — Scope span to wrap the region in, or "".
 - `begin_pat: string` — Pattern that opens the region.
 - `end_pat: string` — Pattern verified when the region's end fires.
-- `end_re: list[Regex]` — Zero or one compiled `end_pat`.
+- `end_re: list[regex.Regex]` — Zero or one compiled `end_pat`.
 - `has_end_re: bool` — Whether an end pattern exists.
 - `illegal_pat: string` — Pattern that aborts on match.
 - `has_illegal: bool` — Whether an illegal pattern exists.
 - `keywords: dict[string, KeywordHit]` — Compiled keyword lookup.
 - `has_keywords: bool` — Whether keyword processing applies.
 - `keyword_pattern: string` — Pattern that carves keyword candidates from text.
-- `keyword_re: list[Regex]` — Compiled `keyword_pattern`.
+- `keyword_re: list[regex.Regex]` — Compiled `keyword_pattern`.
 - `relevance: integer` — Confidence weight contributed when the region closes.
 - `contains_ids: list[integer]` — Compiled ids of nested modes.
 - `has_starts: bool` — Whether a follow-on mode begins when this region ends.

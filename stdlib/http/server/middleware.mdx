@@ -10,6 +10,10 @@ use http.server.middleware
 Request-logging middleware: writes a timestamped access line for each
 handled request, with the response status colored by outcome.
 
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
+
 **On this page:** [`color_for_response`](#http.server.middleware.color_for_response) · [`log_middleware`](#http.server.middleware.log_middleware)
 
 ## Functions
@@ -34,7 +38,10 @@ The status code as an ANSI-colored string.
 
 <a id="http.server.middleware.log_middleware" />
 ```gust
-def log_middleware(request: Request, next: Next) -> Response
+def log_middleware(
+    request: http.server.Request,
+    next: http.server.Next,
+) -> http.server.Response
 ```
 
 Run the next handler, then print a timestamped access-log line for the
@@ -42,9 +49,9 @@ request and its response status.
 
 **Parameters**
 
-- `request: Request` — The incoming request to log.
-- `next: Next` — The next link in the middleware chain.
+- `request: http.server.Request` — The incoming request to log.
+- `next: http.server.Next` — The next link in the middleware chain.
 
-**Returns** `Response`
+**Returns** `http.server.Response`
 
 The response produced by the downstream handler.

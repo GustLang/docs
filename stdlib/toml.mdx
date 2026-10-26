@@ -339,6 +339,28 @@ switching tables on `[header]` / `[[array]]` lines.
 
 - `TomlError` — on a missing `=` after a key, or from parsing any header, key path, or value in the document.
 
+## `TomlError`
+
+<a id="TomlError" />
+Raised by `parse` on malformed TOML. `message` describes the
+problem; `line` is the 1-based source line it was detected on.
+
+**Implements:** [`Error`](#Error)
+
+```gust
+def TomlError implements Error
+
+    message: string
+    line: integer
+
+end
+```
+
+**Fields**
+
+- `message: string` — human-readable description of the parse failure.
+- `line: integer` — the 1-based source line the error was detected on.
+
 ## Functions
 
 <a id="toml.encode" />
@@ -378,20 +400,3 @@ Parse a TOML document and return its root table as a
 **Raises**
 
 - `TomlError` — on malformed input, carrying the offending source line.
-
-## Errors
-
-<a id="TomlError" />
-```gust
-error TomlError(message: string, line: integer)
-```
-
-Raised by `parse` on malformed TOML. `message` describes the
-problem; `line` is the 1-based source line it was detected on.
-
-Fields:
-
-```gust
-message: human-readable description of the parse failure.
-line: the 1-based source line the error was detected on.
-```

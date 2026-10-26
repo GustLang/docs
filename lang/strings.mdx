@@ -108,13 +108,15 @@ print(f"{name.uppercase()}")       # method calls
 Each `{...}` holds a full expression, not just a variable — arithmetic,
 comparisons, method and function calls, indexing, ternaries, and collection
 literals all work. Braces nest, so a dict or list literal inside a hole is
-parsed correctly.
+parsed correctly. A string literal inside a hole is written with plain quotes,
+and its contents — quotes and braces included — belong to the literal.
 
 ```gust
 print(f"sum={n + 3}")
 print(f"first={items[0]}")
 print(f"nested={[1, 2, 3]}")
-print(f"choice={\"yes\" if ok else \"no\"}")
+print(f"choice={"yes" if ok else "no"}")
+print(f"tags: {", ".join(tags)}")
 ```
 
 ### How values render

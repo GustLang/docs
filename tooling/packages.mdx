@@ -104,7 +104,7 @@ work-in-progress fork — use the `path` form instead of a GitHub source:
 
 ```toml
 [dependencies]
-gml = { path = "../gml" }
+mylib = { path = "../mylib" }
 ```
 
 `path` is a directory relative to the manifest that declares it (or an
@@ -216,8 +216,9 @@ $XDG_CACHE_HOME/gust/pkg/<owner>/<repo>@<sha>/
 
 falling back to `~/.cache/gust/pkg/` when `$XDG_CACHE_HOME` is unset. Because
 the key is the exact commit, the same dependency shared across many projects
-is downloaded once. (This is a sibling of the build object cache; `gust
-clean` clears the object cache, not the package cache.)
+is downloaded once. (This is a sibling of the global build object cache;
+neither `gust clean` nor `gust clean --global` touches the package cache —
+see [Build cache](/start/cli#build-cache).)
 
 ### Per-project view: `.gust/deps`
 

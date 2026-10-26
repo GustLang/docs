@@ -52,6 +52,7 @@ def Spec
     type_name: string
     required: bool
     default_value: string
+    repeatable: bool
 
 end
 ```
@@ -61,10 +62,11 @@ end
 - `name: string` — Canonical name (with any leading `--` stripped); callers look the value up under this key.
 - `short_name: string` — Optional short alias (with any leading `-` stripped), used as `-x`; empty string means no short form.
 - `help: string` — One-line description shown by `help_text`.
-- `kind: string` — `"positional"`, `"option"` (value-taking, named), or `"flag"` (boolean, named).
+- `kind: string` — `"positional"`, `"option"` (value-taking, named), `"optional"` (named, value attached with `=` and omittable), or `"flag"` (boolean, named).
 - `type_name: string` — The value's type — `"string"`, `"integer"`, `"float"`, or `"bool"` — used to coerce the parsed value and to validate input.
 - `required: bool` — True when the argument must be supplied; false for flags and for any argument carrying a default.
 - `default_value: string` — The default rendered as a string (coerced to `type_name` when the argument is absent); empty for a required argument.
+- `repeatable: bool` — True when the option may be given more than once, in which case its parsed value is a `list[string]` of every occurrence in command-line order (empty when it was never given) rather than a single value.
 
 ## `CLIApp`
 
@@ -113,6 +115,8 @@ def CLIApp.add_argument(
     default: integer | string | bool | float | none,
     help: string,
     value_type: string,
+    optional_value: bool,
+    repeatable: bool,
 ) -> CLIApp
 ```
 
@@ -130,6 +134,12 @@ comes back already typed (`integer`, `float`, `bool`, or `string`). Pass
 argument with no default is required (flags are never required — an absent
 flag is `false`).
 
+`optional_value` turns a value-taking option into one that may be written
+bare. Its value then has to be attached with `=` (`--name=value`), since a
+following token is indistinguishable from a positional; written bare, the
+option keeps its default and is still recorded in `given`, so a command can
+tell `--name` from `--name=value` from absent.
+
 **Parameters**
 
 - `name` — The argument name; a leading `--` marks it as named.
@@ -137,6 +147,8 @@ flag is `false`).
 - `default` — The default value, whose type fixes the expected type. Omit for a required argument.
 - `help` — One-line description shown in help.
 - `value_type` — Explicit expected type (`"string"`, `"integer"`, `"float"`, `"bool"`) used to validate input when there is no default.
+- `optional_value` — Whether the option may be written bare, taking its value only from an attached `=value`.
+- `repeatable` — Whether the option may be given more than once. Its parsed value is then a `list[string]` holding every occurrence in command-line order — empty when it was never given — so a caller reads it as `args["name"] as list[string]`. Named value-taking options only; ignored for positionals and flags.
 
 ---
 
@@ -236,8 +248,11 @@ program's entry point is just `exit(app.run(os.args()))`:
 - an unknown command prints the error followed by the command list, and a
   per-command parse error prints just that error — both exit `2` (a usage
   error), the conventional code for a misused command line;
-- otherwise the matched command's `handle` runs and its exit code is
-  returned.
+- a token beyond the matched command's declared positionals is a usage
+  error (exit `2`) unless the command's `accepts_extras` says it reads
+  them, so a command never silently discards what it was handed;
+- otherwise the matched command's `extras` field is filled with those
+  tokens, its `handle` runs, and its exit code is returned.
 
 Pass the raw argument vector (`os.args()`); `argv[0]` is the program name
 and `argv[1]` selects the command.
@@ -322,6 +337,7 @@ carry shared state into `handle` (set them at construction).
 def Subcommand
 
     verbose: bool
+    extras: list[string]
 
 end
 ```
@@ -329,6 +345,7 @@ end
 **Fields**
 
 - `verbose: bool` — Shared per-command verbosity slot, defaulted off.
+- `extras: list[string]` — Tokens left over after the declared positionals are filled, in command-line order. `.run(...)` populates this before calling `handle`, so a command that forwards arguments to another program reads them here. Everything after a `--` separator lands here verbatim, including tokens that look like options.
 
 **Methods**
 
@@ -363,6 +380,22 @@ order is set on the group with `.sections(...)`.
 
 ---
 
+<a id="Subcommand.accepts_extras" />
+```gust
+def Subcommand.accepts_extras() -> bool
+```
+
+Whether this command reads `extras` — the tokens beyond its declared
+positionals. Override to true on a command that forwards arguments to
+another program, or that takes a list where it declares one positional.
+
+The default is false, and `.run(...)` rejects leftover tokens for such a
+command rather than dropping them. A command that ignores what it was
+handed reports success over work it never did, which is the failure a
+usage error exists to prevent.
+
+---
+
 <a id="Subcommand.configure" />
 ```gust
 def Subcommand.configure(_app: CLIApp) -> none
@@ -394,6 +427,9 @@ Every declared argument is present, holding its parsed value or its default.
 `_given` names the arguments the user actually passed on the command line, so
 `"flag" in _given` distinguishes an explicit value from a defaulted one when
 that difference matters (a bare flag being `true` already implies it).
+
+Tokens beyond the declared positionals are not in `_args`; read them from the
+command's own `extras` field.
 
 **Parameters**
 

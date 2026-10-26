@@ -32,9 +32,16 @@ def find_desc(names: list[string], descs: list[string], pkg: string) -> string
 end
 
 
-def render_group(buf: Buffer, names: list[string], descs: list[string], title: string, pkgs: list[string]) -> none
+def render_group(
+    buf: Buffer,
+    names: list[string],
+    descs: list[string],
+    title: string,
+    pkgs: list[string],
+) -> none
     """Append one themed index table — `## title` then a Package/Description row
-    per member of `pkgs` that was actually generated. Skips empty groups."""
+    per member of `pkgs` that was actually generated. Skips empty groups.
+    """
     present: list[string] = []
     for i in range(pkgs.length)
         if pkgs[i] in names
@@ -71,7 +78,8 @@ def build_namespace_page(
     """A landing page for a pure-namespace package (one that groups subpackages
     but exports no symbols of its own, e.g. `cryptography` / `cli`). Serves as
     the `root` a nested navigation group opens to: frontmatter, the `blurb`, and
-    a table linking each subpackage that was actually generated."""
+    a table linking each subpackage that was actually generated.
+    """
     buf := new_buffer()
     buf.append(autodoc.frontmatter(slug, blurb))
     buf.append(blurb)
@@ -83,21 +91,102 @@ end
 
 def build_index(names: list[string], descs: list[string]) -> string
     """The `stdlib/index.mdx` landing page: frontmatter, an importing example,
-    and the package tables grouped by theme. Only generated packages appear."""
+    and the package tables grouped by theme. Only generated packages appear.
+    """
     buf := new_buffer()
-    buf.append(autodoc.frontmatter("Standard library", "Gust's batteries-included standard library — importable packages plus the built-in type methods"))
-    buf.append("Each package is a `.g` declaration file paired with a C implementation that links into your binary automatically. Import with `use <pkg>`; members are accessed as `pkg.name`. The [Builtins](/builtins/prelude) section covers the prelude and the methods on the built-in types.\n\n")
-    buf.append("## Importing\n\n```gust\nuse math\nuse time\n\ndef main() -> none\n    print(math.sqrt(2.0))\n    print(time.now_ms())\nend\n```\n\n")
+    buf.append(
+        autodoc.frontmatter(
+            "Standard library",
+            "Gust's batteries-included standard library — importable packages plus the built-in type methods",
+        ),
+    )
+    buf.append(
+        "Each package is a `.g` declaration file paired with a C implementation that links into your binary automatically. Import with `use <pkg>`; members are accessed as `pkg.name`. The [Builtins](/builtins/prelude) section covers the prelude and the methods on the built-in types.\n\n",
+    )
+    buf.append(
+        "## Importing\n\n```gust\nuse math\nuse time\n\ndef main() -> none\n    print(math.sqrt(2.0))\n    print((time.now() as integer))\nend\n```\n\n",
+    )
     render_group(buf, names, descs, "Core", ["math", "convert", "time", "uuid"])
-    render_group(buf, names, descs, "System", ["os", "fs", "exitcode", "signal", "profile", "mmap", "ioctl"])
-    render_group(buf, names, descs, "Text & data", ["regex", "highlight", "url", "buffer", "hashmap", "ansi", "mime"])
-    render_group(buf, names, descs, "Serialization", ["json", "toml", "yaml", "csv", "compression"])
-    render_group(buf, names, descs, "Cryptography", ["cryptography.sha", "cryptography.hmac", "cryptography.kdf", "cryptography.random", "cryptography.aes", "cryptography.bcrypt", "cryptography.ed25519", "cryptography.x25519", "cryptography.ssl"])
+    render_group(
+        buf,
+        names,
+        descs,
+        "System",
+        ["os", "fs", "exitcode", "signal", "profile", "mmap", "ioctl", "dl"],
+    )
+    render_group(
+        buf,
+        names,
+        descs,
+        "Text & data",
+        ["regex", "highlight", "url", "buffer", "hashmap", "ansi", "mime"],
+    )
+    render_group(
+        buf,
+        names,
+        descs,
+        "Serialization",
+        ["json", "toml", "yaml", "xml", "csv", "compression"],
+    )
+    render_group(
+        buf,
+        names,
+        descs,
+        "Cryptography",
+        [
+            "cryptography.sha",
+            "cryptography.hmac",
+            "cryptography.kdf",
+            "cryptography.random",
+            "cryptography.aes",
+            "cryptography.bcrypt",
+            "cryptography.ed25519",
+            "cryptography.x25519",
+            "cryptography.ssl",
+        ],
+    )
     render_group(buf, names, descs, "Networking", ["socket", "websockets", "http"])
-    render_group(buf, names, descs, "Database", ["database", "database.sqlite", "database.postgres"])
-    render_group(buf, names, descs, "Interaction & media", ["cli.app", "cli.ui", "images", "barcode"])
-    render_group(buf, names, descs, "Embedded", ["i2c", "cec", "pin", "framebuffer", "drm", "wifi", "bluetooth"])
-    render_group(buf, names, descs, "Metaprogramming", ["ast", "derive", "imports", "inspect", "autodoc"])
+    render_group(
+        buf,
+        names,
+        descs,
+        "Database",
+        ["database", "database.sqlite", "database.postgres"],
+    )
+    render_group(
+        buf,
+        names,
+        descs,
+        "Interaction & media",
+        ["cli.app", "cli.ui", "images", "barcode"],
+    )
+    render_group(
+        buf,
+        names,
+        descs,
+        "Embedded",
+        [
+            "i2c",
+            "spi",
+            "cec",
+            "pin",
+            "framebuffer",
+            "drm",
+            "wifi",
+            "bluetooth",
+            "usb",
+            "usb.device",
+            "drivers.sht41",
+        ],
+    )
+    render_group(
+        buf,
+        names,
+        descs,
+        "Metaprogramming",
+        ["ast", "derive", "imports", "inspect", "autodoc"],
+    )
+    render_group(buf, names, descs, "Debugging", ["trace"])
     render_group(buf, names, descs, "Testing", ["testing"])
     return buf.to_string().trim() + "\n"
 end
@@ -111,7 +200,9 @@ def main() -> none
     end
     desc_dir := env("GUST_DESC_DIR")
     if desc_dir == ""
-        print("error: set GUST_DESC_DIR to the directory of per-package description files")
+        print(
+            "error: set GUST_DESC_DIR to the directory of per-package description files",
+        )
         return
     end
     names: list[string] = []

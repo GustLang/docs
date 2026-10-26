@@ -36,7 +36,7 @@ itself, so any tool can assemble the entry list however it likes (a
 whole-package `entries`, a hand-picked set of `describe` calls, or a
 filtered mix) and hand it here for rendering.
 
-**On this page:** [`DocSections`](#DocSections) · [`title_case`](#autodoc.title_case) · [`is_callable`](#autodoc.is_callable) · [`render_example`](#autodoc.render_example) · [`render_doc_args`](#autodoc.render_doc_args) · [`entry`](#autodoc.entry) · [`markdown`](#autodoc.markdown) · [`mdx_safe`](#autodoc.mdx_safe) · [`strip_copyright`](#autodoc.strip_copyright) · [`first_sentence`](#autodoc.first_sentence) · [`dedent_doc`](#autodoc.dedent_doc) · [`render_prose`](#autodoc.render_prose) · [`parse_sections`](#autodoc.parse_sections) · [`source_link`](#autodoc.source_link) · [`wrap_signature`](#autodoc.wrap_signature) · [`callable_sig`](#autodoc.callable_sig) · [`error_sig`](#autodoc.error_sig) · [`struct_sig`](#autodoc.struct_sig) · [`render_callable`](#autodoc.render_callable) · [`render_method_doc`](#autodoc.render_method_doc) · [`render_struct`](#autodoc.render_struct) · [`render_enum`](#autodoc.render_enum) · [`render_constants`](#autodoc.render_constants) · [`frontmatter`](#autodoc.frontmatter) · [`package_page`](#autodoc.package_page)
+**On this page:** [`DocSections`](#DocSections) · [`title_case`](#autodoc.title_case) · [`is_callable`](#autodoc.is_callable) · [`availability`](#autodoc.availability) · [`render_example`](#autodoc.render_example) · [`render_doc_args`](#autodoc.render_doc_args) · [`entry`](#autodoc.entry) · [`markdown`](#autodoc.markdown) · [`mdx_safe`](#autodoc.mdx_safe) · [`strip_copyright`](#autodoc.strip_copyright) · [`first_sentence`](#autodoc.first_sentence) · [`dedent_doc`](#autodoc.dedent_doc) · [`render_prose`](#autodoc.render_prose) · [`parse_sections`](#autodoc.parse_sections) · [`source_link`](#autodoc.source_link) · [`wrap_signature`](#autodoc.wrap_signature) · [`callable_sig`](#autodoc.callable_sig) · [`error_sig`](#autodoc.error_sig) · [`struct_sig`](#autodoc.struct_sig) · [`render_callable`](#autodoc.render_callable) · [`render_method_doc`](#autodoc.render_method_doc) · [`render_struct`](#autodoc.render_struct) · [`render_enum`](#autodoc.render_enum) · [`render_constants`](#autodoc.render_constants) · [`frontmatter`](#autodoc.frontmatter) · [`package_page`](#autodoc.package_page)
 
 ## `DocSections`
 
@@ -104,7 +104,7 @@ Capitalize the first letter of an ASCII word. The `kind` of a
 
 <a id="autodoc.is_callable" />
 ```gust
-def is_callable(e: DocEntry) -> bool
+def is_callable(e: inspect.DocEntry) -> bool
 ```
 
 Whether `e` is a function or method, i.e. has a real signature. The
@@ -114,13 +114,33 @@ nothing still carries `"none"`).
 
 **Parameters**
 
-- `e: DocEntry` — The `DocEntry` to test.
+- `e: inspect.DocEntry` — The `DocEntry` to test.
+
+---
+
+<a id="autodoc.availability" />
+```gust
+def availability(cfg: string) -> string
+```
+
+A plain-English statement of where a declaration exists, from the
+conditional-compilation predicate `DocEntry.cfg` carries — "Only available
+on Linux and the Pico." for `os == "linux" or target == "pico"`. Empty for
+an empty predicate, so a declaration that exists everywhere says nothing.
+
+A predicate the phrasing cannot flatten — one mixing `and` with `or`, or
+using `not` — is quoted verbatim rather than paraphrased, so the statement
+is never a narrower or wider claim than the predicate itself.
+
+**Parameters**
+
+- `cfg: string` — The predicate to describe, or "" for an unconditional declaration.
 
 ---
 
 <a id="autodoc.render_example" />
 ```gust
-def render_example(buf: Buffer, examples: string) -> none
+def render_example(buf: buffer.Buffer, examples: string) -> none
 ```
 
 Append an `**Example**` block for the docstring's `Example:` / `Examples:`
@@ -130,14 +150,14 @@ emitted verbatim). No-op when there is no example.
 
 **Parameters**
 
-- `buf: Buffer` — The output buffer to append to.
+- `buf: buffer.Buffer` — The output buffer to append to.
 - `examples: string` — The parsed `Example:` section body, or "" when absent.
 
 ---
 
 <a id="autodoc.render_doc_args" />
 ```gust
-def render_doc_args(buf: Buffer, sec: DocSections) -> none
+def render_doc_args(buf: buffer.Buffer, sec: DocSections) -> none
 ```
 
 Append an `**Arguments**` list pairing each documented name with its
@@ -146,18 +166,19 @@ section is absent.
 
 **Parameters**
 
-- `buf: Buffer` — The output buffer to append to.
+- `buf: buffer.Buffer` — The output buffer to append to.
 - `sec: DocSections` — The parsed docstring sections.
 
 ---
 
 <a id="autodoc.entry" />
 ```gust
-def entry(e: DocEntry, include_private: bool) -> string
+def entry(e: inspect.DocEntry, include_private: bool) -> string
 ```
 
 Render one `DocEntry` as a Markdown section: an `### name — Kind`
-heading, the docstring prose, and a kind-appropriate body — a code-fenced
+heading, an availability line when the declaration is conditionally
+compiled, the docstring prose, and a kind-appropriate body — a code-fenced
 signature for callables, a fields table for structs and errors, a
 method list for structs and interfaces, and a variant list for enums
 and ADTs. The docstring's `Arguments:`, `Returns:`, and `Example:`
@@ -166,7 +187,7 @@ are omitted from the method list unless `include_private` is set.
 
 **Parameters**
 
-- `e: DocEntry` — The `DocEntry` to render as a Markdown section.
+- `e: inspect.DocEntry` — The `DocEntry` to render as a Markdown section.
 - `include_private: bool` — When true, private methods are listed too; defaults to false, hiding them.
 
 ---
@@ -175,7 +196,7 @@ are omitted from the method list unless `include_private` is set.
 ```gust
 def markdown(
     title: string,
-    entries: list[DocEntry],
+    entries: list[inspect.DocEntry],
     include_private: bool,
 ) -> string
 ```
@@ -190,7 +211,7 @@ methods are omitted unless `include_private` is set.
 **Parameters**
 
 - `title: string` — The `# title` heading for the page.
-- `entries: list[DocEntry]` — The `DocEntry` records to render, in order.
+- `entries: list[inspect.DocEntry]` — The `DocEntry` records to render, in order.
 - `include_private: bool` — When true, private declarations and private methods are documented; defaults to false, hiding them.
 
 ---
@@ -298,7 +319,11 @@ sections are lifted out of `body`.
 
 <a id="autodoc.source_link" />
 ```gust
-def source_link(e: DocEntry, source_base: string, source_root: string) -> string
+def source_link(
+    e: inspect.DocEntry,
+    source_base: string,
+    source_root: string,
+) -> string
 ```
 
 A repository URL for `e`'s definition (`<base><relative file>#L<line>`), or
@@ -307,7 +332,7 @@ A repository URL for `e`'s definition (`<base><relative file>#L<line>`), or
 
 **Parameters**
 
-- `e: DocEntry` — The `DocEntry` whose source location to link.
+- `e: inspect.DocEntry` — The `DocEntry` whose source location to link.
 - `source_base: string` — The URL prefix (e.g. a GitHub `blob/<rev>/` root), or "".
 - `source_root: string` — The filesystem prefix to strip from `e.file`.
 
@@ -330,7 +355,7 @@ are left intact; only the final `def …(…) -> …` line is wrapped.
 
 <a id="autodoc.callable_sig" />
 ```gust
-def callable_sig(e: DocEntry) -> string
+def callable_sig(e: inspect.DocEntry) -> string
 ```
 
 Render a callable's declaration as Gust source: `def name(p: t, …) ->
@@ -339,26 +364,26 @@ code-highlighted.
 
 **Parameters**
 
-- `e: DocEntry` — The callable `DocEntry` to render.
+- `e: inspect.DocEntry` — The callable `DocEntry` to render.
 
 ---
 
 <a id="autodoc.error_sig" />
 ```gust
-def error_sig(e: DocEntry) -> string
+def error_sig(e: inspect.DocEntry) -> string
 ```
 
 Render an error type's display signature as `Name(field: type, …)`.
 
 **Parameters**
 
-- `e: DocEntry` — The error `DocEntry` to render.
+- `e: inspect.DocEntry` — The error `DocEntry` to render.
 
 ---
 
 <a id="autodoc.struct_sig" />
 ```gust
-def struct_sig(e: DocEntry) -> string
+def struct_sig(e: inspect.DocEntry) -> string
 ```
 
 Render a struct's declaration as Gust source: the `def Name` header with
@@ -368,15 +393,15 @@ code-highlighted.
 
 **Parameters**
 
-- `e: DocEntry` — The struct `DocEntry` to render.
+- `e: inspect.DocEntry` — The struct `DocEntry` to render.
 
 ---
 
 <a id="autodoc.render_callable" />
 ```gust
 def render_callable(
-    buf: Buffer,
-    e: DocEntry,
+    buf: buffer.Buffer,
+    e: inspect.DocEntry,
     pkg: string,
     source_base: string,
     source_root: string,
@@ -391,8 +416,8 @@ callout / **Since** sections the docstring declares.
 
 **Parameters**
 
-- `buf: Buffer` — The output buffer to append the section to.
-- `e: DocEntry` — The callable `DocEntry` to render.
+- `buf: buffer.Buffer` — The output buffer to append the section to.
+- `e: inspect.DocEntry` — The callable `DocEntry` to render.
 - `pkg: string` — The package used to qualify the anchor.
 - `source_base: string` — The repository URL prefix for source links, or "" to disable.
 - `source_root: string` — The filesystem prefix stripped from `e.file` for source links.
@@ -401,7 +426,11 @@ callout / **Since** sections the docstring declares.
 
 <a id="autodoc.render_method_doc" />
 ```gust
-def render_method_doc(buf: Buffer, doc: string, return_type: string) -> none
+def render_method_doc(
+    buf: buffer.Buffer,
+    doc: string,
+    return_type: string,
+) -> none
 ```
 
 Render a method's docstring with full section parsing — the same
@@ -413,7 +442,7 @@ own `Arguments:` block.
 
 **Parameters**
 
-- `buf: Buffer` — The output buffer to append to.
+- `buf: buffer.Buffer` — The output buffer to append to.
 - `doc: string` — The method docstring to render.
 - `return_type: string` — The method's return type, echoed after the **Returns** header; "" or "none" omits it.
 
@@ -422,8 +451,8 @@ own `Arguments:` block.
 <a id="autodoc.render_struct" />
 ```gust
 def render_struct(
-    buf: Buffer,
-    e: DocEntry,
+    buf: buffer.Buffer,
+    e: inspect.DocEntry,
     source_base: string,
     source_root: string,
     implementors: list[string],
@@ -440,8 +469,8 @@ are omitted unless `include_private` is set.
 
 **Parameters**
 
-- `buf: Buffer` — The output buffer to append the section to.
-- `e: DocEntry` — The struct or interface `DocEntry` to render.
+- `buf: buffer.Buffer` — The output buffer to append the section to.
+- `e: inspect.DocEntry` — The struct or interface `DocEntry` to render.
 - `source_base: string` — The repository URL prefix for source links, or "" to disable.
 - `source_root: string` — The filesystem prefix stripped from `e.file` for source links.
 - `implementors: list[string]` — For an interface, the in-package struct names that implement it; ignored for a struct.
@@ -452,8 +481,8 @@ are omitted unless `include_private` is set.
 <a id="autodoc.render_enum" />
 ```gust
 def render_enum(
-    buf: Buffer,
-    e: DocEntry,
+    buf: buffer.Buffer,
+    e: inspect.DocEntry,
     source_base: string,
     source_root: string,
 ) -> none
@@ -468,8 +497,8 @@ integer), plus a description when the docstring carries a `Variants:` (or
 
 **Parameters**
 
-- `buf: Buffer` — The output buffer to append the section to.
-- `e: DocEntry` — The enum `DocEntry` to render.
+- `buf: buffer.Buffer` — The output buffer to append the section to.
+- `e: inspect.DocEntry` — The enum `DocEntry` to render.
 - `source_base: string` — The repository URL prefix for source links, or "" to disable.
 - `source_root: string` — The filesystem prefix stripped from `e.file` for source links.
 
@@ -477,7 +506,7 @@ integer), plus a description when the docstring carries a `Variants:` (or
 
 <a id="autodoc.render_constants" />
 ```gust
-def render_constants(buf: Buffer, consts: list[DocEntry]) -> none
+def render_constants(buf: buffer.Buffer, consts: list[inspect.DocEntry]) -> none
 ```
 
 Append a `## Constants` table — Name / Type / Value, plus a Description
@@ -486,8 +515,8 @@ over-long value is truncated to a preview.
 
 **Parameters**
 
-- `buf: Buffer` — The output buffer to append the table to.
-- `consts: list[DocEntry]` — The constant `DocEntry` records to tabulate.
+- `buf: buffer.Buffer` — The output buffer to append the table to.
+- `consts: list[inspect.DocEntry]` — The constant `DocEntry` records to tabulate.
 
 ---
 
@@ -511,7 +540,7 @@ double-quotes downgraded to single so the YAML stays valid).
 def package_page(
     pkg: string,
     module_doc: string,
-    entries: list[DocEntry],
+    entries: list[inspect.DocEntry],
     source_base: string,
     source_root: string,
     include_private: bool,
@@ -526,11 +555,15 @@ functions, and errors — each in source order within its group, matching
 every declaration carries a source link when `source_base` is set. Private
 declarations and private methods are omitted unless `include_private` is set.
 
+A conditionally compiled declaration carries a callout naming the targets it
+exists on; when the whole package is gated the same way, that callout is
+hoisted to the top of the page instead.
+
 **Parameters**
 
 - `pkg: string` — The package name.
 - `module_doc: string` — The package module docstring (its first sentence becomes the page description).
-- `entries: list[DocEntry]` — The package's `DocEntry` records, in `inspect.entries` order.
+- `entries: list[inspect.DocEntry]` — The package's `DocEntry` records, in `inspect.entries` order.
 - `source_base: string` — The repository URL prefix for source links, or "" to disable.
 - `source_root: string` — The filesystem prefix stripped from each `file` for links.
 - `include_private: bool` — When true, private declarations and private methods are documented; defaults to false, hiding them.

@@ -12,7 +12,7 @@ No — it's pre-1.0. The language, stdlib, and tooling are stable enough for sid
 Three reasons:
 
 1. **Simplicity.** The compiler stays small because the hard backend work is the C compiler's job — it just emits C.
-2. **Portability.** Any platform with a C toolchain can build Gust (`zig cc` when available, otherwise the system `cc`).
+2. **Portability.** Any platform with a C toolchain can build Gust. Native builds use the system C compiler (GCC 13+); `zig cc` steps in only for cross-compilation to another triple.
 3. **Escape hatch.** `gust emit` prints the generated C. When something surprises you, you can read exactly what ran.
 
 LLVM is a reasonable future direction, but today's trade-off wins on engineering cost.
@@ -57,7 +57,7 @@ Reference counting, not a tracing garbage collector. Every heap value — string
 
 ### What platforms can Gust target?
 
-The native host by default. `gustc` also cross-compiles to other triples via `zig cc` (`--target x86_64-linux-musl`, `--static`, …), emits WebAssembly through Emscripten (`--target wasm`, producing a `.js`/`.wasm` bundle you can serve in a browser), and builds bare-metal `.uf2` images for the Raspberry Pi Pico 2 / RP2350. See [Compiler internals → Targets](/compiler/internals#targets).
+The native host by default. `gustc` also cross-compiles to other triples via `zig cc` (`--target x86_64-linux-musl`, `--static`, …), emits WebAssembly through Emscripten (`--target wasm`, producing a `.js`/`.wasm` bundle you can serve in a browser), builds bare-metal `.uf2` images for the Raspberry Pi Pico 2 / RP2350 (`--target pico`), and builds ESP32 firmware through ESP-IDF (`--target esp32s3`). See [Compiler internals → Targets](/compiler/internals#targets).
 
 ### Can I write Gust without knowing C?
 

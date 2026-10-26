@@ -19,8 +19,12 @@ Colors are 24-bit `0xRRGGBB` integers. The device's real pixel format
 is converted to it automatically, so callers work in one color space
 regardless of the panel.
 
-Linux only. On other platforms `open` returns -1 and the drawing calls are
-no-ops.
+A `Framebuffer` that could not be acquired is returned closed rather than
+raising: check `ok` before drawing, and the drawing calls are no-ops either
+way, so a program can run headless without branching on every call.
+
+Linux only — the package exists on no other target, so an import elsewhere is
+a compile error.
 
 **Examples**
 
@@ -29,97 +33,97 @@ use framebuffer as fb
 
 def main() -> none
     screen := fb.open(0)
-    if screen < 0
+    if not screen.ok()
         return
     end
-    fb.clear(screen, 0x101828)
-    fb.fill_rect(screen, 20, 20, 200, 80, 0x3B82F6)
-    fb.flush(screen)
-    fb.close(screen)
+    screen.clear(0x101828)
+    screen.fill_rect(20, 20, 200, 80, 0x3B82F6)
+    screen.flush()
+    screen.close()
 end
 ```
 
-**On this page:** [`open`](#framebuffer.open) · [`width`](#framebuffer.width) · [`height`](#framebuffer.height) · [`bpp`](#framebuffer.bpp) · [`clear`](#framebuffer.clear) · [`set_pixel`](#framebuffer.set_pixel) · [`fill_rect`](#framebuffer.fill_rect) · [`flush`](#framebuffer.flush) · [`flush_rect`](#framebuffer.flush_rect) · [`close`](#framebuffer.close)
+<Note>
+Only available on Linux.
+</Note>
 
-## Functions
+**On this page:** [`Framebuffer`](#Framebuffer) · [`open`](#framebuffer.open)
 
-<a id="framebuffer.open" />
+## `Framebuffer`
+
+<a id="Framebuffer" />
+A mapped framebuffer device and its off-screen drawing buffer.
+
+Drawing calls target the off-screen buffer; `flush` or `flush_rect` makes
+the result visible. Calls on a closed framebuffer are no-ops, and the
+geometry queries report 0.
+
 ```gust
-def foreign open(index: integer) -> integer
+def Framebuffer
+
+    handle: integer
+
+end
 ```
 
-Open and map `/dev/fb<index>`, returning a handle (>= 0) for the drawing
-calls, or -1 on error (device missing, no permission, or unsupported pixel
-format). The off-screen buffer starts zeroed (black).
+**Fields**
 
-**Parameters**
+- `handle: integer` — The mapped device, or -1 if it could not be acquired.
 
-- `index: integer` — Framebuffer device index (0 for `/dev/fb0`).
+**Methods**
+
+<a id="Framebuffer.ok" />
+```gust
+def Framebuffer.ok() -> bool
+```
+
+Whether the device was mapped successfully.
 
 ---
 
-<a id="framebuffer.width" />
+<a id="Framebuffer.width" />
 ```gust
-def foreign width(handle: integer) -> integer
+def Framebuffer.width() -> integer
 ```
 
-Visible width of the display in pixels, or 0 for an invalid handle.
-
-**Parameters**
-
-- `handle: integer` — A handle from `open`.
+Visible width of the display in pixels, or 0 if it is not open.
 
 ---
 
-<a id="framebuffer.height" />
+<a id="Framebuffer.height" />
 ```gust
-def foreign height(handle: integer) -> integer
+def Framebuffer.height() -> integer
 ```
 
-Visible height of the display in pixels, or 0 for an invalid handle.
-
-**Parameters**
-
-- `handle: integer` — A handle from `open`.
+Visible height of the display in pixels, or 0 if it is not open.
 
 ---
 
-<a id="framebuffer.bpp" />
+<a id="Framebuffer.bpp" />
 ```gust
-def foreign bpp(handle: integer) -> integer
+def Framebuffer.bpp() -> integer
 ```
 
-Bits per pixel of the display (e.g. 16 or 32), or 0 for an invalid
-handle.
-
-**Parameters**
-
-- `handle: integer` — A handle from `open`.
+Bits per pixel of the display (e.g. 16 or 32), or 0 if it is not open.
 
 ---
 
-<a id="framebuffer.clear" />
+<a id="Framebuffer.clear" />
 ```gust
-def foreign clear(handle: integer, rgb: integer) -> none
+def Framebuffer.clear(rgb: integer) -> none
 ```
 
 Fill the entire off-screen buffer with `rgb`. Not visible until `flush`.
 
 **Parameters**
 
-- `handle: integer` — A handle from `open`.
-- `rgb: integer` — Color as `0xRRGGBB`.
+- `rgb` — Color as `0xRRGGBB`.
 
 ---
 
-<a id="framebuffer.set_pixel" />
+<a id="Framebuffer.set_pixel" />
 ```gust
-def foreign set_pixel(
-    handle: integer,
-    x: integer,
-    y: integer,
-    rgb: integer,
-) -> none
+def Framebuffer.set_pixel(x: integer, y: integer, rgb: integer) -> none
 ```
 
 Set the pixel at (`x`, `y`) to `rgb` in the off-screen buffer.
@@ -127,17 +131,15 @@ Coordinates outside the display are ignored. Not visible until `flush`.
 
 **Parameters**
 
-- `handle: integer` — A handle from `open`.
-- `x: integer` — Column, 0 at the left.
-- `y: integer` — Row, 0 at the top.
-- `rgb: integer` — Color as `0xRRGGBB`.
+- `x` — Column, 0 at the left.
+- `y` — Row, 0 at the top.
+- `rgb` — Color as `0xRRGGBB`.
 
 ---
 
-<a id="framebuffer.fill_rect" />
+<a id="Framebuffer.fill_rect" />
 ```gust
-def foreign fill_rect(
-    handle: integer,
+def Framebuffer.fill_rect(
     x: integer,
     y: integer,
     w: integer,
@@ -152,33 +154,27 @@ until `flush`.
 
 **Parameters**
 
-- `handle: integer` — A handle from `open`.
-- `x: integer` — Left edge column.
-- `y: integer` — Top edge row.
-- `w: integer` — Rectangle width in pixels.
-- `h: integer` — Rectangle height in pixels.
-- `rgb: integer` — Color as `0xRRGGBB`.
+- `x` — Left edge column.
+- `y` — Top edge row.
+- `w` — Rectangle width in pixels.
+- `h` — Rectangle height in pixels.
+- `rgb` — Color as `0xRRGGBB`.
 
 ---
 
-<a id="framebuffer.flush" />
+<a id="Framebuffer.flush" />
 ```gust
-def foreign flush(handle: integer) -> none
+def Framebuffer.flush() -> none
 ```
 
 Copy the whole off-screen buffer to the display, making every prior
 drawing call visible at once.
 
-**Parameters**
-
-- `handle: integer` — A handle from `open`.
-
 ---
 
-<a id="framebuffer.flush_rect" />
+<a id="Framebuffer.flush_rect" />
 ```gust
-def foreign flush_rect(
-    handle: integer,
+def Framebuffer.flush_rect(
     x: integer,
     y: integer,
     w: integer,
@@ -192,21 +188,35 @@ rectangle is clipped to the display.
 
 **Parameters**
 
-- `handle: integer` — A handle from `open`.
-- `x: integer` — Left edge column.
-- `y: integer` — Top edge row.
-- `w: integer` — Rectangle width in pixels.
-- `h: integer` — Rectangle height in pixels.
+- `x` — Left edge column.
+- `y` — Top edge row.
+- `w` — Rectangle width in pixels.
+- `h` — Rectangle height in pixels.
 
 ---
 
-<a id="framebuffer.close" />
+<a id="Framebuffer.close" />
 ```gust
-def foreign close(handle: integer) -> none
+def Framebuffer.close() -> none
 ```
 
-Unmap the device, free the off-screen buffer, and release the handle.
+Unmap the device and free the off-screen buffer. Drawing calls after
+this are no-ops.
+
+## Functions
+
+<a id="framebuffer.open" />
+```gust
+def open(index: integer) -> Framebuffer
+```
+
+Open and map `/dev/fb<index>`, allocating a matching off-screen buffer
+that starts zeroed (black).
+
+A device that is missing, cannot be opened for lack of permission, or uses
+an unsupported pixel format yields a closed `Framebuffer` rather than
+raising — check `ok`.
 
 **Parameters**
 
-- `handle: integer` — A handle from `open`.
+- `index: integer` — Framebuffer device index (0 for `/dev/fb0`).

@@ -11,7 +11,23 @@ Gust compiles your `.g` source into native binaries by way of C and GCC. To buil
 |---|---|---|
 | **GCC**      | 13+      | Used to compile the generated C. Clang also works. |
 | **pthreads** | —        | Required for concurrency (the `!` async constructs). Present by default on Linux and macOS. |
-| **libcurl**  | optional | Only needed if you `use requests`. |
+
+Everything above is all you need for the core language. A handful of standard-library packages link a system library, pulled in automatically only when you import that package. The compiler checks for the library at link time and, if it is missing, names the package to install:
+
+| Package | System library | Install (Debian/Ubuntu) |
+|---|---|---|
+| `compression` | zlib | `sudo apt install zlib1g-dev` |
+| `cryptography.ssl`, `http` (for `https://`) | OpenSSL (libssl + libcrypto) | `sudo apt install libssl-dev` |
+| `cryptography.aes`, `cryptography.ed25519`, `cryptography.x25519` | OpenSSL (libcrypto) | `sudo apt install libssl-dev` |
+| `cryptography.bcrypt` | libxcrypt | `sudo apt install libcrypt-dev` |
+| `database.sqlite` | SQLite | `sudo apt install libsqlite3-dev` |
+| `database.postgres` | libpq | `sudo apt install libpq-dev` |
+| `bluetooth` (Linux) | libsystemd (sd-bus) | `sudo apt install libsystemd-dev` |
+| `lvgl` (Linux) | LVGL 9.x + libdrm | Build LVGL from source with `LV_USE_LINUX_DRM=1`, install to `/usr/local`, then run `ldconfig`. Nothing to install for an ESP32 build — the engine is fetched and compiled into the firmware |
+
+<Note>
+The package manager (`gust add` / `gust install`) shells out to the `curl` and `tar` commands to download dependencies from GitHub. Both are part of the standard toolchain and are present by default on Linux and macOS.
+</Note>
 
 <Tip>
 **Windows**

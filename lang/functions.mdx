@@ -94,6 +94,34 @@ end
 
 Defaults compose with named arguments: you can skip a middle parameter that has a default and set a later one by name.
 
+### Variadic parameters
+
+A final `varargs[T]` parameter collects trailing arguments into a fresh `list[T]`:
+
+```gust
+def collect(label: string, values: varargs[integer]) -> list[integer]
+    print(label)
+    values.append(99)
+    return values
+end
+
+def main() -> none
+    empty := collect("empty")
+    numbers := collect("numbers", 1, 2, 3)
+    forwarded := collect("forwarded", ...numbers)
+end
+```
+
+Inside the function, use ordinary list operations on the parameter. Each call gets its own list, including calls with no trailing arguments. Elements follow ordinary list ownership rules. Variadic calls evaluate fixed arguments in parameter order, then explicit tail arguments in source order, then the spread expression.
+
+Use `...values` to spread a list into the tail. You can put explicit tail elements before the spread. Allow at most one spread, as the last positional argument, after the explicit fixed positional arguments. Omitted fixed slots must have defaults or be supplied by name. The spread expression is evaluated once, and its current elements are copied into the fresh pack. Passing a list without `...` supplies one element; it is valid when the element type accepts that list.
+
+A declaration can have one variadic parameter, always last. It cannot have a default or use `inout`; trailing elements cannot use `inout` either. You can still pass fixed parameters by name or omit fixed defaults. You cannot pass the variadic parameter by name. Positional arguments fill fixed slots first, including defaulted slots.
+
+The annotation also works on methods, lambdas, and generic functions. Generic inference checks every tail element. An empty tail must get its element type from another argument; otherwise inference fails.
+
+Function types preserve this calling mode: `Function(string, varargs[integer])[none]`. A variadic callable and a callable taking a fixed `list[integer]` parameter have different types. `varargs[T]` is a parameter annotation; use `list[T]` for variables, fields, and return values. A foreign declaration with a `varargs[T]` parameter binds a C function declared with `...`; see [C variadic functions](/lang/ffi-gust#c-variadic-functions).
+
 ### `inout` parameters
 
 Prefix a parameter with `inout` to pass it by reference. The callee's writes to the parameter are reflected in the caller's variable after the call returns. The call site must also mark the argument with `inout`, so a by-reference pass is always visible on both sides:
@@ -144,6 +172,23 @@ def run_callback(cb: Function()) -> none
     cb()
 end
 ```
+
+An associated function (`@static def Type.name(...)`, see [Structs](/lang/structs)) is a function value too. Name it without calling it and it can be passed, stored, and invoked like any other:
+
+```gust
+@static
+def Widget.from_json(value: Any) -> Widget
+    ...
+end
+
+make: Function(Any)[Widget] = Widget.from_json
+w := make(payload)
+
+# or straight into a callback parameter
+widgets := decode_all(payload, Widget.from_json)
+```
+
+Instance methods are not function values — they need a receiver. Reach for a lambda that closes over the receiver (`def(x) -> ... obj.method(x) end`) or an interface when you need method-style dispatch.
 
 Interfaces remain the right choice for method-style dispatch (`x.ping()`), especially when the callable carries state. For simple callbacks, function values are shorter. See [Interfaces](/lang/interfaces).
 
@@ -278,14 +323,47 @@ def double_wrap[T](x: T) -> list[T]
 end
 ```
 
-The type argument is usually inferred from the call. Supply it explicitly with `name[Type](...)` when you want to pin it:
+Type arguments are inferred from the call — there is no explicit `name[Type](...)` form. Every type parameter must be recoverable from the arguments:
 
 ```gust
 print(identity(42))             # inferred T = integer
-print(identity[integer](42))    # explicit
+```
+
+A type parameter may also annotate a local inside the body, and it resolves to the concrete type of the specialization:
+
+```gust
+def copy_through[T](xs: list[T]) -> list[T]
+    out: list[T] = []
+    for x in xs
+        out.append(x)
+    end
+    return out
+end
 ```
 
 Structs and enums take type parameters the same way. See [Structs](/lang/structs) for generic types.
+
+### Inferring a type parameter from a callback
+
+A type parameter is also recovered from a `Function(...)` parameter, so a generic can take a callback and bind its type variable to that callback's return type. Nothing else in the call has to mention `T`:
+
+```gust
+def decode[T](raw: Any, into: Function(Any)[T]) -> Any
+    try
+        return into(raw)
+    catch SpecMismatchError
+        return raw       # not the shape T expects — hand back the raw value
+    end
+end
+```
+
+Called with a decoder for `Widget`, `T` binds to `Widget`:
+
+```gust
+widget := decode(payload, Widget.from_json)
+```
+
+Parameters are unified positionally and the return types are unified with each other, so `Function(Any)[T]` accepts any one-argument function whose parameter is compatible and whose return type fixes `T`.
 
 ## Recursion
 

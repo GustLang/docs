@@ -253,11 +253,11 @@ end
 
 ### W0302 — unused-import
 
-**Severity:** warning · **Autofix:** no
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
 
 Unused import.
 
-A `use` statement was never referenced. Remove it, or use the imported package or names in the file.
+A `use` statement was never referenced. Remove it, or use the imported package or names in the file. `gust format` and `gust check --fix` delete it for you; to keep it, silence this code on its line with `#gust-ignore W0302`.
 
 **Example:**
 
@@ -297,13 +297,17 @@ def Point.move(dx: integer) -> none  # 'dx' is never used
 end
 ```
 
-### W0305 — unused-private-function
+### W0305 — unused-function
 
 **Severity:** warning · **Autofix:** no
 
-Unused private function.
+Unused function.
 
-A `private` function is only reachable from within its own package, and nothing in the package references it. Remove it, or call it where it is needed.
+Nothing that could call this function names it. Remove it, or call it where it is needed.
+
+A `private` function is reachable only from within its own package, so every project is checked for one. A public function is checked only by `gust check` on a project whose gust.toml declares `kind = "binary"`: the project is then the whole program, so a function no source under the project root mentions is dead. A library's public functions are its API and are never flagged.
+
+Methods are checked the same way, under the binary-project rule for both the public and the `private` half. A dunder, a `foreign` method, a decorated one, and any method a conforming interface requires are never flagged: each is reached by a route that never writes its name at the call site.
 
 **Example:**
 
@@ -341,6 +345,43 @@ A `#gust-ignore` / `#gust-ignore-file` pragma references a token that isn't a we
 ```gust
 x := compute()  #gust-ignore unused-variable
 # a rule name is not a code — write W0301
+```
+
+### W0308 — unused-field
+
+**Severity:** warning · **Autofix:** no
+
+Unused private field.
+
+A `private` struct field is reachable only from within its own package, and nothing in that package reads it, writes it, or names it in a construction. It is dead storage — remove it, or use it.
+
+Only `private` fields are checked: a public field is part of the struct's API and may be read by any package that imports it. The compiler-synthesized `__dict` method (which `Struct as dict` and JSON serialization go through) is not counted as a use, so a field that exists only to be serialized is still flagged — give it a hand-written reader, or drop it. An inherited field is checked against the struct that declares it, never the one that inherits it.
+
+**Example:**
+
+```gust
+def Account
+    balance: integer
+    private seed: integer  # set once, never read
+end
+```
+
+### W0309 — unused-constant
+
+**Severity:** warning · **Autofix:** no
+
+Unused constant.
+
+Nothing names this constant. Remove it, or reference it where its value is needed.
+
+A `private` constant is reachable only from within its own package, so every project is checked for one. A public constant is checked only by `gust check` on a project whose gust.toml declares `kind = "binary"`: the project is then the whole program, so a constant no source under the project root mentions is dead. A library's public constants are its API and are never flagged.
+
+A `foreign` constant (whose value comes from C) and one carrying a `#gust:cfg` pragma (which a build for another target may need) are never flagged: each has a user this check cannot see.
+
+**Example:**
+
+```gust
+MAX_RETRIES: constant[integer] = 3  # never referenced
 ```
 
 ## Control flow
@@ -577,13 +618,13 @@ dict.get with a redundant none default.
 v := m.get(key, none)  # the 'none' default is redundant
 ```
 
-### W0506 — unnecessary-cast-to-int
+### W0506 — unnecessary-cast
 
-**Severity:** warning · **Autofix:** no
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
 
-Unnecessary cast to integer.
+Unnecessary cast.
 
-The value being cast with `as integer` is already an `integer`, so the cast does nothing. Remove it.
+The cast does nothing, so it can be removed. Two cases are reported: a self-cast `x as T` where the value already has type `T` (covering `integer`, `float`, `bool` and `string`, including values narrowed by an `is` test); and an `x as Any` whose result is stored into an explicit `Any` slot — the value of an assignment or an annotated `: Any` declaration — since the slot boxes the value on its own.
 
 **Example:**
 
@@ -635,6 +676,8 @@ end
 If/else block instead of a ternary.
 
 An `if`/`else` whose branches each assign the same variable — or an `if` with a single-return body immediately followed by a return — collapses to one ternary: `x := a if cond else b` / `return a if cond else b`.
+
+A block guarded by a type test (`x is T`, `x is not T`) whose arm reads `x` is left alone: narrowing applies inside the branch but not inside a ternary arm, so collapsing it would put the union back.
 
 **Example:**
 
@@ -1003,6 +1046,23 @@ Gust indents with spaces (4 by default). A tab character in a line's leading ind
 ```gust
 def f() -> none
 	print("indented with a tab")  # use spaces
+end
+```
+
+### W0606 — raw-struct-managed-field
+
+**Severity:** warning · **Autofix:** no
+
+Managed field on a `@raw` struct.
+
+A `@raw` struct is exempt from field ownership: the compiler synthesizes no retain or release for its fields. A field whose type is refcounted (`string`, `bytes`, `list`, `dict`, `ref[T]`, `Any`, a union, or another managed struct) is therefore never freed when the struct goes away, so its storage leaks — and if another binding frees it, the struct is left pointing at freed memory. Store a raw address (`integer`) and manage the allocation yourself, drop `@raw` so the field is owned normally, or suppress this with `#gust-ignore W0606` when the lifetime is handled by hand on purpose.
+
+**Example:**
+
+```gust
+@raw
+def Box
+    data: string  # never released — @raw suppresses the field's drop
 end
 ```
 

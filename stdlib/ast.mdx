@@ -29,7 +29,7 @@ end
 Because a variant pattern may bind a prefix of a variant's fields, an arm
 that ignores the trailing `span` still matches.
 
-**On this page:** [`SrcSpan`](#SrcSpan) · [`NamedArg`](#NamedArg) · [`ElseIf`](#ElseIf) · [`CatchClause`](#CatchClause) · [`MatchArm`](#MatchArm) · [`FieldDef`](#FieldDef) · [`Import`](#Import) · [`ErrorDef`](#ErrorDef) · [`Param`](#Param) · [`FuncSignature`](#FuncSignature) · [`InterfaceDef`](#InterfaceDef) · [`EnumMemberDef`](#EnumMemberDef) · [`EnumDef`](#EnumDef) · [`StructDef`](#StructDef) · [`FuncDecl`](#FuncDecl) · [`Decorator`](#Decorator) · [`FuncDef`](#FuncDef) · [`MethodDef`](#MethodDef) · [`VariantDef`](#VariantDef) · [`TypeDef`](#TypeDef) · [`ConstDef`](#ConstDef) · [`GenericInst`](#GenericInst) · [`GenericStructInst`](#GenericStructInst) · [`Program`](#Program) · [`Lexer`](#Lexer) · [`MarkupGen`](#MarkupGen) · [`Parser`](#Parser) · [`Token`](#Token) · [`type_to_string`](#ast.type_to_string) · [`generic_mangle`](#ast.generic_mangle) · [`no_span`](#ast.no_span) · [`span_is_real`](#ast.span_is_real) · [`span_tok`](#ast.span_tok) · [`span_join`](#ast.span_join) · [`span_contains`](#ast.span_contains) · [`span_size`](#ast.span_size) · [`expr_span`](#ast.expr_span) · [`clone_type`](#ast.clone_type) · [`clone_named_arg`](#ast.clone_named_arg) · [`clone_fstring_part`](#ast.clone_fstring_part) · [`clone_comp_clause`](#ast.clone_comp_clause) · [`clone_expr`](#ast.clone_expr) · [`reanchor_expr`](#ast.reanchor_expr) · [`reanchor_named_arg`](#ast.reanchor_named_arg) · [`reanchor_fstring_part`](#ast.reanchor_fstring_part) · [`reanchor_comp_clause`](#ast.reanchor_comp_clause) · [`stmt_span`](#ast.stmt_span) · [`ch_is_lower`](#ast.ch_is_lower) · [`ch_is_upper`](#ast.ch_is_upper) · [`ch_is_digit`](#ast.ch_is_digit) · [`ch_is_alpha`](#ast.ch_is_alpha) · [`ch_is_ident_start`](#ast.ch_is_ident_start) · [`ch_is_ident`](#ast.ch_is_ident) · [`is_alnum_ch`](#ast.is_alnum_ch) · [`is_hex_ch`](#ast.is_hex_ch) · [`is_bin_ch`](#ast.is_bin_ch) · [`is_oct_ch`](#ast.is_oct_ch) · [`digit_val`](#ast.digit_val) · [`parse_int_base`](#ast.parse_int_base) · [`decimal_overflows_i64`](#ast.decimal_overflows_i64) · [`decode_string_escape`](#ast.decode_string_escape) · [`hex_nibble`](#ast.hex_nibble) · [`is_quote_block_opener`](#ast.is_quote_block_opener) · [`is_radix_digit`](#ast.is_radix_digit) · [`lower_event_handler`](#ast.lower_event_handler) · [`parse`](#ast.parse) · [`tok_span`](#ast.tok_span) · [`generic_type_form_hint`](#ast.generic_type_form_hint) · [`compound_op_kind`](#ast.compound_op_kind) · [`binop_prec`](#ast.binop_prec) · [`first_is_upper`](#ast.first_is_upper) · [`is_primary_literal`](#ast.is_primary_literal) · [`find_close_brace`](#ast.find_close_brace) · [`is_none_type`](#ast.is_none_type) · [`is_literal`](#ast.is_literal) · [`is_keyword`](#ast.is_keyword) · [`is_operator`](#ast.is_operator) · [`keyword_kind`](#ast.keyword_kind) · [`op_spelling`](#ast.op_spelling)
+**On this page:** [`SrcSpan`](#SrcSpan) · [`NamedArg`](#NamedArg) · [`ElseIf`](#ElseIf) · [`CatchClause`](#CatchClause) · [`MatchArm`](#MatchArm) · [`FieldDef`](#FieldDef) · [`Import`](#Import) · [`ErrorDef`](#ErrorDef) · [`Param`](#Param) · [`FuncSignature`](#FuncSignature) · [`InterfaceDef`](#InterfaceDef) · [`EnumMemberDef`](#EnumMemberDef) · [`EnumDef`](#EnumDef) · [`StructDef`](#StructDef) · [`FuncDecl`](#FuncDecl) · [`Decorator`](#Decorator) · [`FuncDef`](#FuncDef) · [`MethodDef`](#MethodDef) · [`VariantDef`](#VariantDef) · [`TypeDef`](#TypeDef) · [`AliasDef`](#AliasDef) · [`ConstDef`](#ConstDef) · [`GenericInst`](#GenericInst) · [`GenericStructInst`](#GenericStructInst) · [`Program`](#Program) · [`Lexer`](#Lexer) · [`Parser`](#Parser) · [`Token`](#Token) · [`type_to_string`](#ast.type_to_string) · [`generic_mangle`](#ast.generic_mangle) · [`no_span`](#ast.no_span) · [`span_is_real`](#ast.span_is_real) · [`span_tok`](#ast.span_tok) · [`span_join`](#ast.span_join) · [`span_contains`](#ast.span_contains) · [`span_size`](#ast.span_size) · [`expr_span`](#ast.expr_span) · [`clone_type`](#ast.clone_type) · [`clone_named_arg`](#ast.clone_named_arg) · [`clone_fstring_part`](#ast.clone_fstring_part) · [`clone_comp_clause`](#ast.clone_comp_clause) · [`clone_expr`](#ast.clone_expr) · [`stmt_span`](#ast.stmt_span) · [`body_diverges`](#ast.body_diverges) · [`body_assigns_name`](#ast.body_assigns_name) · [`body_reaches_a_call`](#ast.body_reaches_a_call) · [`expr_reaches_a_call`](#ast.expr_reaches_a_call) · [`ch_is_lower`](#ast.ch_is_lower) · [`ch_is_upper`](#ast.ch_is_upper) · [`ch_is_digit`](#ast.ch_is_digit) · [`ch_is_alpha`](#ast.ch_is_alpha) · [`ch_is_ident_start`](#ast.ch_is_ident_start) · [`ch_is_ident`](#ast.ch_is_ident) · [`is_alnum_ch`](#ast.is_alnum_ch) · [`is_hex_ch`](#ast.is_hex_ch) · [`is_bin_ch`](#ast.is_bin_ch) · [`is_oct_ch`](#ast.is_oct_ch) · [`digit_val`](#ast.digit_val) · [`parse_int_base`](#ast.parse_int_base) · [`decimal_overflows_i64`](#ast.decimal_overflows_i64) · [`decode_string_escape`](#ast.decode_string_escape) · [`hex_nibble`](#ast.hex_nibble) · [`is_quote_block_opener`](#ast.is_quote_block_opener) · [`is_radix_digit`](#ast.is_radix_digit) · [`parse`](#ast.parse) · [`tok_span`](#ast.tok_span) · [`generic_type_form_hint`](#ast.generic_type_form_hint) · [`compound_op_kind`](#ast.compound_op_kind) · [`binop_prec`](#ast.binop_prec) · [`first_is_upper`](#ast.first_is_upper) · [`is_primary_literal`](#ast.is_primary_literal) · [`find_close_brace`](#ast.find_close_brace) · [`is_none_type`](#ast.is_none_type) · [`is_void_return_type`](#ast.is_void_return_type) · [`is_literal`](#ast.is_literal) · [`is_keyword`](#ast.is_keyword) · [`is_operator`](#ast.is_operator) · [`keyword_kind`](#ast.keyword_kind) · [`op_spelling`](#ast.op_spelling)
 
 ## Constants
 
@@ -70,7 +70,6 @@ that ignores the trailing `span` still matches.
 | `TT_RAISE` | `integer` | `27` |
 | `TT_USE` | `integer` | `28` |
 | `TT_INTERFACE` | `integer` | `29` |
-| `TT_ERROR` | `integer` | `30` |
 | `TT_ENUM` | `integer` | `31` |
 | `TT_AUTO_ENUM` | `integer` | `32` |
 | `TT_AS` | `integer` | `33` |
@@ -88,7 +87,8 @@ that ignores the trailing `span` still matches.
 | `TT_SPAWN` | `integer` | `45` |
 | `TT_EXTENDS` | `integer` | `46` |
 | `TT_WITH` | `integer` | `47` |
-| `TT_KEYWORD_END` | `integer` | `48` |
+| `TT_READONLY` | `integer` | `48` |
+| `TT_KEYWORD_END` | `integer` | `49` |
 | `TT_IS_NOT` | `integer` | `85` |
 | `TT_NOT_IN` | `integer` | `86` |
 | `TT_OPERATOR_BEG` | `integer` | `50` |
@@ -129,7 +129,7 @@ that ignores the trailing `span` still matches.
 | `TT_NEWLINE` | `integer` | `100` |
 | `TT_EOF` | `integer` | `101` |
 | `TT_QUOTE` | `integer` | `102` |
-| `TT_MARKUP` | `integer` | `103` |
+| `CFG_PRAGMA` | `string` | `"#gust:cfg"` |
 | `KEYWORD_KINDS` | `dict[string, integer]` | `{"def": TT_DEF, "end": TT_END, "if": TT_IF, "else": TT_ELSE,…}` |
 
 ## `SrcSpan`
@@ -266,6 +266,8 @@ def FieldDef
     has_default: bool
     default_expr: ref[Expr]
     is_private: bool
+    is_readonly: bool
+    line: integer
 
 end
 ```
@@ -277,6 +279,8 @@ end
 - `has_default: bool`
 - `default_expr: ref[Expr]`
 - `is_private: bool`
+- `is_readonly: bool` — Set by the `readonly` modifier. The field is written at construction and by the declaring struct's own methods; an assignment from anywhere else is rejected.
+- `line: integer` — 1-based source line of the field name, or 0 for a field synthesized by the compiler rather than parsed. Read by the `__LINE__` reflection dunder.
 
 ## `Import`
 
@@ -356,6 +360,8 @@ def Param
     has_default: bool
     default_value: ref[Expr]
     is_inout: bool
+    line: integer
+    col: integer
 
 end
 ```
@@ -367,6 +373,8 @@ end
 - `has_default: bool`
 - `default_value: ref[Expr]`
 - `is_inout: bool`
+- `line: integer` — 1-based source line of the parameter name, or 0 for a parameter synthesized by the compiler rather than parsed.
+- `col: integer` — 1-based source column of the parameter name, or 0 when unknown.
 
 ## `FuncSignature`
 
@@ -448,6 +456,7 @@ def EnumMemberDef
     name: string
     has_value: bool
     value: ref[Expr]
+    line: integer
 
 end
 ```
@@ -457,6 +466,7 @@ end
 - `name: string`
 - `has_value: bool`
 - `value: ref[Expr]`
+- `line: integer` — 1-based source line of the member name, or 0 when unknown. Read by the `__LINE__` reflection dunder.
 
 ## `EnumDef`
 
@@ -613,6 +623,8 @@ def FuncDef
     package: string
     decorators: list[Decorator]
     source_file: string
+    signature_end_line: integer
+    is_specialization: bool
 
 end
 ```
@@ -632,6 +644,8 @@ end
 - `package: string` — Package this function was merged from (empty string for user-defined functions in the entry program). Stamped by `Analyzer.merge_package_ast`; codegen uses it to mangle the C symbol to `{package}_{name}` so cross-package calls link.
 - `decorators: list[Decorator]` — Decorators collected from `@name` / `@name(args...)` lines before `def`.
 - `source_file: string` — The `.g` file this function was parsed from. Lets codegen resolve a qualified-call alias (`cli.foo`) against the imports of the *defining* file rather than the whole merged program, so two files aliasing the same name to different packages don't collide.
+- `signature_end_line: integer` — Source line of the signature's last token — the same as `line` unless the parameter list wraps. Diagnostics about a parameter show `line`..`signature_end_line` so the whole signature is visible. 0 for a synthesized function.
+- `is_specialization: bool`
 
 ## `MethodDef`
 
@@ -657,6 +671,7 @@ def MethodDef
     package: string
     is_foreign: bool
     source_file: string
+    signature_end_line: integer
 
 end
 ```
@@ -678,6 +693,7 @@ end
 - `package: string` — Package this method was merged from ("" for user code). Stamped by `merge_package_ast`; the collision pass uses it to retarget the method onto its struct's mangled name `{package}_{struct_name}`.
 - `is_foreign: bool` — `def foreign Struct.method(...)` — the implementation lives in a linked `.c`; `body` is empty and codegen emits only a prototype, letting the C symbol `Struct_method(Struct* self, ...)` supply the definition. The receiver crosses the FFI boundary as the struct value, so the C side reads its fields directly (no char*↔GStr* param adapter).
 - `source_file: string` — The `.g` file this method was parsed from — see `FuncDef.source_file`.
+- `signature_end_line: integer` — Source line of the signature's last token — see `FuncDef.signature_end_line`.
 
 ## `VariantDef`
 
@@ -731,11 +747,44 @@ end
 - `docstring: string`
 - `package: string`
 
+## `AliasDef`
+
+<a id="AliasDef" />
+A type-alias declaration `type Name = Target`, where `Target` is any
+type annotation — most often a union (`Number = integer | float`).
+
+An alias is transparent: it introduces a second spelling for `target`, not
+a distinct type. Every reference to `name` in a type position is replaced
+by `target` before analysis, so nothing downstream of that substitution
+ever sees the alias.
+
+```gust
+def AliasDef
+
+    name: string
+    target: ref[TypeNode]
+    line: integer
+    is_private: bool
+    docstring: string
+    package: string
+
+end
+```
+
+**Fields**
+
+- `name: string` — The declared alias name.
+- `target: ref[TypeNode]` — The type the alias stands for.
+- `line: integer` — Source line of the declaration.
+- `is_private: bool` — Whether the declaration is `private`.
+- `docstring: string` — The declaration's docstring, if any.
+- `package: string` — The owning package, stamped at merge time (empty for a user-program alias). A bare name inside `target` resolves in this package, wherever the alias is referenced from.
+
 ## `ConstDef`
 
 <a id="ConstDef" />
-A top-level constant declaration `NAME: constant[Type] = value`: its
-name, declared type, and the value expression.
+A top-level constant declaration `NAME: constant[Type] = value`, or a
+foreign one, `foreign NAME: constant[Type]`, whose value is defined in C.
 
 ```gust
 def ConstDef
@@ -747,6 +796,8 @@ def ConstDef
     is_private: bool
     docstring: string
     package: string
+    is_foreign: bool
+    cfg: string
 
 end
 ```
@@ -755,11 +806,13 @@ end
 
 - `name: string` — The declared constant name.
 - `ctype: ref[TypeNode]` — Its declared type.
-- `value: ref[Expr]` — The initializer expression.
+- `value: ref[Expr]` — The initializer expression; a `NoneLit` placeholder for a foreign constant, which has none.
 - `line: integer` — Source line of the declaration.
 - `is_private: bool` — Whether the declaration is `private`.
 - `docstring: string` — The declaration's docstring, if any.
-- `package: string` — The owning package, stamped at merge time (empty for a user-program constant). Lets codegen emit `<package>_<name>` when two packages define a same-named constant, avoiding a C-level duplicate-symbol clash.
+- `package: string` — The owning package, stamped at merge time (empty for a user-program constant). Codegen names the constant's C global `<package>_<name>` from it.
+- `is_foreign: bool` — Whether the value comes from C: the package's C source defines the global `<package>_<name>` and Gust only declares it.
+- `cfg: string` — The predicate of a trailing `#gust:cfg` pragma on the declaration's line, or "" when it carries none. Consumed by the cfg pruning pass, which drops the constant when it is false.
 
 ## `GenericInst`
 
@@ -811,7 +864,8 @@ end
 <a id="Program" />
 The root AST container for a compiled program: every parsed top-level
 declaration grouped by kind (imports, errors, interfaces, enums, structs,
-ADT types, constants, functions, methods, package functions). It also
+ADT types, type aliases, constants, functions, methods, package
+functions). It also
 carries analyzer-populated side tables — generic instantiations, package
 ownership / privacy / source-file metadata, the entry
 source path, and the module docstring — that codegen reads directly.
@@ -825,6 +879,7 @@ def Program
     enums: list[EnumDef]
     structs: list[StructDef]
     types: list[TypeDef]
+    aliases: list[AliasDef]
     constants: list[ConstDef]
     functions: list[FuncDef]
     methods: list[MethodDef]
@@ -837,9 +892,17 @@ def Program
     symbol_source_file_keys: list[string]
     symbol_source_file_values: list[string]
     source_path: string
+    project_version: string
+    tracing: bool
     docstring: string
     package_doc_keys: list[string]
     package_doc_values: list[string]
+    cfg_decl_pred_keys: list[string]
+    cfg_decl_pred_values: list[string]
+    cfg_file_pred_keys: list[string]
+    cfg_file_pred_values: list[string]
+    package_dirs: dict[string, string]
+    from_import_sources: dict[string, string]
 
 end
 ```
@@ -852,6 +915,7 @@ end
 - `enums: list[EnumDef]`
 - `structs: list[StructDef]`
 - `types: list[TypeDef]`
+- `aliases: list[AliasDef]`
 - `constants: list[ConstDef]`
 - `functions: list[FuncDef]`
 - `methods: list[MethodDef]`
@@ -863,10 +927,18 @@ end
 - `private_symbols: list[string]`
 - `symbol_source_file_keys: list[string]` — Per-symbol source-file table, copied from the analyzer. Keys mirror `symbol_owner_keys` (bare names for free symbols, `Struct.method` for methods); values are the `.g` file a merged-package decl came from. Entry-program decls are absent (they belong to `source_path`). Lets codegen answer `inspect.file(...)`.
 - `symbol_source_file_values: list[string]`
-- `source_path: string` — Source path of the entry file. Used for compile-time predefines `__file__` / `__name__`; populated by the driver before codegen.
-- `docstring: string` — Module docstring — a leading file-scope docstring (before any declaration), or "" when absent. Readable at runtime via the bare `__doc__` predefine (alongside `__file__` / `__name__`).
+- `source_path: string` — Source path of the entry file. Used for compile-time predefines `__FILE__` / `__NAME__`; populated by the driver before codegen.
+- `project_version: string` — `[project].version` from the project's gust.toml, or "" outside a project. Readable at runtime via the `__VERSION__` predefine; populated by the driver before codegen.
+- `tracing: bool` — True when the build was invoked with `--trace`, so codegen instruments every generated function body with the trace hook. Readable at compile time via the `__TRACING__` predefine; populated by the driver before codegen.
+- `docstring: string` — Module docstring — a leading file-scope docstring (before any declaration), or "" when absent. Readable at runtime via the bare `__DOC__` predefine (alongside `__FILE__` / `__NAME__`).
 - `package_doc_keys: list[string]` — Per-package module docstring, keyed by package name. Populated by `merge_package_ast` from each merged package file's leading docstring (the entry program's own doc stays in `docstring`). Lets codegen answer `inspect.doc(pkgalias)` — the package's one-line description for an `autodoc` page header.
 - `package_doc_values: list[string]`
+- `cfg_decl_pred_keys: list[string]` — Conditional-availability predicate per declaration, keyed like `symbol_source_file_keys` (bare name, or `Struct.method`). Populated by the `@cfg` pruning pass from the decorator it consumes. Lets codegen answer `inspect.cfg(...)` so a documentation renderer can state which targets a declaration exists on.
+- `cfg_decl_pred_values: list[string]`
+- `cfg_file_pred_keys: list[string]` — Conditional-availability predicate per source file, keyed by `.g` path — the file-level `#gust:cfg` pragma that gates the whole translation unit. A declaration with no `@cfg` of its own inherits its file's predicate.
+- `cfg_file_pred_values: list[string]`
+- `package_dirs: dict[string, string]` — The on-disk directory each loaded package was read from, keyed by package name. Recorded by the loader as it resolves an import, so the link step can find a package's `*.c` backing files without re-resolving the name — which it cannot do for a path import (`use "../lib/lib.g"`), whose package name no longer says where the package lives.
+- `from_import_sources: dict[string, string]` — The package each `use <name> from <pkg>` names, keyed `"<importing package>|<name>"` (the empty package is the entry program). Copied from the analyzer so codegen binds a bare call to the same definition the type checker checked it against when several packages export the name.
 
 ## `Lexer`
 
@@ -876,9 +948,10 @@ cursor. `source`/`filename` are the input; `pos` is the byte offset into
 `source`, with `line`/`col` tracking the 1-based source position; `out`
 accumulates emitted tokens; `frames` is the newline-significance stack
 (see `FR_BRACKET`/`FR_BLOCK`) that supersedes a plain bracket counter so
-newlines stay significant inside a bracketed lambda body; and the
+newlines stay significant inside a bracketed lambda body; the
 `failed`/`error_*` fields record the first lexing error and where it
-occurred.
+occurred; and `pending_pragma` holds a trailing `#gust:cfg` comment until
+the newline ending its line is emitted carrying it (see `CFG_PRAGMA`).
 
 ```gust
 def Lexer
@@ -894,6 +967,7 @@ def Lexer
     error_msg: string
     error_line: integer
     error_col: integer
+    pending_pragma: string
 
 end
 ```
@@ -911,6 +985,7 @@ end
 - `error_msg: string`
 - `error_line: integer`
 - `error_col: integer`
+- `pending_pragma: string`
 
 **Methods**
 
@@ -1131,53 +1206,6 @@ on a body with no closing `end`, pointing at the opener (`open_line`/
 
 ---
 
-<a id="Lexer.markup_open_ahead" />
-```gust
-def Lexer.markup_open_ahead() -> bool
-```
-
-True when the char after `<` begins a markup element: a tag name
-(identifier start) or `>` (a `<>` fragment).
-
----
-
-<a id="Lexer.markup_can_start" />
-```gust
-def Lexer.markup_can_start() -> bool
-```
-
-True when a `<` here opens markup rather than a less-than operator.
-Markup is only valid in value position, so it cannot follow a token that
-ends a value (identifier, literal, or a closing `)`/`]`/`}`). At the start
-of input, or after any other token (`=`, `(`, `,`, `return`, a newline,
-…), `<` opens markup.
-
----
-
-<a id="Lexer.skip_markup_hole" />
-```gust
-def Lexer.skip_markup_hole() -> none
-```
-
-Skip a balanced `{ … }` expression hole, tracking nested braces and
-skipping string literals so braces inside them don't unbalance the hole.
-Leaves the cursor just past the closing `}`.
-
----
-
-<a id="Lexer.read_markup_body" />
-```gust
-def Lexer.read_markup_body() -> string
-```
-
-Capture a whole markup region verbatim, starting at the opening `<`
-and ending just past the close of the root element/fragment, and return the
-raw text. Tracks element nesting so nested tags don't end the region early,
-and skips attribute strings and `{ … }` holes so `<`/`>` inside them don't
-count. The parser re-parses this raw text into `gml` constructor calls.
-
----
-
 <a id="Lexer.read_fstring_body" />
 ```gust
 def Lexer.read_fstring_body() -> string
@@ -1188,6 +1216,8 @@ closing quote, and return the value. Same as `read_string_body` but also
 accepts `\{` and `\}` escapes: the backslash is preserved verbatim so the
 parser can distinguish an escaped literal brace from an interpolation
 delimiter (it unescapes `\{`/`\}` back to `{`/`}` while splitting parts).
+A string literal inside an interpolation (`{"; ".join(xs)}`) is copied
+through verbatim, escapes included, so its quotes do not end the f-string.
 Calls `fail` on an unterminated string or escape.
 
 ---
@@ -1280,6 +1310,16 @@ Append a token of the given `kind` and `value`, positioned at
 
 ---
 
+<a id="Lexer.newline_value" />
+```gust
+def Lexer.newline_value() -> string
+```
+
+The value of the TT_NEWLINE token about to end the current line: the
+line's trailing `#gust:cfg` pragma when it carries one, else `\n`.
+
+---
+
 <a id="Lexer.last_is_newline" />
 ```gust
 def Lexer.last_is_newline() -> bool
@@ -1351,260 +1391,6 @@ one was just emitted) followed by TT_EOF. Stops early and returns the tokens
 collected so far if a lexing error sets `failed`; an unrecognized character
 triggers `fail`.
 
-## `MarkupGen`
-
-<a id="MarkupGen" />
-Transpiler that turns a captured markup region (`<div>…</div>`) into
-Gust source that calls the `gml` constructors. `src` is the raw markup;
-`pos` is the scan cursor. The generated source is parsed by
-`Parser.parse_markup_body`, so expression holes — and any markup nested
-inside them — go back through the normal lexer/parser.
-
-```gust
-def MarkupGen
-
-    src: string
-    pos: integer
-    pending_events: list[string]
-    renderer: string
-    pending_cond: string
-    pending_cond_kind: string
-    buffered: bool
-    buf_node: string
-    buf_kind: string
-    buf_cond: string
-
-end
-```
-
-**Fields**
-
-- `src: string`
-- `pos: integer`
-- `pending_events: list[string]` — `<renderer>.on(...)` sources for `@event` handlers seen on the component tag currently being scanned by `gen_component_args`; `gen_component` drains this right after, to wrap the component in `<renderer>.with_attrs` (fallthrough).
-- `renderer: string` — The markup renderer package name (`gml` by default) every generated constructor call is qualified with — threaded down from the Parser so the desugar target is configurable rather than the literal `"gml"`.
-- `pending_cond: string` — Structural-conditional directive captured off the element tag currently being scanned (`:if` / `:else-if` / `:else`). `pending_cond_kind` is "" / "if" / "else-if" / "else"; `pending_cond` is the boolean expression source (empty for `:else`). `gen_attrs`/`gen_component_args` capture it instead of emitting an attribute, then the enclosing `gen_children` reads it (right after the element is generated) to weave the if/else-if/else chain.
-- `pending_cond_kind: string`
-- `buffered: bool` — One-element pushback slot for `gen_if_chain`: when the chain scanner reads one sibling too far (a following element that is NOT `:else-if`/`:else`), it parks the already-generated element in `buf_node`/`buf_kind`/`buf_cond` for `gen_children` to place.
-- `buf_node: string`
-- `buf_kind: string`
-- `buf_cond: string`
-
-**Methods**
-
-<a id="MarkupGen.at_end" />
-```gust
-def MarkupGen.at_end() -> bool
-```
-
-True when the cursor has consumed all of `src`.
-
----
-
-<a id="MarkupGen.peek" />
-```gust
-def MarkupGen.peek() -> string
-```
-
-Character at the cursor, or "" at end.
-
----
-
-<a id="MarkupGen.peek2" />
-```gust
-def MarkupGen.peek2() -> string
-```
-
-Character one past the cursor, or "" at end.
-
----
-
-<a id="MarkupGen.skip_ws" />
-```gust
-def MarkupGen.skip_ws() -> none
-```
-
-Advance past any run of whitespace.
-
----
-
-<a id="MarkupGen.read_name" />
-```gust
-def MarkupGen.read_name() -> string
-```
-
-Read a tag or attribute name (identifier chars plus `-`, `:`, `.`).
-
----
-
-<a id="MarkupGen.read_attr_string" />
-```gust
-def MarkupGen.read_attr_string() -> string
-```
-
-Read a double-quoted attribute value, returning the raw inner text
-(quotes consumed, escapes left intact).
-
----
-
-<a id="MarkupGen.read_hole" />
-```gust
-def MarkupGen.read_hole() -> string
-```
-
-Read a `{ … }` expression hole, returning its raw inner source. Tracks
-nested braces and skips string literals so their braces don't unbalance
-the hole. Cursor ends just past the closing `}`.
-
----
-
-<a id="MarkupGen.consume_close" />
-```gust
-def MarkupGen.consume_close() -> none
-```
-
-Consume a closing tag `</tag>` (or `</>`) through its `>`.
-
----
-
-<a id="MarkupGen.capture_cond_value" />
-```gust
-def MarkupGen.capture_cond_value(kind: string) -> none
-```
-
-Capture a structural conditional directive (`:if` / `:else-if` / `:else`).
-The cursor sits just past the directive name; read its `={expr}` / `="expr"`
-value (none for `:else`) into `pending_cond` / `pending_cond_kind` so the
-enclosing `gen_children` can weave the chain. The directive is NOT emitted as
-an attribute.
-
----
-
-<a id="MarkupGen.gen_attrs" />
-```gust
-def MarkupGen.gen_attrs() -> string
-```
-
-Generate the attribute-list source `gml.attr_flat([seg, ...])`, stopping
-at `>` or `/>`. Each attribute lowers to a `list[Attr]` *segment* (the
-attribute analogue of how `gen_children` builds `list[Node]` segments), and
-`attr_flat` concatenates them — so a conditional binding can contribute a
-0-element segment and disappear. Quoted values are static strings (`[attr(...)]`);
-a bare name becomes a boolean-style empty attribute. An `@event={handler}`
-attribute (e.g. `@click={increment}`) lowers to `[gml.on("event", (handler))]`,
-wiring a live DOM listener under wasm.
-
-A `:`-prefixed name (or any `{expr}` hole) is a *bound* attribute — Vue's
-`v-bind:` shorthand — whose value is a Gust expression rather than a literal.
-It lowers to `gml.attr_bind("name", (expr))`, which dispatches on the value's
-runtime type to mirror Vue's `:attr` semantics: `bool` → HTML
-boolean-presence (present-empty if true, omitted if false), `string | none` →
-omit-when-none, plain `string` → always present. The special case `class` is
-collected (static `class="..."` and bound `:class` on the same element) and
-merged through `gml.cn`, so the two combine exactly like Vue. The bound class
-value may be the Vue object form
-
-&lt;div class="static" :class="&#123; active: isActive, 'text-danger': hasError &#125;">
-
-(each `name: expr` entry becomes a conditional class), or any string-typed
-expression in a hole: `:class={some_string}`.
-
-The reserved names `:if` / `:else-if` / `:else` are *structural* directives
-(Gust's spelling of Vue's `v-if` family), not attributes: each is captured
-into `pending_cond` / `pending_cond_kind` and woven by `gen_children` into an
-if/else-if/else ternary chain over sibling elements (see `gen_if_chain`),
-emitting nothing here.
-
----
-
-<a id="MarkupGen.take_element" />
-```gust
-def MarkupGen.take_element() -> string
-```
-
-Generate the next element segment, drawing from the pushback slot first.
-Sets `pending_cond_kind` / `pending_cond` to the element's structural
-directive (if any), exactly as `gen_element` does.
-
----
-
-<a id="MarkupGen.gen_if_chain" />
-```gust
-def MarkupGen.gen_if_chain(first_node: string, first_cond: string) -> string
-```
-
-Build one if/else-if/else chain segment from a `:if` element and the
-sibling `:else-if` / `:else` elements that immediately follow it (whitespace
-between them is allowed). Lowers to a nested ternary that evaluates to a
-one-element `list[Node]` for the chosen branch, or an empty `list[Node]` when
-no branch matches and there is no `:else` — so an unmatched conditional
-contributes no children. A trailing element that is not `:else-if` / `:else`
-ends the chain and is parked in the pushback slot for the caller to place.
-
----
-
-<a id="MarkupGen.gen_children" />
-```gust
-def MarkupGen.gen_children() -> string
-```
-
-Generate the children source `gml.flat([seg, ...])`, where each segment
-is a `list[Node]`: a nested element, a text run (`gml.t`), or a hole. A
-`{expr}` hole is text (`gml.t(expr)`); `{@ expr}` embeds a single Node;
-`{* expr}` splices a `list[Node]`. A `:if` element (with its trailing
-`:else-if` / `:else` siblings) becomes one conditional segment. Stops at the
-closing `</`.
-
----
-
-<a id="MarkupGen.gen_element" />
-```gust
-def MarkupGen.gen_element() -> string
-```
-
-Generate the source for one element or `<>` fragment at the cursor.
-On return, `pending_cond_kind` / `pending_cond` carry this element's own
-structural directive (`:if` / `:else-if` / `:else`) for the caller — they are
-saved across child generation, which would otherwise clobber them.
-
----
-
-<a id="MarkupGen.gen_component" />
-```gust
-def MarkupGen.gen_component(tag: string) -> string
-```
-
-Generate the source for one component element `<Tag ...>...</Tag>` (or
-self-closing `<Tag .../>`) at the cursor: a constructor call with the
-attributes as named arguments, the children (when present) as a
-`children:` argument, and a trailing `.render()` to lower to a `vdom.Node`.
-The component's struct must declare a `children: vdom.Node` field to accept
-projected content.
-
----
-
-<a id="MarkupGen.gen_component_args" />
-```gust
-def MarkupGen.gen_component_args() -> string
-```
-
-Generate component constructor arguments `name: value, ...` for an
-uppercase (component) tag, stopping at `>` or `/>`. Mirrors `gen_attrs`
-but emits named struct-constructor arguments instead of `gml.attr`
-entries: a quoted or unquoted value is a string, `{expr}` is the bare
-expression, and a bare name becomes the boolean prop `name: true`.
-
----
-
-<a id="MarkupGen.gen_node" />
-```gust
-def MarkupGen.gen_node() -> string
-```
-
-Entry point: generate source for the single root node in `src`. A `:if`
-on the root (with no sibling to fall through to) renders the element when the
-condition holds and an empty fragment otherwise.
-
 ## `Parser`
 
 <a id="Parser" />
@@ -1625,7 +1411,6 @@ def Parser
     error_msg: string
     depth: integer
     block_depth: integer
-    renderer: string
 
 end
 ```
@@ -1640,32 +1425,8 @@ end
 - `error_msg: string`
 - `depth: integer`
 - `block_depth: integer`
-- `renderer: string`
 
 **Methods**
-
-<a id="Parser.parse_markup_expr" />
-```gust
-def Parser.parse_markup_expr(src: string) -> Expr
-```
-
-Lex and parse generated markup source `src` as a standalone expression.
-The sub-lexer uses a `.gml` filename so markup nested inside expression
-holes is recognized again.
-
----
-
-<a id="Parser.parse_markup_body" />
-```gust
-def Parser.parse_markup_body(raw: string, sp: SrcSpan) -> Expr
-```
-
-Desugar a captured markup region into renderer constructor calls.
-Transpiles the raw markup to Gust source, then parses it back into an
-`Expr`. Requires the file to `use <renderer>` (the renderer package named
-by `[markup] renderer`, default `gml`).
-
----
 
 <a id="Parser.cur" />
 ```gust
@@ -1692,6 +1453,16 @@ def Parser.advance() -> Token
 ```
 
 Return the current token and move the cursor forward by one.
+
+---
+
+<a id="Parser.last_consumed_line" />
+```gust
+def Parser.last_consumed_line() -> integer
+```
+
+Source line of the most recently consumed token. Call right after a
+construct's final token to learn where it ends.
 
 ---
 
@@ -1789,6 +1560,20 @@ def Parser.at_decl_boundary() -> bool
 
 True when the current token begins a new top-level construct, so
 the previous signature can be treated as bodyless in decl mode.
+
+`end` is deliberately absent: a signature followed directly by `end` is a
+function with an empty body, not a bodyless declaration. Declarations are
+only parsed at top level, where a closing `end` never follows one.
+
+---
+
+<a id="Parser.starts_const_def" />
+```gust
+def Parser.starts_const_def() -> bool
+```
+
+True when the current token opens a top-level constant declaration:
+`NAME:`, optionally preceded by `private` and then `foreign`.
 
 ---
 
@@ -1926,6 +1711,36 @@ with no `[` is deliberately excluded: those are not complete types.
 
 ---
 
+<a id="Parser.starts_variant_pattern" />
+```gust
+def Parser.starts_variant_pattern() -> bool
+```
+
+True when the cursor is at a payload-binding variant pattern — a dotted
+name path whose last segment starts uppercase, followed by a parenthesised
+list of bare names (`Ident(name, line)`, `ast.Ident(name)`,
+`Expr.Ident(name)`).
+
+The paren list is required, and every entry in it must be a plain
+identifier: without those two conditions the same tokens are an ordinary
+call, and `x is make_node(a)` has to keep comparing against the call's
+result. Only the `is` right-hand side consults this — a match `case`
+already reads bare paths as patterns.
+
+---
+
+<a id="Parser.parse_variant_pattern" />
+```gust
+def Parser.parse_variant_pattern() -> Expr
+```
+
+Parse the payload-binding variant pattern `starts_variant_pattern`
+accepted: a dotted path plus a parenthesised list of bind names. The
+qualifier is dropped — variant tags resolve by their bare name, exactly as
+in a match `case`.
+
+---
+
 <a id="Parser.parse_comparison" />
 ```gust
 def Parser.parse_comparison() -> Expr
@@ -1936,6 +1751,11 @@ operators, below `not`): the symbolic operator chain from `parse_binary`,
 then the word relations `is` / `is not`, `in`, and `not in`. Builds a
 left-associative `BinOp` tree, or returns the operand from `parse_binary`
 when no relation appears.
+
+The `is` right-hand side accepts two pattern forms alongside ordinary
+operands: a subscripted container type (`is list[T]`), carried as a
+`TypePattern`, and a payload-binding variant pattern
+(`is ast.Ident(name, line)`), carried as a `VariantPattern`.
 
 ---
 
@@ -2006,11 +1826,16 @@ package-qualified struct literals `pkg.Name(field: ...)`, and
 def Parser.parse_index_or_slice(target: Expr) -> Expr
 ```
 
-Parse the contents between `[` and `]` applied to `target` (the opening
-bracket is already consumed; the caller consumes the closing one). Returns
-an `IndexAccess` for `[expr]` or a `SliceExpr` for `[start:stop]` (either
-bound optional). A second colon (`[a:b:c]` step form) is rejected with a
-precise diagnostic.
+Parse the contents between `[` and `]` applied to `target`, including the
+closing bracket (the opening one is already consumed). Returns an
+`IndexAccess` for `[expr]` or a `SliceExpr` for `[start:stop]` (either bound
+optional). A second colon (`[a:b:c]` step form) is rejected with a precise
+diagnostic.
+
+The closing `]` is consumed here so the node's span covers it. A span that
+stopped at the index expression would leave `xs[0]` ending before the
+bracket, and every consumer that reads the source just past a receiver —
+resolving the `m` in `xs[0].m`, say — would find `]` and give up.
 
 ---
 
@@ -2069,8 +1894,8 @@ def Parser.parse_primary_literal(t: Token) -> Expr
 ```
 
 Parse a literal primary — an integer, float, string, f-string, `quote`
-template, markup region, multiline string, bytes, boolean, or `none` —
-consuming the single leading token `t` and returning its `Expr` node.
+template, multiline string, bytes, boolean, or `none` — consuming the
+single leading token `t` and returning its `Expr` node.
 
 ---
 
@@ -2242,7 +2067,35 @@ def Parser.parse_if_stmt() -> Stmt
 
 Parse an `if ... [else if ...]* [else ...] end` chain, returning an
 `IfStmt` with the condition, then-body, list of `ElseIf` clauses, and
-optional else-body.
+optional else-body. The whole chain shares one `end`, consumed here;
+`parse_if_tail` parses the chain itself without the closing `end`.
+
+---
+
+<a id="Parser.parse_if_tail" />
+```gust
+def Parser.parse_if_tail(start: Token) -> Stmt
+```
+
+Parse one `if` chain with the leading `if` already consumed, stopping
+before the closing `end` so the caller owns it.
+
+A header declaration `if name := cond` binds `name` to `cond`'s value for
+the block and tests that value's truthiness. A bound `else if name := cond`
+is desugared into a nested bound `if` placed in the else-body, so the
+nested chain shares the one outer `end` and `ElseIf` carries no binding.
+
+---
+
+<a id="Parser.parse_header_bind" />
+```gust
+def Parser.parse_header_bind() -> string
+```
+
+Consume a leading `name :=` header declaration of an `if`/`while`
+condition and return the bound name, or `""` when the condition opens with
+no binding. `:=` is not an expression operator, so `IDENT :=` is
+unambiguous here.
 
 ---
 
@@ -2378,9 +2231,25 @@ with a type annotation and an optional default-value expression.
 def Parser.parse_const_def() -> ConstDef
 ```
 
-Parse a top-level constant declaration `[private] NAME: constant[Type] =
-value`, returning a `ConstDef`. Verifies the `constant` type keyword and
-captures the inner type, value expression, and privacy.
+Parse a top-level constant declaration, returning a `ConstDef`. Two
+forms are accepted:
+
+- `[private] NAME: constant[Type] = value`
+- `[private] foreign NAME: constant[Type]`, whose value the package's C
+  source defines as the global `<package>_<NAME>`. It takes no `=`.
+
+Verifies the `constant` type keyword and captures the inner type, value
+expression, privacy, and the predicate of a trailing `#gust:cfg` pragma.
+
+---
+
+<a id="Parser.line_pragma" />
+```gust
+def Parser.line_pragma() -> string
+```
+
+The predicate of the `#gust:cfg` pragma trailing the current line, read
+off the TT_NEWLINE token that ends it, or "" when the line carries none.
 
 ---
 
@@ -2419,17 +2288,15 @@ Records the path, alias, any selected names, and the `is_path` flag.
 
 ---
 
-<a id="Parser.parse_error_def" />
+<a id="Parser.parse_alias_def" />
 ```gust
-def Parser.parse_error_def() -> ErrorDef
+def Parser.parse_alias_def() -> AliasDef
 ```
 
-Parse an `error [private] Name(field: Type, ...)` declaration, returning
-an `ErrorDef` with its field definitions and privacy. The field list is
-optional. A leading triple-quoted string immediately after `(` is the
-error's docstring (fields are documented via a `Fields:` section inside it,
-mirroring the struct convention); newlines inside the field list are
-permitted so the declaration can span multiple lines.
+Parse a `type [private] Name = Target` declaration, returning an
+`AliasDef`. `Target` is a full type annotation, so a union alias
+(`type Number = integer | float`) needs no special case. A triple-quoted
+string on the following line is the alias's docstring.
 
 ---
 
@@ -2439,9 +2306,9 @@ def Parser.parse_iface_name() -> string
 ```
 
 Parse an interface name in a struct's `implements` clause, accepting an
-optional package qualifier (`gml.Component`). Interfaces register under
-their bare name, so the qualifier is dropped and the final segment
-returned.
+optional package qualifier (e.g. `pkg.Interface`). The qualifier is kept:
+when another loaded package declares the same bare name, the analyzer
+renames both apart and only `pkg.Name` says which one the struct means.
 
 ---
 
@@ -2534,7 +2401,7 @@ def Parser.parse() -> Program
 
 Parse a whole source file into a `Program`. Consumes an optional leading
 module docstring, then loops over top-level constructs — imports,
-error/interface/enum declarations, decorated `def`s (routed by
+error/interface/enum/type-alias declarations, decorated `def`s (routed by
 variant into functions/methods/structs/types/package funcs), and constant
 definitions — appending each to the appropriate `Program` table. Stops at
 EOF or the first failure.
@@ -2712,49 +2579,6 @@ included) so the copy shares no cells with the original.
 
 ---
 
-<a id="ast.reanchor_expr" />
-```gust
-def reanchor_expr(e: Expr, sp: SrcSpan) -> Expr
-```
-
-Rebuild `e` with every node's source span replaced by `sp`. Markup
-desugaring re-lexes generated source under a synthetic `<markup>` filename,
-so the resulting nodes carry spans pointing at the generated text (line 1),
-not the user's file. Re-anchoring the whole subtree to the original markup
-region's span makes diagnostics (e.g. an unknown component type) point at
-the real `<tag>` site instead. Per-node precision within the region is not
-recovered — the region maps to one span.
-
----
-
-<a id="ast.reanchor_named_arg" />
-```gust
-def reanchor_named_arg(a: NamedArg, sp: SrcSpan) -> NamedArg
-```
-
-Re-anchor a `NamedArg`'s value and location to span `sp` (see
-`reanchor_expr`).
-
----
-
-<a id="ast.reanchor_fstring_part" />
-```gust
-def reanchor_fstring_part(p: FStringPart, sp: SrcSpan) -> FStringPart
-```
-
-Re-anchor an f-string part's interpolated expression to span `sp`.
-
----
-
-<a id="ast.reanchor_comp_clause" />
-```gust
-def reanchor_comp_clause(c: CompClause, sp: SrcSpan) -> CompClause
-```
-
-Re-anchor a comprehension clause's expression to span `sp`.
-
----
-
 <a id="ast.stmt_span" />
 ```gust
 def stmt_span(s: Stmt) -> SrcSpan
@@ -2764,6 +2588,79 @@ The source span of statement `s`. The statement-level mirror of
 `expr_span`: every `Stmt` variant carries a trailing `span`, so a uniform
 accessor gives statement diagnostics and language-server ranges the same
 column precision expressions already have.
+
+---
+
+<a id="ast.body_diverges" />
+```gust
+def body_diverges(body: list[Stmt]) -> bool
+```
+
+Whether every path through `body` ends in a `return` or `raise`, so
+control can never fall off the end of the block.
+
+Used by both the analyzer and codegen to decide whether narrowing (or
+other flow facts) established by a guard clause — `if cond / return /
+end` — survives into the code that follows it, since the two must agree
+on when that carries a variable's type across the statement boundary.
+
+**Parameters**
+
+- `body: list[Stmt]` — The statements to check.
+
+---
+
+<a id="ast.body_assigns_name" />
+```gust
+def body_assigns_name(body: list[Stmt], name: string) -> bool
+```
+
+Whether any statement in `body`, or in a block nested inside it, assigns
+to the bare identifier `name`.
+
+**Parameters**
+
+- `body: list[Stmt]` — The statements to search.
+- `name: string` — The bare identifier to look for on the left of an assignment.
+
+---
+
+<a id="ast.body_reaches_a_call" />
+```gust
+def body_reaches_a_call(body: list[Stmt]) -> bool
+```
+
+Whether running `body` can reach a call — a function or method call, a
+`spawn`, a `raise`, or a lambda whose own body could hold one.
+
+What a call may do is unbounded, and that is exactly what a fact about a
+receiver's field stops surviving: the field can be rewritten by any method
+the code goes on to call, without that method ever being named here. A
+stretch of statements this returns false for cannot rewrite anything except
+through the writes it spells out, so a fact proved before it still holds
+after it.
+
+**Parameters**
+
+- `body: list[Stmt]` — The statements to search.
+
+---
+
+<a id="ast.expr_reaches_a_call" />
+```gust
+def expr_reaches_a_call(e: Expr) -> bool
+```
+
+Whether evaluating `e` can reach a call, at any depth.
+
+A `Lambda` counts: its body is code this expression carries, and the value
+may be invoked as soon as it is handed anywhere. A `StructInit` does not —
+filling declared fields runs no user code — but each field's value is
+searched.
+
+**Parameters**
+
+- `e: Expr` — The expression to search.
 
 ---
 
@@ -2936,24 +2833,6 @@ other value -> octal).
 
 ---
 
-<a id="ast.lower_event_handler" />
-```gust
-def lower_event_handler(renderer: string, ev: string, h: string) -> string
-```
-
-Lower an `@event={handler}` markup binding to a renderer call.
-
-Taking the event is **opt-in, per handler**. If `handler` is an inline
-lambda declaring a typed parameter (`def(e: events.KeyboardEvent) -> none
-…`), it opts in: this lowers to `&lt;renderer>.on_event(...)` wrapping a
-handle-taking adapter that projects the fired event into the annotated type
-(via the generated `to_<type>` projector) and calls the handler. An argless
-handler — a bare function name (`increment`) or `def() -> none …` — lowers to
-`<renderer>.on(...)` and is invoked with no event. So simple handlers stay
-simple; only those that declare a parameter receive the event.
-
----
-
 <a id="ast.parse" />
 ```gust
 def parse(source: string, filename: string) -> Program
@@ -3027,8 +2906,8 @@ def is_primary_literal(kind: integer) -> bool
 ```
 
 True when `kind` begins a literal primary expression: the six value
-literals plus `true` / `false` / `none` and the `quote` / markup template
-kinds, each of which `parse_primary_literal` consumes as a single token.
+literals plus `true` / `false` / `none` and the `quote` template
+kind, each of which `parse_primary_literal` consumes as a single token.
 
 ---
 
@@ -3039,7 +2918,8 @@ def find_close_brace(raw: string, start: integer) -> integer
 
 Scan `raw` from index `start` for the `}` that closes a `{`-opened
 f-string interpolation, honoring nested braces. Returns the index of the
-matching `}`, or -1 if none is found.
+matching `}`, or -1 if none is found. Braces inside a string literal in
+the interpolation (`{"}".join(xs)}`) are skipped.
 
 ---
 
@@ -3050,6 +2930,18 @@ def is_none_type(t: TypeNode) -> bool
 
 True if `t` is the sentinel `NoneType` (no return type), used to derive
 a signature's `has_return` flag.
+
+---
+
+<a id="ast.is_void_return_type" />
+```gust
+def is_void_return_type(t: TypeNode) -> bool
+```
+
+True if `t` names no return value: either the sentinel `NoneType` (the
+annotation was omitted) or an explicitly written `-> none`. The two stay
+distinct in the AST so the missing-return-type rule can tell them apart;
+everything that only cares whether a value comes back asks this instead.
 
 ---
 

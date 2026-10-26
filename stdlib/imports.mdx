@@ -15,7 +15,7 @@ rules to drift out of sync.
 
 Gust resolves imports at compile time, so this is resolution only
 (a package name -> its on-disk location); it does not load or execute
-modules at runtime the way Python's `importlib` does.
+modules at runtime.
 
 **On this page:** [`find_ancestor_with`](#imports.find_ancestor_with) · [`find_project_root`](#imports.find_project_root) · [`path_import_name`](#imports.path_import_name) · [`resolve_path_import`](#imports.resolve_path_import) · [`resolve_package_source_dir`](#imports.resolve_package_source_dir)
 
@@ -27,7 +27,7 @@ def find_ancestor_with(start_dir: string, filename: string) -> string
 ```
 
 Nearest ancestor of `start_dir` (inclusive) that contains a file named
-`filename`. Returns that directory, or "" when none is found within 64
+`filename`. Returns that directory, or none when none is found within 64
 levels.
 
 **Parameters**
@@ -110,8 +110,18 @@ Lookup order:
 
 1. &lt;stdlib_base>/&lt;path>/
 2. &lt;project_root>/&lt;path>/
-3. &lt;project_root>/&lt;path>.g          (single-file package — returns project_root)
+3. &lt;project_root>/&lt;path>.g          (root-level single file, `path` has no dot)
 4. &lt;project_root>/.gust/deps/&lt;path>/ (installed GitHub dependency)
+
+A dotted `path` (`foo.bar`) only ever names a directory — the `foo/bar`
+package — never a file inside it: `foo.bar.baz` naming a file `baz.g`
+that sits directly in `foo/bar/` would resolve to the same directory
+`foo.bar` already names, so that form is not resolved at all. Write
+`use ... from foo.bar` and reach `baz.g`'s declarations through the
+directory import instead. A **root-level** file is the one exception —
+`path` with no dot at all, naming a file straight in the project root
+rather than inside any package directory, has no shorter dotted form to
+prefer, so `use helper` still finds a lone `helper.g` there.
 
 Installed dependencies are searched **last** so a local package or
 single-file module of the same name shadows a dep, and projects with no

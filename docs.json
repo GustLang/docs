@@ -54,7 +54,28 @@
           "start/install",
           "start/hello-world",
           "start/tour",
-          "start/cli"
+          "start/cli",
+          "start/pico"
+        ]
+      },
+      {
+        "tab": "Tutorials",
+        "icon": "graduation-cap",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "tutorials/index"
+            ]
+          },
+          {
+            "group": "Raspberry Pi Pico",
+            "pages": [
+              "tutorials/pico-blink",
+              "tutorials/pico-temperature",
+              "tutorials/pico-wifi"
+            ]
+          }
         ]
       },
       {
@@ -119,6 +140,15 @@
                   "lang/imports",
                   "lang/conditional-compilation"
                 ]
+              },
+              {
+                "group": "C interop",
+                "pages": [
+                  "lang/ffi-intro",
+                  "lang/ffi-gust",
+                  "lang/ffi-c",
+                  "lang/runtime"
+                ]
               }
             ]
           },
@@ -129,8 +159,10 @@
               "tooling/formatter",
               "tooling/lsp",
               "tooling/project-config",
+              "tooling/targets",
               "tooling/packages",
               "tooling/repl",
+              "tooling/tracing",
               "tooling/vscode"
             ]
           },
@@ -161,7 +193,12 @@
               "builtins/list",
               "builtins/dict",
               "builtins/none",
-              "builtins/bytes"
+              "builtins/bytes",
+              "builtins/tuple",
+              "builtins/ref",
+              "builtins/struct",
+              "builtins/enum",
+              "builtins/function"
             ]
           },
           {
@@ -184,13 +221,22 @@
             "pages": [
               "stdlib/os",
               "stdlib/fs",
+              "stdlib/subprocess",
+              "stdlib/posix",
               "stdlib/i2c",
+              "stdlib/spi",
+              "stdlib/serial",
+              "stdlib/ioctl",
+              "stdlib/mmap",
               "stdlib/cec",
               "stdlib/exitcode",
               "stdlib/signal",
               "stdlib/sync",
+              "stdlib/fibers",
               "stdlib/profile",
-              "stdlib/unsafe"
+              "stdlib/unsafe",
+              "stdlib/dl",
+              "stdlib/ffi"
             ]
           },
           {
@@ -211,6 +257,7 @@
               "stdlib/json",
               "stdlib/toml",
               "stdlib/yaml",
+              "stdlib/xml",
               "stdlib/csv",
               "stdlib/compression"
             ]
@@ -241,7 +288,14 @@
             "pages": [
               "stdlib/socket",
               "stdlib/websockets",
-              "stdlib/bluetooth",
+              {
+                "group": "bluetooth",
+                "root": "stdlib/bluetooth",
+                "expanded": false,
+                "pages": [
+                  "stdlib/bluetooth/classic"
+                ]
+              },
               {
                 "group": "http",
                 "root": "stdlib/http",
@@ -287,14 +341,50 @@
                 ]
               },
               "stdlib/images",
-              "stdlib/barcode"
+              "stdlib/barcode",
+              "stdlib/lvgl",
+              "stdlib/framebuffer",
+              "stdlib/drm"
             ]
           },
           {
             "group": "Embedded",
             "pages": [
               "stdlib/pin",
-              "stdlib/wifi"
+              "stdlib/wifi",
+              "stdlib/sdcard",
+              {
+                "group": "usb",
+                "root": "stdlib/usb",
+                "expanded": false,
+                "pages": [
+                  "stdlib/usb/device"
+                ]
+              },
+              {
+                "group": "machine",
+                "expanded": false,
+                "pages": [
+                  "stdlib/machine/adc",
+                  "stdlib/machine/touch",
+                  "stdlib/machine/pwm",
+                  "stdlib/machine/clocks",
+                  "stdlib/machine/flash",
+                  "stdlib/machine/otp",
+                  "stdlib/machine/multicore",
+                  "stdlib/machine/dma",
+                  "stdlib/machine/interp",
+                  "stdlib/machine/pio",
+                  "stdlib/machine/power"
+                ]
+              },
+              {
+                "group": "drivers",
+                "expanded": false,
+                "pages": [
+                  "stdlib/drivers/sht41"
+                ]
+              }
             ]
           },
           {
@@ -304,7 +394,8 @@
               "stdlib/derive",
               "stdlib/imports",
               "stdlib/inspect",
-              "stdlib/autodoc"
+              "stdlib/autodoc",
+              "stdlib/gust/formatter"
             ]
           },
           {

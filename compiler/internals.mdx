@@ -21,7 +21,6 @@ stdlib/ast/                         # Compiler front-end, shipped as a stdlib pa
 ├── lexer.g            # Tokenizer
 ├── tokens.g           # Token types and keywords
 ├── parser.g           # Recursive descent parser
-├── markup.g           # GML markup-template parsing
 └── parse.g            # `ast.parse(source)` → Program (also usable by tooling)
 
 gustc/                              # Self-hosted compiler (Gust source)
@@ -48,16 +47,17 @@ gustc/                              # Self-hosted compiler (Gust source)
 │   ├── tags.g         # Type-tag reader (the string type representation)
 │   └── inspect.g      # Compile-time `inspect` package lowering
 ├── backend/           # toolchain.g (CC discovery, link spec, target triples
-│                      #   incl. wasm), pico.g (RP2350 `.uf2`), cache.g
-│                      #   (object cache, ~/.cache/gust/objcache/)
+│                      #   incl. wasm), pico.g (RP2350 `.uf2`), esp.g (ESP32
+│                      #   firmware via ESP-IDF), cache.g (object cache)
 ├── diagnostics/       # Diagnostic rendering: render.g, sink.g, suggest.g,
 │                      #   types.g (Rust-style source-line + caret output)
 ├── pkg/               # fetch.g (GitHub dependency resolver, gust.lock) +
 │                      #   loader.g
 ├── formatter/         # `gust format` (core.g, wrap.g, blanks.g, spacing.g,
-│                      #   import_sort.g, markup.g)
+│                      #   import_sort.g)
 ├── lsp/               # Language server (server.g + one handler per feature)
-├── repl/              # Interactive REPL (repl.g, eval.g, input.g, state.g)
+├── repl/              # Interactive REPL (repl.g, eval.g, input.g, state.g,
+│                      #   render.g)
 ├── gust_cli/          # CLI helpers (init.g, completion.g, explain.g, …)
 └── support/           # builtins.g (single source of truth for built-in
                        #   methods), type_tags.g, context.g, paths.g
@@ -146,7 +146,7 @@ Type mapping:
 
 | Gust        | C           |
 |-------------|-------------|
-| `string`    | `char*`     |
+| `string`    | `GStr*`     |
 | `integer`   | `int64_t`   |
 | `float`     | `double`    |
 | `bool`      | `bool`      |
@@ -200,11 +200,12 @@ User-facing errors and warnings are rendered by `gustc/diagnostics/` (not the ra
 
 ## Targets
 
-Beyond the native host, `gustc` cross-compiles and emits for other backends, all routed through `gustc/toolchain.g`:
+Beyond the native host, `gustc` cross-compiles and emits for other backends, all routed through `gustc/backend/toolchain.g`:
 
 - **Cross targets** — `--target <arch>-<os>-<abi>` (e.g. `x86_64-linux-musl`, `aarch64-macos-none`) build through `zig cc`'s bundled sysroots. `--static` links a static binary.
 - **wasm** — `--target wasm` compiles through Emscripten (`emcc`), emitting a `.js` loader + `.wasm` (plus a servable `index.html`). `gust run --target wasm` builds the bundle and serves it on a local dev server. The browser-only packages (`web.dom`, `web.document`, etc.) require this target; packages with no browser story are rejected up front.
-- **Pico (RP2350)** — `--target` for a Pico board emits a bare-metal `.uf2` via `gustc/pico_build.g` and the C SDK; `gust build --flash` pushes it to a connected board.
+- **Pico (RP2350)** — `--target` for a Pico board (`rp2350`, `pico2`, `rp2040`, `pico`, …) emits a bare-metal `.uf2` via `gustc/backend/pico.g` and the C SDK; `gust build --flash` pushes it to a connected board.
+- **ESP32** — `--target` for an ESP32 chip (`esp32`, `esp32s3`, `esp32c3`, `esp32c6`, …) builds firmware (a `.bin`) through ESP-IDF (`idf.py`) via `gustc/backend/esp.g`; a sourced ESP-IDF environment is required, and `gust build --flash` flashes a connected board.
 
 ## Runtime
 
@@ -230,19 +231,19 @@ The easiest way is to copy an existing small package — `convert/` or `exitcode
 
 The compiler picks up new packages without code changes. `use <pkg>` just works as long as both files are on disk and follow the naming convention.
 
-User code can also drop down to C directly: a top-level `foreign """..."""` block emits its body verbatim into the generated C (right after the runtime include), and a sibling `<stem>.c` file next to a `<stem>.g` is auto-linked. This is the FFI seam for binding a C library without authoring a whole stdlib package.
+User code can also drop down to C directly: a bodyless `def foreign` declaration paired with a sibling `<stem>.c` file next to the entry `<stem>.g` (auto-linked, no configuration needed) is implemented by a same-named C function. This is the FFI seam for binding a C library without authoring a whole stdlib package — see [C interop](/lang/ffi-intro) for the full picture, including `@c_name`, `@c_shim`, and the runtime's memory representation.
 
 ## Testing changes
 
-The `gust test` runner discovers and runs every `test_*.g` / `*_test.g` under a path, in parallel:
+The `gust test` runner discovers and runs every `test_*.g` / `*_test.g` under a path, in parallel. Tests live beside what they cover: each stdlib package under `stdlib/<pkg>/tests/`, and the compiler and language-feature suites under `gustc/tests/`.
 
 ```bash
-gust test tests/                  # run the whole suite
-gust test tests/dict/             # narrow to a subdirectory
-gust test --filter dict tests/    # substring filter
+gust test stdlib/ gustc/tests/        # run the whole suite
+gust test stdlib/cryptography/tests/  # narrow to one package
+gust test --filter base64 stdlib/     # substring filter
 ```
 
-There is no single aggregate test file — the runner walks the tree. For an ad-hoc smoke check, `gust run tests/<dir>/<file>.g`.
+There is no single aggregate test file — the runner walks the tree. For an ad-hoc smoke check, `gust run <dir>/<file>.g`.
 
 When hacking on the compiler itself, rebuild `gustc` with the existing binary (`gust build gustc/gustc.g -o gustc/build/gustc`) and re-run the suite; a self-host fixed point plus a green suite is the validation signal.
 

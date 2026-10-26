@@ -217,22 +217,27 @@ end
 ## Rendering with `print`
 
 Printing a backed enum, or interpolating it into an f-string, renders the
-member. The backing type governs the representation:
+member **name** — for both integer- and string-backed enums alike, never the
+backing value. Cast with `as` first when you want the backing value instead:
 
 ```gust
 print(Status.online)      # online
-print(Priority.high)      # 30
-print(HttpMethod.get)     # GET
+print(Priority.high)      # high
+print(HttpMethod.get)     # get
+
+print(Priority.high as integer)   # 30 — cast to render the backing value
 ```
 
 ## Introspection with `dir`
 
-`dir(EnumType)` returns the list of variant names in declaration order:
+`dir(EnumType)` returns the variant names in declaration order, followed by the [reflection properties](/lang/constants#reflection-properties) the type answers to:
 
 ```gust
-print(dir(Status))       # ["online", "offline", "maintenance"]
-print(dir(HttpMethod))   # ["get", "post", "put"]
+print(dir(Status))       # ["online", "offline", "maintenance", "__DOC__", "__NAME__", "__FILE__", "__LINE__"]
+print(dir(HttpMethod))   # ["get", "post", "put", "__DOC__", "__NAME__", "__FILE__", "__LINE__"]
 ```
+
+Everything `dir` lists resolves on the type, so `Status.online` and `Status.__DOC__` are both valid reads. A variant answers to the reflection properties too: `Status.online.__LINE__` is the line that variant is written on.
 
 ## Backing types
 
@@ -243,7 +248,9 @@ governs:
   requires `: string`
 - what a variant coerces to, and what `variant as BackingType` produces
 - whether arithmetic is available (integer only)
-- how variants render through `print` and f-strings
+
+Rendering is *not* governed by the backing type — `print` and f-strings always
+show a variant's name (see [Rendering with `print`](#rendering-with-print)).
 
 ## When `enum` vs. `auto_enum`
 

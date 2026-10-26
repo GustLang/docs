@@ -18,6 +18,10 @@ attributed to a single section on one thread if you need serial numbers.
 Alongside timing, the package exposes process memory statistics and runtime
 diagnostics (resident set size, live object count, try-frame depth).
 
+To time every call in a program rather than named sections, build it with
+`gust build --profile`: the binary then prints the same columns for each
+function, plus the caller/callee edges, without any code change.
+
 **Examples**
 
 ```gust

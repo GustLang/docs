@@ -5,7 +5,7 @@ description: Gust's tokens, keywords, literals, blocks, and the rules for where 
 
 ## File extension
 
-Source files use `.g`. Markup-bearing files use `.gml` — the only difference is that a `.gml` file lets you write inline `<tag>...</tag>` markup in value position. There is nothing else magic about either extension; the compiler just looks for them.
+Source files use the `.g` extension.
 
 ## Lines and tokens
 
@@ -88,7 +88,7 @@ Every block-opening keyword (`def`, `if`, `for`, `while`, `match`, `try`, `with`
 
 `quote` is reserved by the lexer even though it is not in the keyword table: it opens a `quote ... end` quasi-quote template used for compile-time metaprogramming, so it too cannot name a variable or function.
 
-`constant` is the one **contextual** word. It is not reserved — the lexer treats it as an ordinary identifier — and is only meaningful in the constant-declaration form `NAME: constant[Type] = value`. You may still use `constant` as a variable name. `type`, by contrast, is fully reserved: `type := 5` is a syntax error.
+`constant` is the one **contextual** word. It is not reserved — the lexer treats it as an ordinary identifier — and is only meaningful in the constant-declaration form `NAME: constant[Type] = value`. You may still use `constant` as a variable name. `type`, by contrast, is fully reserved — it opens a [type alias](/lang/types#type-aliases-type-name) declaration, so `type := 5` is a syntax error.
 
 ## The concurrency suffix
 
@@ -241,10 +241,10 @@ The top level of a `.g` file can contain only:
 
 - `use` imports
 - `def` functions, methods, foreign C-interop declarations, and struct declarations
-- `type` tagged-union declarations
 - `interface` declarations
 - `error` declarations
-- `enum` / `auto_enum` declarations
+- `enum` / `auto_enum` declarations — a backing-less `enum` is a tagged union
+- `type Name = Target` [type aliases](/lang/types#type-aliases-type-name)
 - `@decorator`-annotated declarations (for example `@static`, `@inline`)
 - `NAME: constant[Type] = value` constants
 

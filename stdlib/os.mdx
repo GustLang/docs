@@ -1,6 +1,6 @@
 ---
 title: os
-description: "System-level utilities: the operating-system and hardware identity (platform, OS version, architecture, hostname, byte order), process identity (pid, ppid, uid, username, executable path, command-line arguments), standard-stream I/O, executable lookup on `$PATH`, and a per-compile arena allocator for batch drivers"
+description: "System-level utilities: the operating-system and hardware identity (platform, OS version, architecture, hostname, byte order), process identity through `process()` (pid, ppid, uid, username, executable path, command-line arguments), standard-stream I/O, executable lookup on `$PATH`, and a per-compile arena allocator for batch drivers"
 ---
 
 ```gust
@@ -8,8 +8,9 @@ use os
 ```
 
 System-level utilities: the operating-system and hardware identity (platform,
-OS version, architecture, hostname, byte order), process identity (pid, ppid,
-uid, username, executable path, command-line arguments), standard-stream I/O,
+OS version, architecture, hostname, byte order), process identity through
+`process()` (pid, ppid, uid, username, executable path, command-line
+arguments), standard-stream I/O,
 executable lookup on `$PATH`, and a per-compile arena allocator for batch
 drivers.
 
@@ -20,11 +21,53 @@ use os
 
 def main() -> none
     print(os.hostname())
-    print(os.pid())
+    print(os.process().pid)
 end
 ```
 
-**On this page:** [`Platform`](#Platform) · [`platform`](#os.platform) · [`os_version`](#os.os_version) · [`arch`](#os.arch) · [`hostname`](#os.hostname) · [`pid`](#os.pid) · [`ppid`](#os.ppid) · [`uid`](#os.uid) · [`username`](#os.username) · [`executable`](#os.executable) · [`args`](#os.args) · [`env`](#os.env) · [`set_env`](#os.set_env) · [`stdout_write`](#os.stdout_write) · [`arena_push`](#os.arena_push) · [`arena_pop`](#os.arena_pop) · [`arena_pause`](#os.arena_pause) · [`arena_resume`](#os.arena_resume) · [`arena_active`](#os.arena_active) · [`byteorder`](#os.byteorder) · [`processor`](#os.processor) · [`architecture`](#os.architecture) · [`stdin_read`](#os.stdin_read) · [`stdin_readline`](#os.stdin_readline) · [`stdin_isatty`](#os.stdin_isatty) · [`stdout_isatty`](#os.stdout_isatty) · [`stdin_read_n`](#os.stdin_read_n) · [`which`](#os.which)
+A bare-metal target has no host identity and no process table, so the
+declarations naming one do not exist there. The TI calculators drop more: their
+C library has no environment and no file descriptors, so `env`, `set_env`, the
+`open_fd`/`read_fd`/`write_fd` layer with the `o_*` flags and `*_fileno`
+descriptors it takes, the stdin readers built on it, and `which` are absent on
+that family. What every target
+keeps is `platform`, `args`, `executable`, `stdout_write`, the TTY probes,
+`exit_process`, `errno`/`strerror` and the arena.
+
+**On this page:** [`Stream`](#Stream) · [`Platform`](#Platform) · [`BufferMode`](#BufferMode) · [`Process`](#Process) · [`platform`](#os.platform) · [`os_version`](#os.os_version) · [`arch`](#os.arch) · [`hostname`](#os.hostname) · [`username`](#os.username) · [`executable`](#os.executable) · [`pid`](#os.pid) · [`env`](#os.env) · [`set_env`](#os.set_env) · [`fputs`](#os.fputs) · [`fflush`](#os.fflush) · [`setvbuf`](#os.setvbuf) · [`exit_process`](#os.exit_process) · [`errno`](#os.errno) · [`strerror`](#os.strerror) · [`open_fd`](#os.open_fd) · [`umask`](#os.umask) · [`chmod_path`](#os.chmod_path) · [`close_fd`](#os.close_fd) · [`read_fd`](#os.read_fd) · [`read_char`](#os.read_char) · [`write_fd`](#os.write_fd) · [`fd_wait_readable`](#os.fd_wait_readable) · [`arena_push`](#os.arena_push) · [`arena_pop`](#os.arena_pop) · [`arena_pause`](#os.arena_pause) · [`arena_resume`](#os.arena_resume) · [`arena_active`](#os.arena_active) · [`byteorder`](#os.byteorder) · [`processor`](#os.processor) · [`architecture`](#os.architecture) · [`args`](#os.args) · [`environ`](#os.environ) · [`stdin_read`](#os.stdin_read) · [`stdin_readline`](#os.stdin_readline) · [`stdin_isatty`](#os.stdin_isatty) · [`stdout_isatty`](#os.stdout_isatty) · [`stdin_read_n`](#os.stdin_read_n) · [`stdout_write`](#os.stdout_write) · [`which`](#os.which) · [`process`](#os.process)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `STDIN_FILENO` | `integer` | defined in C |
+| `STDOUT_FILENO` | `integer` | defined in C |
+| `STDERR_FILENO` | `integer` | defined in C |
+| `O_RDONLY` | `integer` | defined in C |
+| `O_WRONLY` | `integer` | defined in C |
+| `O_RDWR` | `integer` | defined in C |
+| `O_NOCTTY` | `integer` | defined in C |
+| `O_CREAT` | `integer` | defined in C |
+| `O_TRUNC` | `integer` | defined in C |
+| `O_APPEND` | `integer` | defined in C |
+| `O_CLOEXEC` | `integer` | defined in C |
+| `O_NONBLOCK` | `integer` | defined in C |
+
+## `Stream`
+
+<a id="Stream" />
+```gust
+enum Stream: integer
+```
+
+One of the three standard streams, backed by its POSIX file
+descriptor number.
+
+**Variants**
+
+- `stdin = 0`
+- `stdout = 1`
+- `stderr = 2`
 
 ## `Platform`
 
@@ -52,6 +95,174 @@ Operating-system family the binary is running on.
 - `freestanding = "freestanding"` — Bare-metal target with no operating system
 - `unknown = "unknown"` — Platform could not be determined
 
+## `BufferMode`
+
+<a id="BufferMode" />
+```gust
+auto_enum BufferMode: string
+```
+
+Represents a POSIX buffer mode.
+
+**Variants**
+
+- `ionbf = "ionbf"`
+- `iolbf = "iolbf"`
+- `iofbf = "iofbf"`
+
+## `Process`
+
+<a id="Process" />
+<Note>
+Only available on Linux.
+</Note>
+
+A process as parsed from `/proc/[pid]/stat`.
+
+```gust
+def Process
+
+    pid: integer
+    name: string
+    state: string
+    ppid: integer
+    pgrp: integer
+    session: integer
+    tty_nr: integer
+    tpgid: integer
+    flags: integer
+    minflt: integer
+    cminflt: integer
+    majflt: integer
+    cmajflt: integer
+    utime: integer
+    stime: integer
+    cutime: integer
+    cstime: integer
+    priority: integer
+    nice: integer
+    num_threads: integer
+    itrealvalue: integer
+    starttime: integer
+    vsize: integer
+    rss: integer
+    rsslim: integer
+    startcode: integer
+    endcode: integer
+    startstack: integer
+    kstkesp: integer
+    kstkeip: integer
+    signal: integer
+    blocked: integer
+    sigignore: integer
+    sigcatch: integer
+    wchan: integer
+    nswap: integer
+    cnswap: integer
+    exit_signal: integer
+    processor: integer
+    rt_priority: integer
+    policy: integer
+    delayacct_blkio_ticks: integer
+    guest_time: integer
+    cguest_time: integer
+    start_data: integer
+    end_data: integer
+    start_brk: integer
+    arg_start: integer
+    arg_end: integer
+    env_start: integer
+    env_end: integer
+    exit_code: integer
+
+end
+```
+
+**Fields**
+
+- `pid: integer` — Process id.
+- `name: string` — The filename of the executable, without its enclosing parens.
+- `state: string` — Process state code, e.g. "R" (running), "S" (sleeping), "D" (uninterruptible sleep), "Z" (zombie), "T" (stopped).
+- `ppid: integer` — Parent process id.
+- `pgrp: integer` — Process group id.
+- `session: integer` — Session id.
+- `tty_nr: integer` — Controlling terminal of the process.
+- `tpgid: integer` — Id of the foreground process group of the controlling terminal.
+- `flags: integer` — Kernel flags word of the process (`PF_*` constants).
+- `minflt: integer` — Number of minor faults the process has made that did not require loading a memory page from disk.
+- `cminflt: integer` — Number of minor faults made by the process's waited-for children.
+- `majflt: integer` — Number of major faults the process has made that required loading a memory page from disk.
+- `cmajflt: integer` — Number of major faults made by the process's waited-for children.
+- `utime: integer` — Time the process has spent in user mode, in clock ticks.
+- `stime: integer` — Time the process has spent in kernel mode, in clock ticks.
+- `cutime: integer` — Time the process's waited-for children have spent in user mode, in clock ticks.
+- `cstime: integer` — Time the process's waited-for children have spent in kernel mode, in clock ticks.
+- `priority: integer` — Scheduling priority.
+- `nice: integer` — Nice value, in the range 19 (low priority) to -20 (high priority).
+- `num_threads: integer` — Number of threads in the process.
+- `itrealvalue: integer` — Time in jiffies before the next SIGALRM is sent, always 0.
+- `starttime: integer` — Time the process started after system boot, in clock ticks.
+- `vsize: integer` — Virtual memory size in bytes.
+- `rss: integer` — Resident set size, in pages.
+- `rsslim: integer` — Current soft limit in bytes on the rss of the process.
+- `startcode: integer` — Address above which program text can run.
+- `endcode: integer` — Address below which program text can run.
+- `startstack: integer` — Address of the start (bottom) of the stack.
+- `kstkesp: integer` — Current value of the stack pointer (ESP), as found in the kernel stack page for the process.
+- `kstkeip: integer` — Current value of the instruction pointer (EIP).
+- `signal: integer` — Bitmap of pending signals, displayed as a decimal number.
+- `blocked: integer` — Bitmap of blocked signals.
+- `sigignore: integer` — Bitmap of ignored signals.
+- `sigcatch: integer` — Bitmap of caught signals.
+- `wchan: integer` — Address of the kernel function where the process is sleeping.
+- `nswap: integer` — Number of pages swapped, always 0 on modern kernels.
+- `cnswap: integer` — Cumulative nswap for waited-for children, always 0.
+- `exit_signal: integer` — Signal sent to the parent when the process dies.
+- `processor: integer` — CPU number the process was last executed on.
+- `rt_priority: integer` — Real-time scheduling priority.
+- `policy: integer` — Scheduling policy.
+- `delayacct_blkio_ticks: integer` — Aggregated block I/O delays, in clock ticks.
+- `guest_time: integer` — Time spent running a virtual CPU for a guest OS, in clock ticks.
+- `cguest_time: integer` — Guest time of the process's children, in clock ticks.
+- `start_data: integer` — Address above which program initialized and uninitialized (BSS) data are placed.
+- `end_data: integer` — Address below which program initialized and uninitialized (BSS) data are placed.
+- `start_brk: integer` — Address above which the program heap can be expanded with brk.
+- `arg_start: integer` — Address above which command-line arguments are placed.
+- `arg_end: integer` — Address below which command-line arguments are placed.
+- `env_start: integer` — Address above which environment variables are placed.
+- `env_end: integer` — Address below which environment variables are placed.
+- `exit_code: integer` — The thread's exit status.
+
+**Methods**
+
+<a id="Process.args" />
+```gust
+def Process.args() -> list[string]
+```
+
+Command-line arguments passed to the process. `args()[0]` is the program name.
+
+---
+
+<a id="Process.set_name" />
+```gust
+def Process.set_name(new_name: string) -> none
+```
+
+Set the calling thread's name, as reported by `/proc/self/comm`.
+
+The command line is untouched: `args()` and the full command shown by a
+process listing are unaffected. Called from a thread other than the main
+one, only that thread is renamed.
+
+**Parameters**
+
+- `new_name` — Replacement name, 1-15 bytes. The kernel reserves the sixteenth byte for the terminator.
+
+**Raises**
+
+- `ValueError` — `new_name` is empty or longer than 15 bytes.
+
 ## Functions
 
 <a id="os.platform" />
@@ -68,7 +279,14 @@ Operating system family the binary is running on.
 def foreign os_version() -> string
 ```
 
+<Note>
+Not available on freestanding builds.
+</Note>
+
 Kernel or OS release string (e.g. `"6.8.0-106-generic"`).
+
+Hosted targets only — a firmware image runs on no operating system, so it
+has no release to report.
 
 ---
 
@@ -77,7 +295,14 @@ Kernel or OS release string (e.g. `"6.8.0-106-generic"`).
 def foreign arch() -> string
 ```
 
+<Note>
+Not available on freestanding builds.
+</Note>
+
 CPU architecture string (e.g. `"x86_64"`, `"aarch64"`).
+
+Hosted targets only: this reports what the OS says it is running on, and a
+firmware image has no such authority to ask.
 
 ---
 
@@ -86,34 +311,13 @@ CPU architecture string (e.g. `"x86_64"`, `"aarch64"`).
 def foreign hostname() -> string
 ```
 
+<Note>
+Not available on freestanding builds.
+</Note>
+
 Network hostname of the current machine.
 
----
-
-<a id="os.pid" />
-```gust
-def foreign pid() -> integer
-```
-
-Process ID of the current process.
-
----
-
-<a id="os.ppid" />
-```gust
-def foreign ppid() -> integer
-```
-
-Process ID of the parent process.
-
----
-
-<a id="os.uid" />
-```gust
-def foreign uid() -> integer
-```
-
-Real user ID under which the process is running.
+Hosted targets only — a firmware image has no host identity.
 
 ---
 
@@ -122,7 +326,11 @@ Real user ID under which the process is running.
 def foreign username() -> string
 ```
 
-Login name of the user running the process.
+<Note>
+Not available on freestanding builds.
+</Note>
+
+Login name for the process's real user ID, from the password database.
 
 ---
 
@@ -135,12 +343,12 @@ Absolute path to the running binary.
 
 ---
 
-<a id="os.args" />
+<a id="os.pid" />
 ```gust
-def foreign args() -> list[string]
+def foreign pid() -> integer
 ```
 
-Command-line arguments passed to the process. `args()[0]` is the program name.
+Process ID
 
 ---
 
@@ -148,6 +356,10 @@ Command-line arguments passed to the process. `args()[0]` is the program name.
 ```gust
 def foreign env(name: string) -> string
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Read an environment variable, returning the empty string if unset.
 
@@ -162,6 +374,10 @@ Read an environment variable, returning the empty string if unset.
 def foreign set_env(name: string, value: string) -> none
 ```
 
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
 Set an environment variable for the current process.
 
 **Parameters**
@@ -171,16 +387,286 @@ Set an environment variable for the current process.
 
 ---
 
-<a id="os.stdout_write" />
+<a id="os.fputs" />
 ```gust
-def foreign stdout_write(msg: string) -> none
+def foreign fputs(msg: string, fd: Stream) -> integer
 ```
 
-Write `msg` to stdout, with no trailing newline.
+Write `msg` to `fd`. Returns 0, or -1 with `errno` set.
 
 **Parameters**
 
 - `msg: string` — Text to write to stdout.
+- `fd: Stream` — Stream to write to. One of type `Stream`
+
+---
+
+<a id="os.fflush" />
+```gust
+def foreign fflush(fd: Stream) -> integer
+```
+
+Flushes the output buffer of a stream. This function
+forces a write of all buffered data for the given output
+or update stream to the file. When applied to an input stream,
+its behavior is undefined. Flushing the stream ensures that any
+data buffered in memory is written out to the file or device associated
+with the stream. Returns 0, or -1 with `errno` set.
+
+**Parameters**
+
+- `fd: Stream` — Corresponding stream to flush.
+
+---
+
+<a id="os.setvbuf" />
+```gust
+def foreign setvbuf(fd: integer, mode: BufferMode, size: integer) -> integer
+```
+
+<Note>
+Not available on freestanding builds.
+</Note>
+
+Choose how C buffers one of the standard streams, naming it by descriptor
+(0=stdin, 1=stdout, 2=stderr). Returns 0, or -1 with `errno` set.
+
+`iofbf` fills a buffer of `size` bytes before writing, `iolbf` writes a line
+at a time, and `ionbf` writes straight through. A `size` of 0 or less takes
+the C library's default; `ionbf` ignores it. The C library owns the buffer —
+there is no way to supply one, because stdio writes into it for the life of
+the stream, which no Gust value outlives.
+
+Call this before the stream carries any traffic. Changing the buffering of a
+stream already in use is undefined in C, and the process writes its banner
+to stdout on some platforms before `main` runs, so a redirected stdout is
+best set at the top of `main`.
+
+`print` writes through the stream this governs, so making stdout line- or
+unbuffered is what gets output out in order when it is piped rather than on
+a terminal. `stdout_write` flushes on every call and is unaffected.
+
+**Parameters**
+
+- `fd: integer` — Which stream to configure: 0=stdin, 1=stdout, 2=stderr.
+- `mode: BufferMode` — Full (`iofbf`), line (`iolbf`), or no (`ionbf`) buffering.
+- `size: integer` — Buffer size in bytes; 0 or less takes the default.
+
+---
+
+<a id="os.exit_process" />
+```gust
+def foreign exit_process(code: integer) -> none
+```
+
+Terminate the current process immediately with `code`, without flushing
+buffers or running any cleanup. Intended for a child process after a failed
+`execvp`, where the managed runtime must not run.
+
+**Parameters**
+
+- `code: integer` — Exit status to report to the parent.
+
+---
+
+<a id="os.errno" />
+```gust
+def foreign errno() -> integer
+```
+
+Current value of `errno`. Read it immediately after the failing call,
+before any other operation can overwrite it.
+
+---
+
+<a id="os.strerror" />
+```gust
+def foreign strerror(err: integer) -> string
+```
+
+Human-readable message for the error number `err`.
+
+**Parameters**
+
+- `err: integer` — An `errno` value, as returned by `errno`.
+
+---
+
+<a id="os.open_fd" />
+```gust
+def foreign open_fd(path: string, flags: integer, mode: integer) -> integer
+```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
+Open the file at `path` and return its file descriptor, or -1 on failure
+(with `errno` set). Combine the `O_*` flag constants with bitwise or to form
+`flags`; `mode` supplies the permission bits used only when a file is
+created.
+
+**Parameters**
+
+- `path: string` — Filesystem path to open.
+- `flags: integer` — Access mode and options, e.g. `O_RDONLY` or `O_WRONLY | O_CREAT | O_TRUNC`.
+- `mode: integer` — Permission bits for a newly created file (ignored otherwise).
+
+---
+
+<a id="os.umask" />
+```gust
+def foreign umask(mask: integer) -> integer
+```
+
+<Note>
+Not available on freestanding builds and Windows.
+</Note>
+
+Set the calling process's file-creation mask and return what it was.
+
+Every bit set in `mask` is cleared from the permissions of a file or
+directory the process goes on to create, whatever mode the creating call
+asks for: with the common mask of 0o022, a file requested as 0o666 is
+created 0o644. The mask constrains only permissions, never the rest of the
+mode word, and it survives `fork` and an `exec` into another program —
+which is why a process that launches others sets the mask it wants them to
+inherit before it starts them.
+
+This cannot fail, and the previous mask is only readable by replacing it.
+Reading the current one without disturbing it means setting a mask and
+putting the old one straight back.
+
+**Parameters**
+
+- `mask: integer` — Permission bits to withhold from newly created files.
+
+---
+
+<a id="os.chmod_path" />
+```gust
+def foreign chmod_path(path: string, mode: integer) -> integer
+```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
+Set the permission bits of the file at `path`. Returns 0 on success or
+-1 on failure (with `errno` set).
+
+`mode` is the octal permission word the shell's `chmod` takes as a number —
+`493` is `0o755`, `420` is `0o644`. Only the file's own bits change; its
+owner and contents are untouched.
+
+**Parameters**
+
+- `path: string` — Filesystem path whose permissions to set.
+- `mode: integer` — The permission bits to set.
+
+---
+
+<a id="os.close_fd" />
+```gust
+def foreign close_fd(fd: integer) -> integer
+```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
+Close the file descriptor `fd`. Returns 0 on success or -1 on failure
+(with `errno` set).
+
+**Parameters**
+
+- `fd: integer` — Descriptor to close.
+
+---
+
+<a id="os.read_fd" />
+```gust
+def foreign read_fd(fd: integer, max: integer) -> tuple[integer, bytes]
+```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
+Read up to `max` bytes from `fd`. Returns `(count, data)`: `count` is the
+number of bytes read (0 at end of file, -1 on error with `errno` set), and
+`data` holds exactly those bytes.
+
+**Parameters**
+
+- `fd: integer` — Descriptor to read from.
+- `max: integer` — Maximum number of bytes to read in this call.
+
+---
+
+<a id="os.read_char" />
+```gust
+def foreign read_char(fd: integer) -> integer
+```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
+Read a single byte from `fd` and return it in the range 0-255, or -1 at
+end of file or on error. Suited to line-oriented reads where over-reading
+past a delimiter must be avoided.
+
+**Parameters**
+
+- `fd: integer` — Descriptor to read from.
+
+---
+
+<a id="os.write_fd" />
+```gust
+def foreign write_fd(fd: integer, data: bytes) -> integer
+```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
+Write `data` to `fd` and return the number of bytes accepted, or -1 on
+error (with `errno` set). A short write is possible; the caller resubmits
+the remainder.
+
+**Parameters**
+
+- `fd: integer` — Descriptor to write to.
+- `data: bytes` — Bytes to write.
+
+---
+
+<a id="os.fd_wait_readable" />
+```gust
+def foreign fd_wait_readable(fd: integer, timeout_ms: integer) -> bool
+```
+
+<Note>
+Not available on freestanding builds.
+</Note>
+
+Wait until `fd` has data to read, for at most `timeout_ms` milliseconds.
+
+A zero timeout tests readiness without waiting; a negative one waits with no
+deadline. End of file counts as readable, since a read there returns at once
+with zero bytes. Use this to keep a reader responsive to a deadline instead
+of blocking in `read_fd` until bytes arrive.
+
+**Parameters**
+
+- `fd: integer` — Descriptor to wait on.
+- `timeout_ms: integer` — Milliseconds to wait; 0 polls, negative waits indefinitely.
+
+**Returns** `bool`
+
+True when a read would not block, false when the wait elapsed first.
 
 ---
 
@@ -249,7 +735,13 @@ Endianness of the current machine — `"little"` or `"big"`.
 def processor() -> string
 ```
 
+<Note>
+Not available on freestanding builds.
+</Note>
+
 Vendor/model string for the CPU, if the OS exposes one.
+
+Hosted targets only.
 
 ---
 
@@ -258,7 +750,40 @@ Vendor/model string for the CPU, if the OS exposes one.
 def architecture() -> string
 ```
 
+<Note>
+Not available on freestanding builds.
+</Note>
+
 Word size and ABI hint (e.g. `"64bit"`).
+
+Hosted targets only, since it reads `arch`. Use `unsafe.WORD_SIZE` for
+the word size alone, which every target answers.
+
+---
+
+<a id="os.args" />
+```gust
+def args() -> list[string]
+```
+
+Command-line arguments passed to the process. `args()[0]` is the program name.
+
+---
+
+<a id="os.environ" />
+```gust
+def environ() -> dict[string, string]
+```
+
+<Note>
+Not available on freestanding builds.
+</Note>
+
+Every environment variable visible to the process, as a name-to-value
+dict.
+
+Hosted targets only — a firmware image has no enclosing shell to have set
+an environment.
 
 ---
 
@@ -266,6 +791,10 @@ Word size and ABI hint (e.g. `"64bit"`).
 ```gust
 def stdin_read() -> string
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Read all of stdin as a single string. Blocks until EOF.
 
@@ -275,6 +804,10 @@ Read all of stdin as a single string. Blocks until EOF.
 ```gust
 def stdin_readline() -> string
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Read one line from stdin, stripping the trailing newline.
 Returns an empty string at EOF.
@@ -308,6 +841,10 @@ suppressed when output is redirected to a file or pipe.
 def stdin_read_n(n: integer) -> string
 ```
 
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
 Read exactly `n` bytes from stdin and return as a string.
 Returns fewer bytes only at EOF.
 
@@ -317,10 +854,27 @@ Returns fewer bytes only at EOF.
 
 ---
 
+<a id="os.stdout_write" />
+```gust
+def stdout_write(msg: string) -> none
+```
+
+Write `msg` to stdout, with no trailing newline.
+
+**Parameters**
+
+- `msg: string` — Text to write to stdout.
+
+---
+
 <a id="os.which" />
 ```gust
 def which(name: string) -> string
 ```
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 Return the absolute path of `name` by searching `$PATH`, or the empty
 string if no executable is found. If `name` contains a `/` it is checked
@@ -329,3 +883,19 @@ directly and returned as-is when executable. Symlinks are not resolved.
 **Parameters**
 
 - `name: string` — Executable name to locate, or a path containing a `/`.
+
+---
+
+<a id="os.process" />
+```gust
+def process() -> Process
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+Identity of the current process, read fresh on every call.
+
+Hosted targets only: a firmware image is the only thing running, so there
+is no process table to describe it.

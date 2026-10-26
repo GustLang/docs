@@ -183,6 +183,16 @@ Triggered by `s[i]`. Returns the single character at the given index.
 
 - `IndexError` — When `index` is outside `0..length`.
 
+---
+
+<a id="string.__iter" />
+```gust
+def string.__iter() -> list[string]
+```
+
+Triggered by `for c in s`. Yields each character left to right as a
+single-character string.
+
 ## Case
 
 <a id="string.uppercase" />
@@ -221,11 +231,12 @@ True if sub appears anywhere in the string.
 def string.starts_with(prefix: string) -> bool
 ```
 
-True if the string begins with `prefix`.
+True if the string begins with `prefix`. Also accepts a `list[string]` of
+prefixes, returning true when any one of them matches.
 
 **Parameters**
 
-- `prefix: string` — The leading substring to test for.
+- `prefix: string` — The leading substring to test for, or a list of candidates.
 
 ---
 
@@ -244,14 +255,19 @@ True if the string ends with `suffix`.
 
 <a id="string.index_of" />
 ```gust
-def string.index_of(sub: string) -> integer
+def string.index_of(sub: string, start: integer) -> integer
 ```
 
 Returns the index of the first occurrence, or -1 if not found.
 
+`start` is optional and defaults to 0. Give it to walk a large string match by
+match: re-slicing the remainder each time copies what is left of the string on
+every step, which turns one pass into quadratic work.
+
 **Parameters**
 
 - `sub: string` — The substring to search for.
+- `start: integer` — Byte offset to begin searching at. Past the end finds nothing; a negative offset is read as 0.
 
 ---
 

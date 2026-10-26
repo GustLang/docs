@@ -1,6 +1,6 @@
 ---
 title: Conditional compilation
-description: Keep declarations and imports for one target and drop them for others with @cfg and the #gust:cfg import pragma — predicates over os, arch, abi, triple, and target flavor
+description: Keep declarations, imports, and whole files for one target and drop them for others with @cfg and the #gust:cfg pragma — predicates over the target's os, architecture, part number, and capabilities
 ---
 
 Conditional compilation selects which code is compiled based on the target
@@ -8,10 +8,13 @@ being built. A declaration or import gated for one platform is **removed before
 analysis** on every other platform, so the dropped branch may reference symbols
 — functions, packages, ABI seams — that exist only where it is kept.
 
-Two carriers share one predicate language:
+Three carriers share one predicate language:
 
 - `@cfg(<predicate>)` gates a **function, method, or struct**.
-- `#gust:cfg <predicate>`, a trailing pragma on a `use` line, gates an **import**.
+- `#gust:cfg <predicate>`, a trailing pragma on a `use` line, gates an **import**,
+  and on a constant's line, a **constant**.
+- `#gust:cfg <predicate>` on a line of its own, first in the file, gates a
+  **whole file** — and, applied to every file of a package, the package itself.
 
 ```gust
 @cfg(os == "linux")
@@ -45,10 +48,13 @@ parentheses:
 | Key       | Compares against                                              |
 | --------- | ------------------------------------------------------------ |
 | `os`      | operating system — `linux`, `macos`, `windows`, `none`, …    |
-| `arch`    | processor architecture — `x86_64`, `aarch64`, …              |
-| `abi`     | target ABI — `gnu`, `musl`, `none`, …                        |
-| `triple`  | the canonical `<arch>-<os>-<abi>` triple                     |
+| `arch`    | processor architecture — `x86_64`, `aarch64`, `arm`, `xtensa`, … |
+| `abi`     | target ABI — `gnu`, `musl`, `eabi`, …                        |
+| `triple`  | the toolchain's canonical triple — `x86_64-linux-gnu`, `arm-none-eabi` |
 | `target`  | build flavor — `native`, `wasm`, `esp`, `pico`, `freestanding` |
+| `family`  | device family — `rp2`, `esp`; `""` on a hosted target        |
+| `chip`    | part number — `rp2350`, `esp32s3`; `""` on a hosted target   |
+| `board`   | board — `pico2_w`; `""` when the target is a bare chip       |
 
 The `target` key names the build flavor rather than a triple part: `native` for
 an ordinary hosted-OS build, `wasm` for `--target wasm`, `esp` / `pico` for the
@@ -62,8 +68,52 @@ def sleep_ms(ms: integer) -> none
 end
 ```
 
+`family`, `chip` and `board` come from the target's descriptor under
+[`targets/`](/tooling/targets), which is also where the build reads its
+architecture and triple from. They narrow a gate to one part when nothing
+coarser will do — a peripheral only some members of a family carry.
+
 A malformed predicate — an unknown key, a non-string value, or an unsupported
 operator — is a compile error, never a silently ignored comment.
+
+## Conditions
+
+Two conditions stand on their own rather than comparing a key.
+
+`mcu` is true when the target is a device rather than a host:
+
+```gust
+@cfg(mcu)
+def now_ms() -> integer
+    return ticks_since_boot() / 1000
+end
+
+@cfg(not mcu)
+def now_ms() -> integer
+    return time.monotonic_ms()
+end
+```
+
+`has("<capability>")` is true when the target's descriptor declares that
+capability:
+
+```gust
+"""RP-series programmable I/O state machines.
+"""
+
+#gust:cfg has("pio")
+```
+
+Prefer `has(...)` over naming parts. A gate that says `chip == "rp2350"` has to
+be edited when the next chip with the same peripheral lands; one that says
+`has("pio")` does not — the new chip's descriptor declares `pio` and the package
+follows. The package states what it needs, the target states what it has, and
+neither names the other.
+
+The capability names are a fixed vocabulary, listed under
+[Targets](/tooling/targets). A name outside it is a compile error rather than a
+false: a predicate nothing can satisfy would gate its package out of every
+target at once, silently.
 
 ## Gating imports
 
@@ -80,19 +130,109 @@ carry a matching `@cfg` — otherwise it fails to resolve on the platform where
 the import was dropped, which is the intended signal that a use is missing its
 guard.
 
+## Gating constants
+
+A constant takes the same trailing pragma on the line that names it:
+
+```gust
+foreign O_NOCTTY: constant[integer]    #gust:cfg os != "windows"
+
+PAGE: constant[integer] = 256     #gust:cfg target == "pico"
+PAGE: constant[integer] = 4096    #gust:cfg target != "pico"
+```
+
+Two spellings of a constant may coexist when their predicates are mutually
+exclusive, exactly as for [functions](#same-name-different-target).
+Declarations with a body carry `@cfg`, and single-line declarations (imports
+and constants) carry the pragma.
+
 ## Whole-file selection
 
-When an entire file is platform-specific, name it with a target suffix
-(`os_linux.g`, `os_windows.g`) instead of gating every declaration. The package
-loader selects files by suffix, so the file's imports and declarations come
-along for free — reach for `@cfg` / `#gust:cfg` when only *part* of a shared
-file differs.
+When an entire file is platform-specific, gate the file rather than every
+declaration in it: put the pragma on a line of its own, as the file's first
+line — before or directly after its docstring.
+
+```gust
+"""An ST7789 SPI panel as the display.
+"""
+
+#gust:cfg target == "esp"
+
+
+use pin
+use spi
+```
+
+A gated-out file is never lexed, so nothing in it has to be valid for the
+current target: its imports, declarations and bodies may all name symbols that
+exist only on the platform it was written for. This is what lets one package
+carry a file per platform.
+
+The pragma has to be in that header position. A standalone `#gust:cfg` line
+anywhere else is an error rather than a no-op, so a gate can never silently fail
+to gate.
+
+## Whole-package availability
+
+A package whose *every* file is gated out does not exist for that target. Put
+the same pragma in each of the package's files:
+
+```gust
+"""GPIO line access.
+"""
+
+#gust:cfg os == "linux" or has("gpio")
+```
+
+Importing it elsewhere is reported on the `use` line:
+
+```
+error[G0701]: package 'pin' is not available for this target
+  --> main.g:1:1
+  |
+1 | use pin
+  | ^^^
+```
+
+This is how the standard library states what a target supports: `machine.pio`
+exists for a target declaring `pio`, `wifi` for one declaring `wifi`,
+`compression` only for native builds. There is no list of unsupported packages
+inside the compiler — each package declares its own reach, and a target that
+cannot have it is told so before any C compiler runs.
+
+Because the reach is a capability rather than a target name, it separates two
+parts of one family: `wifi` exists for a Pico W and not for a Pico, and
+`machine.multicore` for an ESP32-S3 and not for a single-core ESP32-C3.
+
+## Same name, different target
+
+Two declarations may share a name when their predicates are mutually exclusive.
+Exactly one survives pruning, so call sites stay identical while the behavior
+differs per target:
+
+```gust
+@cfg(target == "native")
+def private decode(data: bytes) -> bytes
+    return compression.gzip_decompress(data)
+end
+
+
+@cfg(target != "native")
+def private decode(data: bytes) -> bytes
+    raise IOError(message: "no decompression on this target", path: "")
+end
+```
+
+Two files of a package gated to different targets are the same thing at file
+scale: each spells the package's declarations for its own target, and exactly
+one spelling reaches the program.
 
 ## When it runs
 
-Both forms are resolved by the compiler against the target it already knows,
-with no compile-time code execution:
+Every form is resolved by the compiler against the target it already knows, with
+no compile-time code execution:
 
+- File gates are evaluated **as each file is read**, before it is lexed.
 - Import pragmas are applied **before package loading**, so a dropped import is
   never resolved.
 - `@cfg` declarations are pruned **before analysis**, so a dropped body is never
@@ -101,3 +241,37 @@ with no compile-time code execution:
 For a build, the target is the resolved `--target` (or `[build].target`). For
 `gust check`, it is `[build].target` from `gust.toml`, defaulting to the native
 host.
+
+## Documenting what a target excludes
+
+A declaration knows the predicate it is available under, and `inspect.cfg`
+reports it — for the declaration's own `@cfg`, or for the `#gust:cfg` pragma
+gating its file:
+
+```gust
+use inspect
+use fs
+
+inspect.cfg(fs.glob)      # "target != \"pico\""
+```
+
+That covers what this target compiles. To document what it *doesn't*, build with
+`--doc-cfg`: gated files, imports, and declarations are kept instead of pruned,
+each carrying its predicate. One host build then sees a package's whole surface
+— including packages that exist on no host target at all, like `machine.pwm`.
+
+```bash
+gust run --doc-cfg gen_docs.g
+```
+
+`autodoc` turns the predicate into the availability line on each reference page
+("Only available on the Pico and the ESP32."), which is how the embedded-only
+packages are documented from an ordinary build.
+
+A symbol spelled once per target is still one symbol here: keeping every
+spelling would compile two definitions of it. Whichever carrier gates them —
+`@cfg` on the declarations or `#gust:cfg` on their files — one spelling is
+documented, and it is the one this target compiles when there is one.
+
+The flag is for documentation generators. It compiles code the target cannot
+run — nothing calls it, but the binary is not one to ship.

@@ -13,7 +13,7 @@ use time
 
 def main() -> none
     print(math.sqrt(2.0))
-    print(time.now_ms())
+    print((time.now() as integer))
 end
 ```
 
@@ -23,26 +23,27 @@ end
 |---------|-------------|
 | [`math`](/stdlib/math) | Numeric limits, constants, and mathematical functions: the integer and float range bounds, the constants π, τ, e, infinity, and NaN, absolute value, rounding and truncation, sign and comparison helpers, division remainders, powers and roots, exponentials and logarithms, trigonometric and hyperbolic functions, angle conversion, float classification, and integer helpers such as `gcd`, `lcm`, and `factorial` |
 | [`convert`](/stdlib/convert) | Integer base conversions: format an integer as a hex, octal, or binary string (with the conventional `0x` / `0o` / `0b` prefix) and parse such strings back to integers, honoring an optional sign and prefix |
-| [`time`](/stdlib/time) | DateTime values: a calendar date and time of day paired with a Unix millisecond timestamp and a timezone label |
+| [`time`](/stdlib/time) | Core time access: read the current time and timestamp, and pause execution for a given number of milliseconds or microseconds |
 | [`uuid`](/stdlib/uuid) | Universally Unique Identifiers (RFC 4122 / RFC 9562) |
 
 ## System
 
 | Package | Description |
 |---------|-------------|
-| [`os`](/stdlib/os) | System-level utilities: the operating-system and hardware identity (platform, OS version, architecture, hostname, byte order), process identity (pid, ppid, uid, username, executable path, command-line arguments), standard-stream I/O, executable lookup on `$PATH`, and a per-compile arena allocator for batch drivers |
+| [`os`](/stdlib/os) | System-level utilities: the operating-system and hardware identity (platform, OS version, architecture, hostname, byte order), process identity through `process()` (pid, ppid, uid, username, executable path, command-line arguments), standard-stream I/O, executable lookup on `$PATH`, and a per-compile arena allocator for batch drivers |
 | [`fs`](/stdlib/fs) | Filesystem and path operations: querying and changing the working directory, building and splitting paths, file and directory reads/writes/creation/removal, recursive walking and copying, globbing, temp files and directories, and a `Path` wrapper that exposes these as method-style helpers (`.read()`, `.write()`, `.parent()`, `.ext()`, and more) |
 | [`exitcode`](/stdlib/exitcode) | Standard process exit codes, named as constants |
 | [`signal`](/stdlib/signal) | Unix signal handling |
 | [`profile`](/stdlib/profile) | A deterministic section profiler |
 | [`mmap`](/stdlib/mmap) | Memory-mapped regions through the POSIX `mmap` call |
 | [`ioctl`](/stdlib/ioctl) | Device control through the POSIX `ioctl` call |
+| [`dl`](/stdlib/dl) | Load shared libraries at runtime and call into them |
 
 ## Text & data
 
 | Package | Description |
 |---------|-------------|
-| [`regex`](/stdlib/regex) | Backtracking regular-expression engine backing the `regex` package |
+| [`regex`](/stdlib/regex) | Regular expression matching using a backtracking engine |
 | [`highlight`](/stdlib/highlight) | Syntax highlighting |
 | [`url`](/stdlib/url) | URL percent-encoding, percent-decoding, and parsing |
 | [`buffer`](/stdlib/buffer) | A growable string builder |
@@ -56,9 +57,9 @@ end
 |---------|-------------|
 | [`json`](/stdlib/json) | The RFC 8259 parser and serializer for the JSON package |
 | [`toml`](/stdlib/toml) | `encode` serializes a `dict[string, Any]` back into TOML text, the inverse of `parse` |
-| [`yaml`](/stdlib/yaml) | Line-cursor block parser |
+| [`yaml`](/stdlib/yaml) | A practical YAML parser that decodes a document into native Gust values |
 | [`csv`](/stdlib/csv) | A practical RFC 4180 CSV reader and writer |
-| [`compression`](/stdlib/compression) | DEFLATE-family compression backed by the system zlib |
+| [`compression`](/stdlib/compression) | Compression, as compress/decompress pairs operating on raw `bytes` |
 
 ## Cryptography
 
@@ -70,7 +71,7 @@ end
 | [`cryptography.random`](/stdlib/cryptography/random) | Random number generation, in two flavors that must not be confused: |
 | [`cryptography.aes`](/stdlib/cryptography/aes) | Authenticated AES encryption (AES-GCM), backed by the system OpenSSL (`libcrypto`) |
 | [`cryptography.bcrypt`](/stdlib/cryptography/bcrypt) | bcrypt password hashing, backed by the system libxcrypt (`crypt_rn` / `crypt_gensalt_rn` with the `$2b$` prefix) |
-| [`cryptography.ed25519`](/stdlib/cryptography/ed25519) | Ed25519 digital signatures, backed by the system OpenSSL (`libcrypto`) |
+| [`cryptography.ed25519`](/stdlib/cryptography/ed25519) | Ed25519 digital signatures |
 | [`cryptography.x25519`](/stdlib/cryptography/x25519) | X25519 Elliptic-Curve Diffie-Hellman key exchange, backed by the system OpenSSL (`libcrypto`) |
 | [`cryptography.ssl`](/stdlib/cryptography/ssl) | TLS/SSL for byte-stream sockets, layered over the `socket` package |
 
@@ -79,8 +80,8 @@ end
 | Package | Description |
 |---------|-------------|
 | [`socket`](/stdlib/socket) | Thin TCP socket primitives over POSIX sockets, with no external dependencies |
-| [`websockets`](/stdlib/websockets) | Minimal RFC 6455 WebSocket support for plain `ws://` connections |
-| [`http`](/stdlib/http) | The `Headers` view over a request's header set: a small read-only wrapper around the parsed `name -> value` map (keys lowercased) that does case-insensitive lookups and treats `_` as `-`, so `req.headers["content_type"]` and `req.headers["Content-Type"]` resolve to the same header |
+| [`websockets`](/stdlib/websockets) | Minimal RFC 6455 WebSocket support for `ws://` and `wss://` connections |
+| [`http`](/stdlib/http) | HTTP/1.1 for Gust, built entirely on the `socket` package (plaintext) and `cryptography.ssl` (TLS) — no libcurl, no C protocol code |
 
 ## Database
 
@@ -95,20 +96,25 @@ end
 | Package | Description |
 |---------|-------------|
 | [`cli.app`](/stdlib/cli/app) | Command-line argument parsing and command dispatch |
-| [`cli.ui`](/stdlib/cli/ui) | Terminal key decoder: the byte-to-keycode state machine behind `read_key()` and `read_key_timeout()` |
+| [`cli.ui`](/stdlib/cli/ui) | Building blocks for a full-screen terminal UI |
 | [`images`](/stdlib/images) | Self-contained image processing with no external runtime dependency, backed by the public-domain stb headers vendored in this package |
-| [`barcode`](/stdlib/barcode) | A pure-Gust 1D (linear) barcode encoder |
+| [`barcode`](/stdlib/barcode) | A pure-Gust barcode encoder: the linear symbologies below, and QR |
 
 ## Embedded
 
 | Package | Description |
 |---------|-------------|
-| [`i2c`](/stdlib/i2c) | Cross-platform I2C bus access through one neutral, handle-based API with a backend per platform: |
+| [`i2c`](/stdlib/i2c) | Cross-platform I2C bus access through one neutral API with a backend per platform: |
+| [`spi`](/stdlib/spi) | Cross-platform SPI bus access through one neutral API with a backend per platform: |
 | [`cec`](/stdlib/cec) | HDMI-CEC (Consumer Electronics Control) bus access — the low-speed control channel on the HDMI wire that lets connected devices power each other on and off, switch inputs, and pass remote-control keys |
-| [`pin`](/stdlib/pin) | Cross-platform GPIO line access through one neutral, handle-based API with a backend per platform: |
+| [`pin`](/stdlib/pin) | Cross-platform GPIO line access through one neutral API with a backend per platform: |
 | [`framebuffer`](/stdlib/framebuffer) | Direct pixel access to a Linux framebuffer device (`/dev/fb<index>`), the surface behind an HDMI, DSI, or SPI-fbdev display when no window system owns the screen |
 | [`drm`](/stdlib/drm) | Tear-free display output through the Linux kernel mode-setting interface (DRM/KMS, `/dev/dri/card<index>`) |
-| [`bluetooth`](/stdlib/bluetooth) | A cross-platform Bluetooth Low Energy API covering both roles: |
+| [`wifi`](/stdlib/wifi) | The on-board radio: power, station and access-point modes, connect (blocking / async / explicit auth), link status, scanning, signal / MAC, and power-save |
+| [`bluetooth`](/stdlib/bluetooth) | Bluetooth Low Energy in both roles, through one set of objects: |
+| [`usb`](/stdlib/usb) | Talking to attached USB devices — enumerating what is plugged in, reading a device's descriptor tree, and driving its endpoints with control, bulk and interrupt transfers |
+| [`usb.device`](/stdlib/usb/device) | Acting as a USB device: the board presents itself to a host computer as a peripheral instead of driving peripherals of its own |
+| [`drivers.sht41`](/stdlib/drivers/sht41) | Sensirion SHT4x temperature and relative-humidity sensor |
 
 ## Metaprogramming
 
@@ -120,8 +126,14 @@ end
 | [`inspect`](/stdlib/inspect) | Compile-time introspection over your program's own declarations |
 | [`autodoc`](/stdlib/autodoc) | A reference documentation generator built entirely on top of the compile-time `inspect` package |
 
+## Debugging
+
+| Package | Description |
+|---------|-------------|
+| [`trace`](/stdlib/trace) | Observe a program's own execution |
+
 ## Testing
 
 | Package | Description |
 |---------|-------------|
-| [`testing`](/stdlib/testing) | The test context `T` handed to every `@test` function, plus the two control errors the harness uses to unwind a test early |
+| [`testing`](/stdlib/testing) | The `testing` package: a structured test framework for `test_*.g` / `*_test.g` files |

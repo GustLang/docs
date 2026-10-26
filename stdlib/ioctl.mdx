@@ -14,8 +14,9 @@ requests that read or write a struct, allocate a buffer with `unsafe.alloc`
 and pass its address; for requests that take a scalar by value, pass the value
 directly; for requests that take nothing, pass 0.
 
-Available on Linux and macOS. On Windows every call fails gracefully
-(returns -1) rather than failing to link.
+Available on native builds for Linux, macOS and the BSDs. Windows, the
+microcontroller targets and the browser have no `ioctl` package: an import there
+resolves to nothing and every reference is a compile error.
 
 **Examples**
 
@@ -34,7 +35,11 @@ def main() -> none
 end
 ```
 
-**On this page:** [`call`](#ioctl.call)
+<Note>
+Only available on native builds, and not on Windows.
+</Note>
+
+**On this page:** [`call`](#ioctl.call) · [`request`](#ioctl.request) · [`read_request`](#ioctl.read_request) · [`write_request`](#ioctl.write_request) · [`read_write_request`](#ioctl.read_write_request)
 
 ## Functions
 
@@ -49,5 +54,77 @@ Returns the call's result (0 on success for most requests), or -1 on error.
 **Parameters**
 
 - `fd: integer` — An open file descriptor for the device.
-- `request: integer` — The device-specific request code from the kernel headers.
+- `request: integer` — The device-specific request code from the kernel headers, or one assembled by the builders below.
 - `arg: integer` — The request's third argument — an address of a struct buffer, a scalar value, or 0 when the request takes none.
+
+---
+
+<a id="ioctl.request" />
+```gust
+def foreign request(kind: integer, number: integer) -> integer
+```
+
+The code for a request that carries no data, from the driver's `_IO`
+spelling.
+
+**Parameters**
+
+- `kind: integer` — The driver's identifying character, e.g. `"H"` as an integer for the Bluetooth requests.
+- `number: integer` — The request's number within that driver.
+
+---
+
+<a id="ioctl.read_request" />
+```gust
+def foreign read_request(
+    kind: integer,
+    number: integer,
+    size: integer,
+) -> integer
+```
+
+The code for a request the driver fills in, from its `_IOR` spelling.
+
+**Parameters**
+
+- `kind: integer` — The driver's identifying character as an integer.
+- `number: integer` — The request's number within that driver.
+- `size: integer` — Size in bytes of the struct the driver writes.
+
+---
+
+<a id="ioctl.write_request" />
+```gust
+def foreign write_request(
+    kind: integer,
+    number: integer,
+    size: integer,
+) -> integer
+```
+
+The code for a request the caller fills in, from its `_IOW` spelling.
+
+**Parameters**
+
+- `kind: integer` — The driver's identifying character as an integer.
+- `number: integer` — The request's number within that driver.
+- `size: integer` — Size in bytes of the struct the caller supplies.
+
+---
+
+<a id="ioctl.read_write_request" />
+```gust
+def foreign read_write_request(
+    kind: integer,
+    number: integer,
+    size: integer,
+) -> integer
+```
+
+The code for a request both sides fill in, from its `_IOWR` spelling.
+
+**Parameters**
+
+- `kind: integer` — The driver's identifying character as an integer.
+- `number: integer` — The request's number within that driver.
+- `size: integer` — Size in bytes of the struct passed both ways.

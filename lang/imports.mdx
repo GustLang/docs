@@ -1,11 +1,11 @@
 ---
 title: Imports
-description: The use keyword and its every form — whole-package, from, aliases, subpackages, path imports, qualified access, per-file enforcement, private, and collisions
+description: The use keyword and its every form - whole-package, from, aliases, subpackages, path imports, qualified access, cross-package enforcement, private, and collisions
 ---
 
-Gust has one import keyword: `use`. Every dependency — a standard library
+Gust has one import keyword: `use`. Every dependency - a standard library
 package, a subpackage, another file in your own project, or a published user
-package — is brought in with `use`. This page covers every form the keyword
+package - is brought in with `use`. This page covers every form the keyword
 takes and how names resolve once they are in scope.
 
 ## Whole-package import
@@ -19,16 +19,14 @@ use time
 
 def main() -> none
     print(math.sqrt(2.0))
-    print(time.now_ms())
+    print(time.now())
 end
 ```
 
-Each package needs its own `use` line — there is no `use math, time`. One
-package, one line.
+Each package needs its own `use` line. One package, one line.
 
-The qualifier reaches **every** public declaration a package exports, not
-just its functions: structs, enums, errors, constants, interfaces, and
-tagged-union variants all resolve through the `pkg.` prefix.
+The import reaches **every** public declaration (functions, structs, constants, etc.) a package exports 
+all resolve through the `pkg.` prefix.
 
 ```gust
 use ast
@@ -46,7 +44,7 @@ def classify(e: ast.Expr) -> string
 end
 ```
 
-A qualified type name works anywhere a type is expected — annotations,
+A qualified type name works anywhere a type is expected - annotations,
 constructor calls (positional or named), `case` patterns, and `as` casts:
 
 ```gust
@@ -58,10 +56,7 @@ def main() -> none
 end
 ```
 
-The qualifier is dropped during analysis, so `ast.IntLit` and a bare-imported
-`IntLit` name the same declaration.
-
-## Importing a specific name — the `from` form
+## Importing a specific name - the `from` form
 
 For a name you reference repeatedly, `use X from pkg` brings `X` into scope
 **unqualified**:
@@ -93,9 +88,9 @@ use (
 ```
 
 A `use X from Y` brings only `X` into bare scope. Other members of `Y` still
-need `Y.name` and a separate `use Y`. The two forms compose freely — `use
+need `Y.name` and a separate `use Y`. The two forms compose freely - `use
 time` and `use DateTime from time` at the top of the same file is fine, and
-lets you write both `DateTime` and `time.now_ms()`.
+lets you write both `DateTime` and `time.now()`.
 
 Convention: when a file pulls in more than roughly ten names from one
 package, prefer a single `use pkg` with qualified access over a long `from`
@@ -116,7 +111,7 @@ end
 
 Aliases are the standard fix for a package name that collides with a local
 variable or a name you would rather spell differently. The `as` clause is
-only for whole-package (and subpackage, and path) imports — the `from` form
+only for whole-package (and subpackage, and path) imports - the `from` form
 imports the name exactly as the package spells it and takes no `as`.
 
 ## Subpackage imports
@@ -133,17 +128,15 @@ def main() -> none
 end
 ```
 
-`use cryptography.random` binds the name `random`; you write `random.int_in`,
-not `cryptography.random.int_in`. Add `as` to pick a different alias
-(`use cryptography.random as rng`), and the `from` form works against a
-subpackage too (`use int_in from cryptography.random`).
+Add `as` to pick a different alias (`use cryptography.random as rng`), and 
+the `from` form works against a subpackage too (`use int_in from cryptography.random`).
 
 Inside a package that imports its own subpackage (`use highlight.languages`
 from within `highlight`), the dotted import can shadow bare references to the
 package's own same-named types. Import the specific type instead
 (`use Foo from highlight`) to keep the bare reference resolving.
 
-## Path imports — files and directories in your project
+## Path imports - files and directories in your project
 
 To pull in another part of your own project by location rather than by
 package name, quote a relative filesystem path. The alias is the final path
@@ -157,11 +150,13 @@ def main() -> none
 end
 ```
 
-A path import targets either a **single `.g` file** or a **directory**. When
-the path names a directory, the whole directory becomes one package — every
-`.g` file in it is merged, so importing one file pulls in its siblings.
-Importing a single file that references its directory siblings likewise pulls
-the whole directory.
+Convention: You should only import a package or file by path, when the
+file is outside of scope. "Out of scope" meaning outside of your project
+directory
+
+A path import targets either a **single `.g` file** or a **directory**, and
+either way the package it brings in is the directory: every `.g` file in it
+is merged into one namespace, so naming one file pulls in its siblings.
 
 All the same modifiers apply to path imports:
 
@@ -175,18 +170,133 @@ Path imports are transitive: a path-imported package may itself `use` a
 sibling by relative path (`use "../mathx"` from inside `lib/relay`), and that
 resolves the same way.
 
+## A directory is a package
+
+Every form above resolves to a directory, and that directory is the package.
+Its files share one namespace: a declaration in one file is visible to its
+siblings with **no import at all** between them - a bare reference to
+something declared in a sibling file just resolves, the same way it would if
+both declarations sat in the same file. These two lines reach the same
+package, one by dotted name and one by relative path:
+
+```gust
+use SetupPacket from src.utils          # the directory by name
+use SetupPacket from "./utils"          # the same directory by path
+```
+
+A dotted `use` segment only ever names a directory, never a file inside one -
+`src.utils.setup`, naming a file `setup.g` that sits directly in `src/utils/`,
+does not resolve: that file's declarations are already reachable through
+`src.utils`, so there is no shorter or longer form to choose between, only
+the one directory import.
+
+
+Two kinds of file are not package members. A test file (`test_*.g` /
+`*_test.g`) is a self-contained program the test runner compiles on its own, so
+it neither sees its neighbours nor is merged into the package they form. And a
+file directly in the project root is an entry point rather than a package
+member: `use helper` there imports `helper.g` alone.
+
+## Worked example: a package with multiple files
+
+This example walks through what "a directory is the package" means for a
+package with more than one file, and where the import boundary actually sits
+- at the package's edge, not between its own files.
+
+```
+myproject/
+    main.g
+    geometry/
+        shapes.g
+        volume.g
+```
+
+`geometry/shapes.g` declares `Circle` and `area`:
+
+```gust
+def Circle
+    radius: float
+end
+
+def area(c: Circle) -> float
+    return 3.14159 * c.radius * c.radius
+end
+```
+
+`geometry/volume.g` sits right next to it, in the same directory, and uses
+`Circle` with no import of its own:
+
+```gust
+def Sphere
+    radius: float
+end
+
+def sphere_volume(s: Sphere) -> float
+    return (4.0 / 3.0) * 3.14159 * s.radius * s.radius * s.radius
+end
+
+def sphere_surface_circle(s: Sphere) -> Circle
+    return Circle(radius: s.radius)
+end
+```
+
+`shapes.g` and `volume.g` are siblings in one directory, so they are one
+package - `volume.g` reaches `Circle` the same way it would reach something
+declared earlier in its own file. Nothing to add, because there is nothing
+foreign about the reference.
+
+`main.g`, at the project root, is a different matter: it is not a member of
+the `geometry` package, so it imports the directory with one line and reaches
+**everything** in it through that one qualifier:
+
+```gust
+use geometry
+
+def main() -> none
+    c := geometry.Circle(radius: 2.0)
+    print(geometry.area(c))
+
+    s := geometry.Sphere(radius: 1.0)
+    print(geometry.sphere_volume(s))
+end
+```
+
+`geometry.Sphere` and `geometry.sphere_volume` resolve even though they are
+declared in `volume.g`, not `shapes.g` - `use geometry` doesn't pick a file,
+it picks the directory, and every public declaration under it answers to the
+one qualifier.
+
+**What each file can reach without an import:**
+
+| File | Reaches bare, no import | Needs `use geometry` for |
+| --- | --- | --- |
+| `shapes.g` | `Circle`, `area`, and (as a sibling) `Sphere`, `sphere_volume` | Nothing - it's inside the package |
+| `volume.g` | `Sphere`, `sphere_volume`, and (as a sibling) `Circle`, `area` | Nothing - it's inside the package |
+| `main.g` | Nothing from `geometry` - the root is not a package member | Everything it uses from `geometry` |
+
+Two things do **not** follow this merge:
+
+- A test file (`geometry/circle_test.g`) is a standalone program the test
+  runner compiles alone. It does not see `shapes.g` or `volume.g` as
+  siblings and must `use geometry` like any external caller, even though it
+  lives in the same directory.
+- A file directly in the project root (`main.g` here) is an entry point, not
+  a package member. A second root file, `helper.g`, would need its own `use
+  helper` from `main.g` to be reached at all - root files never auto-merge
+  with each other the way package files do.
+
 ## Re-exposing another package's names
 
-A `from` import is local to the file it appears in — importing a name into a
+A `from` import is local to the file it appears in - importing a name into a
 package does **not** re-export it. Writing `use Widget from other` inside
 package `mid` does not let a user write `use Widget from mid`; the name still
 belongs to `other`, and the user imports it from there.
 
-To surface another package's functionality under your own package, wrap it —
+To surface another package's functionality under your own package, wrap it -
 define a function or type of your own that calls into the dependency:
 
 ```gust
-use "../mathx"
+use "~/mathx"
 
 def sixfold(n: integer) -> integer
     return mathx.triple(n) + mathx.triple(n)
@@ -196,31 +306,51 @@ end
 Callers `use` your package and get `sixfold`; the wrapped dependency stays an
 implementation detail.
 
-## Each file imports what it uses
+## Each file imports what it uses - from other packages
 
-Imports are enforced **per file**, not per project. If a file references a
-package name or a `from`-imported symbol, that same file must carry the
-matching `use`. A sibling file's import does not carry over, even though both
-files compile into one program.
+A file must carry its own `use` for anything it references from a
+**different** package. This is enforced per file, not per project: two files
+that both compile into the same program still each need their own import of
+a foreign package's name. This does **not** apply to a sibling in the file's
+own directory - see [A directory is a package](#a-directory-is-a-package) -
+only to a reference that reaches outside it.
 
-Referencing something the current file did not import is a hard error
-(`G0206`) whose hint tells you which `use` to add:
+Referencing something from another package that the current file did not
+import is a hard error (`G0206`) whose hint tells you which `use` to add:
 
 ```
-'DateTime' is used here but not imported in this file — add `use DateTime from time`.
-Every file must import what it references; a sibling file's import does not carry over.
+'DateTime' is used here but not imported in this file - add `use DateTime from time`.
 ```
 
 The flip side: an import a file never uses draws an unused-import warning
-(`W0302`). The warning names the exact form — `unused import: 'time'`,
+(`W0302`). The warning names the exact form - `unused import: 'time'`,
 `unused import: 'fs as filesystem'`, or `unused import from 'time': DateTime,
 Duration`.
 
 Note that a qualified reference (`json.Value`) counts as using the package
-import (`use json`), and satisfies the per-file rule without a bare `from`
-import of `Value`.
+import (`use json`), and satisfies the rule without a bare `from` import of
+`Value`.
 
-## `private` — package-internal names
+Type annotations count as references. Importing a function does not bring the
+types in its signature along with it, so naming one of those types requires its
+own import:
+
+```gust
+use parse from url
+
+
+def main() -> none
+    parsed: URL = parse("https://example.com")    # G0206 - add `use URL from url`
+    print(parsed.host)
+end
+```
+
+Either import the type (`use URL, parse from url`) or name it through the
+package (`use url`, then `url.URL`). Nothing forces you to name it at all - a
+binding that infers its type (`parsed := parse(...)`) references no type and
+needs no extra import.
+
+## `private` - package-internal names
 
 A declaration prefixed with `private` is visible inside its declaring package
 only. Other files that `use <pkg>` cannot see it. This is how packages expose
@@ -236,17 +366,19 @@ def public_api(x: integer) -> integer
 end
 ```
 
-Everything without the keyword is public — that is the default. Use `private`
+Everything without the keyword is public - that is the default. Use `private`
 for implementation details you want to refactor freely later.
 
 ## What ships without `use`
 
 The **prelude** is auto-imported into every program. You never `use prelude`
-— it is always there:
+- it is always there:
 
 - `print(value)`
+- `eprint(value, newline)` - the standard-error counterpart to `print`.
 - `input(prompt)`
 - `round(x, decimals)`
+- `exit(code)`
 - `ValueError`, `IOError`, `IndexError`, `KeyError`, `RuntimeError`
 
 For the packages you do need `use` for, see the [Standard library](/stdlib).
@@ -267,30 +399,36 @@ semver = "GustLang/semver@v1.4.0"
 use semver
 ```
 
-Resolution is dependencies-first, then standard library — a fetched package
+Resolution is dependencies-first, then standard library - a fetched package
 under `.gust/deps/<name>/` resolves the same way the compiler resolves a
 built-in package. See [Packages & dependencies](/tooling/packages) for the
 full grammar, commands, and lockfile.
 
 Within a single project, split your program into multiple `.g` files
 (`lib/foo.g`, `lib/bar.g`, `main.g`) and invoke the compiler with your top
-file — the build system discovers the rest.
+file - the build system discovers the rest.
 
 ## Name collisions
 
 Two packages that export the same name coexist without trouble as long as you
 address each one through its package prefix. `math.log` and `random.log`, or
-`json.Value` and `database.Value`, live side by side — the compiler mangles
+`json.Value` and `database.Value`, live side by side - the compiler mangles
 each colliding declaration to a package-scoped name internally, so their
 generated code never clashes and a bare reference inside a package always
 reaches its own declaration.
+
+A bare reference that is *not* the file's own declaration binds to the package
+the name was imported from. `use render from diagnostics` makes `render(...)`
+that package's `render`, whatever other packages in the build also export one -
+the import names the definition, so two public functions sharing a name never
+depend on which package the compiler loaded first.
 
 The one case you must resolve yourself is pulling the same bare name into one
 file from two packages. `use Value from json` and `use Value from database`
 in the same file is a genuine ambiguity, reported at the second import:
 
 ```
-ambiguous import: 'Value' is imported from both 'json' and 'database' —
+ambiguous import: 'Value' is imported from both 'json' and 'database' -
 drop one of the `from` imports and qualify it (e.g. `use database` then write `database.Value`).
 ```
 

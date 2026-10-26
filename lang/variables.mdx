@@ -119,7 +119,7 @@ a = b
 b = tmp                   # swap
 ```
 
-A `for` loop uses the same comma syntax to unpack each element it iterates, which is how you walk a list of pairs or a dictionary's key–value entries:
+A `for` loop uses the same comma syntax to unpack each element it iterates, which is how you walk a list of pairs or a dictionary's key-value entries:
 
 ```gust
 for index, value in [(0, 10), (1, 20)]
@@ -173,19 +173,17 @@ When you need a fresh binding inside a nested block, pick a new name and declare
 
 ## `:=` is a statement, not an expression
 
-The walrus declaration is a standalone statement — it does not nest inside a larger expression. You cannot declare a variable inside an `if` or `while` condition:
+The walrus declaration is a standalone statement — it does not nest inside a larger expression. You cannot embed it in the middle of a condition:
 
 ```gust
 while (line := next_line()) != ""   # parse error: ':=' is not allowed here
 ```
 
-Declare the variable on its own line first, then test it, updating it inside the loop as needed:
+An `if` or `while` header is the one place a declaration joins a condition: `name := cond` binds `name` to the condition's value for the block, and the value itself is tested. See [Declaring a value for the condition](/lang/control-flow#declaring-a-value-for-the-condition).
 
 ```gust
-line := next_line()
-while line != ""
+while line := next_line()
     process(line)
-    line = next_line()
 end
 ```
 

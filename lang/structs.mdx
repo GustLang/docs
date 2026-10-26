@@ -180,6 +180,46 @@ s.tags = []                # G0504 — this would rebind the field
 
 `readonly` and `private` are independent and may be combined in either order (`private readonly key: string`): `private` controls who can *see* a field, `readonly` who can *write* it. Subclasses inherit the modifier along with the field.
 
+## Field tags
+
+A `#gust:tag` pragma at the end of a field's line attaches `key:"value"` metadata to that field. Serializers, ORMs, and derives read it to learn how a field maps to an external name or format:
+
+```gust
+def User
+    id: integer       #gust:tag json:"id" db:"user_id"
+    email: string     #gust:tag json:"email,omitempty"
+    password: string
+end
+```
+
+A tag is a space-separated list of pairs. A key is any run of characters other than whitespace, `:`, and `"`; a value is a double-quoted string in which `\"` stands for a quote and `\\` for a backslash. Each key may appear once per field. The compiler attaches no meaning to the value — what `omitempty` does is up to the code that reads it.
+
+A malformed tag is a parse error, and so is a `#gust:tag` anywhere other than the end of a struct field.
+
+### Reading tags
+
+`__TAGS__` maps each field name to that field's tags, keyed by tag key. Every field has an entry, in declaration order; an untagged field maps to an empty dict:
+
+```gust
+tags := User.__TAGS__
+print(tags["id"]["db"])         # user_id
+print(tags["email"]["json"])    # email,omitempty
+print(tags["password"].length)  # 0
+```
+
+It is a `dict[string, dict[string, string]]` and reads the same off the type name, an instance, or a `Struct[...]` type value:
+
+```gust
+u := User(id: 1, email: "a@b.c", password: "")
+u.__TAGS__["id"]["json"]        # id
+
+def column_of(model: Struct[User], field: string) -> string
+    return model.__TAGS__[field]["db"]
+end
+```
+
+On an instance or a type value of a class struct, `__TAGS__` reports the fields of the value's runtime type, so a subclass held in a base-typed binding includes its own fields. `inspect.tags(User)` returns the same dict, and a derive reads a field's tags as `derive.Field.tags`.
+
 ## Structs in collections
 
 ```gust

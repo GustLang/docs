@@ -178,6 +178,140 @@ p := Point(x: 1)
 print(p.y)  # Point has no field 'y'
 ```
 
+### G0111 — const-value-mismatch
+
+**Severity:** error · **Autofix:** no
+
+Constant initializer type mismatch.
+
+A constant's initializer does not match its declared type, e.g. `RETRIES: constant[integer] = "x"`.
+
+**Example:**
+
+```gust
+RETRIES: constant[integer] = "x"  # initializer does not match integer
+```
+
+### G0112 — enum-value-not-constant
+
+**Severity:** error · **Autofix:** no
+
+Enum member value is not a constant.
+
+An enum member's value becomes a switch label and a `to_string` case, both fixed before the program runs, so it has to be a value the compiler can arrive at on its own. An integer-backed member takes an integer literal, or literals combined with the arithmetic, shift and bitwise operators (`1 << 23`, `4 * 1024`); a string-backed member takes a string literal. A name, a call, or a float is not one of them.
+
+**Example:**
+
+```gust
+enum Mask: integer
+    a = 1
+    b = shift()  # not a value the compiler can compute
+end
+```
+
+### G0113 — not-indexable
+
+**Severity:** error · **Autofix:** no
+
+Type does not support `[]`.
+
+Subscripting (`x[i]`) and slicing (`x[a:b]`) are defined for `list`, `dict`, `string`, `bytes` and tuples. Every other type — a struct, an enum, an interface value, a function, `none` — has no element to name, so `[]` has no meaning on it. Reach for the field or method the type does provide, or convert the value to a collection first.
+
+A value typed `Any` also cannot be subscripted: the element type is not known until the value is narrowed, so cast it to the concrete collection first (`x as dict[string, string]`).
+
+**Example:**
+
+```gust
+auto_enum Color: integer
+    red
+end
+
+c := Color.red
+print(c[0])  # a backed enum has no elements to index
+```
+
+### G0114 — not-iterable
+
+**Severity:** error · **Autofix:** no
+
+Type cannot be iterated.
+
+`for x in value` walks a `list`, a `dict` (yielding its keys), a `string` (its characters), `bytes` (its octets), or a `range(...)`. A type outside that set has no element sequence to walk. Iterate over one of the type's own collection-valued members instead, or build a list from it first.
+
+**Example:**
+
+```gust
+def Point
+    x: integer
+end
+
+for part in Point(x: 1)  # a struct is not a sequence
+    print(part)
+end
+```
+
+### G0115 — operator-not-supported
+
+**Severity:** error · **Autofix:** no
+
+Operator has no meaning for these operand types.
+
+Arithmetic (`+`, `-`, `*`, `/`), ordering (`<`, `<=`, `>`, `>=`) and membership (`in`) are each defined for a fixed set of operand types, and for a user type only when it declares the matching dunder. Applying one to a type outside that set has no lowering. Declare the dunder on the type, compare a field instead, or convert the operands to a type the operator is defined for.
+
+**Example:**
+
+```gust
+def Point
+    x: integer
+end
+
+print(Point(x: 1) * 2)  # no `__mul` on Point
+```
+
+### G0116 — not-callable
+
+**Severity:** error · **Autofix:** no
+
+Value is not callable.
+
+Call syntax (`value(...)`) applies to a function, a method, a `Function(...)[...]` value, a struct name (construction) and an enum variant. A value of any other type has nothing to invoke — a common cause is a local variable shadowing the function of the same name.
+
+**Example:**
+
+```gust
+count := 3
+print(count(1))  # an integer is not callable
+```
+
+### G0117 — none-typed-binding
+
+**Severity:** error · **Autofix:** no
+
+`none` is not a value type.
+
+`none` marks the absence of a value — a function that returns nothing, or the empty arm of an optional. It is not something a parameter or a field can hold, and a binding declared with it has no representation at all. Drop the parameter or field, or give it the type it is actually meant to carry; to accept "a value or nothing", write the optional `T | none`.
+
+**Example:**
+
+```gust
+def log(entry: none) -> none  # a parameter cannot hold 'none'
+end
+```
+
+### G0118 — foreign-constant-type
+
+**Severity:** error · **Autofix:** no
+
+Foreign constant of an unsupported type.
+
+A foreign constant's value is defined in C as the global `<package>_<NAME>`, and Gust reads that global directly, so its type has to be one C holds as a plain value: `integer` (`int64_t`), `float` (`double`) or `bool`.
+
+**Example:**
+
+```gust
+foreign GREETING: constant[string]  # a foreign constant is integer, float or bool
+```
+
 ## Names
 
 ### G0201 — unknown-identifier
@@ -263,7 +397,7 @@ integer := 5  # 'integer' is a built-in type name
 
 Import not visible in this file.
 
-A package alias or `from`-imported name was used in a file that did not import it. Imports are per-file: even though sibling files in the same directory share a package, an import in one file does not carry over to another. Add the `use` to this file too.
+A package alias or `from`-imported name was used in a file that did not import it, and the name is not declared anywhere in this file's own directory (so it is not a sibling reference). Add the `use` to this file too.
 
 **Example:**
 
@@ -283,6 +417,20 @@ The runtime can only hash and store `string` or `integer` dict keys. Other key t
 
 ```gust
 scores: dict[float, string] = {}  # float keys are unsupported — use string or integer
+```
+
+### G0208 — recursive-type-alias
+
+**Severity:** error · **Autofix:** no
+
+Recursive type alias.
+
+A `type` alias is substituted for its target wherever it is named, so an alias that reaches itself — directly or through another alias — has no expansion. Break the cycle: name a struct or an `enum` sum type for the recursive part, which are real types and may refer to themselves.
+
+**Example:**
+
+```gust
+type Tree = integer | Tree  # 'Tree' expands to itself
 ```
 
 ## Arity & calls
@@ -442,6 +590,25 @@ The left side of an assignment must be a place that can hold a value: a variable
 
 ```gust
 1 += 1  # the left side is not an assignable place
+```
+
+### G0504 — assign-readonly-field
+
+**Severity:** error · **Autofix:** no
+
+Cannot assign to a `readonly` field.
+
+A field declared `readonly` is set once at construction and afterwards may only be updated by the methods of the struct that declares it. Pass the value as a named argument to the constructor, expose a method on the struct that performs the update, or drop the `readonly` modifier.
+
+**Example:**
+
+```gust
+def Config
+    readonly path: string
+end
+
+c := Config(path: "/etc/app")
+c.path = "/tmp"  # cannot assign to readonly field
 ```
 
 ## Definitions
@@ -689,6 +856,25 @@ def Circle.check(scale: float) -> none  # @post_init takes no parameters
 end
 ```
 
+### G0615 — unknown-dunder-method
+
+**Severity:** error · **Autofix:** no
+
+Unknown dunder method.
+
+A method named `__name` is a language protocol hook, and the language only recognizes a fixed set: `__string`, `__integer`, `__float`, `__bool`, `__list`, `__dict`, `__tuple`, `__eq`, `__lt`, `__lte`, `__gt`, `__gte`, `__contains`, `__get`, `__set`, `__length`, `__iter`, `__enter`, `__exit`. A method with any other dunder-shaped name is never invoked — the author almost certainly meant one of the recognized hooks (`__dict` for the struct-to-dict cast, `__string` for `print`/f-strings) or an ordinary non-dunder method name. Rename it.
+
+**Example:**
+
+```gust
+def Test
+    val: integer = 0
+end
+
+def Test.__json() -> dict[string, Any]  # `__json` is not a language hook
+end
+```
+
 ## Imports
 
 ### G0701 — import-error
@@ -711,7 +897,9 @@ use nonexistent_pkg  # no such package
 
 Unknown package member.
 
-A qualified package access referenced a function that the imported package does not export.
+A qualified package access named something the imported package does not export — a function, a constant, or a type.
+
+A generated package raises this the same way: `board` declares one constant per pin its target's descriptor documents, so naming a pin the board does not route is caught here rather than driving the wrong line.
 
 **Example:**
 
@@ -735,6 +923,21 @@ An `inspect` extractor (e.g. `signature`, `kind`, `fields`) was given an argumen
 use inspect
 
 n := inspect.signature(42)  # pass a function or type, not a value
+```
+
+### G0704 — duplicate-import
+
+**Severity:** error · **Autofix:** no
+
+Duplicate import.
+
+The same package was imported more than once in a file, under the same name. Remove the redundant `use` line.
+
+**Example:**
+
+```gust
+use os
+use os  # 'os' is already imported
 ```
 
 ## Control flow

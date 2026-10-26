@@ -149,9 +149,13 @@ immediately. It accepts three call shapes:
 - `spawn pkg.fn(args)` — a package-qualified function. The qualifier is kept and
   only the arguments are snapshotted.
 
-Arguments (and a value receiver) are always snapshotted by value, so nothing is
-shared by reference through the call itself; `spawn` uses the same heap-args +
-`g_async_detach` machinery as `while!`. The result is discarded. Named or `as`
+Arguments (and a value receiver) are always snapshotted by value; `spawn` uses
+the same heap-args + `g_async_detach` machinery as `while!`. For a reference
+type — a list, a dict, a class instance — the value copied is the reference, so
+the task and its caller share the object. The snapshot holds its own reference
+for as long as the task runs, so `conn` above stays alive even though the loop
+drops it at the end of the iteration; what it does *not* do is serialize
+concurrent mutation (see the safety envelope below). The result is discarded. Named
 arguments are not supported (a `#error` is emitted). An uncaught `raise` in the
 task prints the standard diagnostic and ends only that thread, leaving the
 caller running — one bad task cannot take down the process.

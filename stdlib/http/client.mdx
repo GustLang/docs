@@ -33,6 +33,10 @@ def main() -> none
 end
 ```
 
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
+
 **On this page:** [`Response`](#Response) · [`StreamResponse`](#StreamResponse) · [`get`](#http.client.get) · [`post`](#http.client.post) · [`put`](#http.client.put) · [`delete`](#http.client.delete) · [`patch`](#http.client.patch) · [`head`](#http.client.head) · [`request`](#http.client.request) · [`get_all`](#http.client.get_all) · [`stream`](#http.client.stream) · [`stream_request`](#http.client.stream_request)
 
 ## Constants
@@ -55,7 +59,7 @@ def Response
     method: string
     url: string
     body: string
-    headers: Headers
+    headers: http.Headers
     cookies: dict[string, string]
     content_type: string
 
@@ -68,7 +72,7 @@ end
 - `method: string` — The HTTP method of the request that produced this response (e.g. "GET"), reflecting the final method after any redirects.
 - `url: string` — The URL that produced this response — the final URL after any redirects were followed.
 - `body: string` — The response body, decoded from any `Content-Encoding`.
-- `headers: Headers` — Response headers as a case-insensitive `Headers` view. Look a value up with `resp.headers.get(name)` or `resp.headers[name]`.
+- `headers: http.Headers` — Response headers as a case-insensitive `Headers` view. Look a value up with `resp.headers.get(name)` or `resp.headers[name]`.
 - `cookies: dict[string, string]` — The cookies the server set, parsed from `Set-Cookie` into a name → value map.
 - `content_type: string` — The response's media type without parameters, e.g. "application/json" from a `Content-Type: application/json; charset=utf-8` header. "" when the header is absent.
 
@@ -117,8 +121,9 @@ returns empty bytes once the body is fully consumed. Obtain one from
 def StreamResponse
 
     status_code: integer
-    headers: dict[string, string]
-    _sock: Stream
+    headers: http.Headers
+    _sock: socket.Stream
+    _reader: http.Reader
     _chunked: bool
 
 end
@@ -127,8 +132,9 @@ end
 **Fields**
 
 - `status_code: integer` — The numeric HTTP status code of the response.
-- `headers: dict[string, string]` — Response headers mapping name → value, names in their original casing.
-- `_sock: Stream` — The live connection the body is pulled from. Don't touch it directly.
+- `headers: http.Headers` — Response headers as a case-insensitive `Headers` view. Look a value up with `resp.headers.get(name)` or `resp.headers[name]`.
+- `_sock: socket.Stream` — The live connection the body is pulled from. Don't touch it directly.
+- `_reader: http.Reader` — The buffered reader the body is framed through. It holds any body octets that arrived alongside the headers, so reads must go through it rather than through `_sock`.
 - `_chunked: bool` — True when the body uses `Transfer-Encoding: chunked` framing, which `read` decodes; otherwise bytes are pulled verbatim until the peer closes.
 
 **Methods**
@@ -139,6 +145,23 @@ def StreamResponse.ok() -> bool
 ```
 
 True if the status code is in the 2xx range.
+
+---
+
+<a id="StreamResponse.set_timeout" />
+```gust
+def StreamResponse.set_timeout(ms: integer) -> none
+```
+
+Bound how long a single `read` may block, in milliseconds. A stalled
+read past the timeout raises `IOError` rather than hanging the consumer.
+
+Unset by default, because a long-lived event stream may legitimately sit
+quiet for hours; a bounded download should set one.
+
+**Parameters**
+
+- `ms` — Timeout in milliseconds; 0 to block indefinitely.
 
 ---
 
@@ -171,7 +194,11 @@ Using the response after `close` is undefined behavior.
 
 <a id="http.client.get" />
 ```gust
-def get(url: string, headers: dict[string, string]) -> Response
+def get(
+    url: string,
+    headers: dict[string, string],
+    version: http.Version,
+) -> Response
 ```
 
 Issue an HTTP GET request and return the response.
@@ -180,6 +207,7 @@ Issue an HTTP GET request and return the response.
 
 - `url: string` — The URL to request.
 - `headers: dict[string, string]` — Request headers mapping name → value.
+- `version: http.Version` — Wire protocol version — `Version.auto` negotiates HTTP/2 via ALPN on `https://` and uses HTTP/1.1 on `http://`; `Version.http2` and `Version.http1_1` pin one and fail if the peer refuses it.
 
 **Raises**
 
@@ -195,6 +223,7 @@ def post(
     body: string,
     headers: dict[string, string],
     json: Any,
+    version: http.Version,
 ) -> Response
 ```
 
@@ -206,6 +235,7 @@ Issue an HTTP POST and return the response.
 - `body: string` — The request body to send; pass "" for none.
 - `headers: dict[string, string]` — Request headers mapping name → value.
 - `json: Any` — A JSON-serializable value to send as the body; when given, it is encoded and a `Content-Type: application/json` header is set, overriding `body`.
+- `version: http.Version` — Wire protocol version — `Version.auto` negotiates HTTP/2 via ALPN on `https://` and uses HTTP/1.1 on `http://`; `Version.http2` and `Version.http1_1` pin one and fail if the peer refuses it.
 
 **Raises**
 
@@ -221,6 +251,7 @@ def put(
     body: string,
     headers: dict[string, string],
     json: Any,
+    version: http.Version,
 ) -> Response
 ```
 
@@ -232,6 +263,7 @@ Issue an HTTP PUT and return the response.
 - `body: string` — The request body to send; pass "" for none.
 - `headers: dict[string, string]` — Request headers mapping name → value.
 - `json: Any` — A JSON-serializable value to send as the body; when given, it is encoded and a `Content-Type: application/json` header is set, overriding `body`.
+- `version: http.Version` — Wire protocol version — `Version.auto` negotiates HTTP/2 via ALPN on `https://` and uses HTTP/1.1 on `http://`; `Version.http2` and `Version.http1_1` pin one and fail if the peer refuses it.
 
 **Raises**
 
@@ -242,7 +274,11 @@ Issue an HTTP PUT and return the response.
 
 <a id="http.client.delete" />
 ```gust
-def delete(url: string, headers: dict[string, string]) -> Response
+def delete(
+    url: string,
+    headers: dict[string, string],
+    version: http.Version,
+) -> Response
 ```
 
 Issue an HTTP DELETE request and return the response.
@@ -251,6 +287,7 @@ Issue an HTTP DELETE request and return the response.
 
 - `url: string` — The URL to request.
 - `headers: dict[string, string]` — Request headers mapping name → value.
+- `version: http.Version` — Wire protocol version — `Version.auto` negotiates HTTP/2 via ALPN on `https://` and uses HTTP/1.1 on `http://`; `Version.http2` and `Version.http1_1` pin one and fail if the peer refuses it.
 
 **Raises**
 
@@ -266,6 +303,7 @@ def patch(
     body: string,
     headers: dict[string, string],
     json: Any,
+    version: http.Version,
 ) -> Response
 ```
 
@@ -277,6 +315,7 @@ Issue an HTTP PATCH and return the response.
 - `body: string` — The request body to send; pass "" for none.
 - `headers: dict[string, string]` — Request headers mapping name → value.
 - `json: Any` — A JSON-serializable value to send as the body; when given, it is encoded and a `Content-Type: application/json` header is set, overriding `body`.
+- `version: http.Version` — Wire protocol version — `Version.auto` negotiates HTTP/2 via ALPN on `https://` and uses HTTP/1.1 on `http://`; `Version.http2` and `Version.http1_1` pin one and fail if the peer refuses it.
 
 **Raises**
 
@@ -287,7 +326,11 @@ Issue an HTTP PATCH and return the response.
 
 <a id="http.client.head" />
 ```gust
-def head(url: string, headers: dict[string, string]) -> Response
+def head(
+    url: string,
+    headers: dict[string, string],
+    version: http.Version,
+) -> Response
 ```
 
 Issue an HTTP HEAD request — same headers as GET, no body.
@@ -296,6 +339,7 @@ Issue an HTTP HEAD request — same headers as GET, no body.
 
 - `url: string` — The URL to request.
 - `headers: dict[string, string]` — Request headers mapping name → value.
+- `version: http.Version` — Wire protocol version — `Version.auto` negotiates HTTP/2 via ALPN on `https://` and uses HTTP/1.1 on `http://`; `Version.http2` and `Version.http1_1` pin one and fail if the peer refuses it.
 
 **Raises**
 
@@ -312,6 +356,7 @@ def request(
     body: string,
     headers: dict[string, string],
     json: Any,
+    version: http.Version,
 ) -> Response
 ```
 
@@ -324,6 +369,7 @@ Send any method with optional body, headers, and JSON payload.
 - `body: string` — The request body to send; pass "" for none.
 - `headers: dict[string, string]` — Request headers mapping name → value.
 - `json: Any` — A JSON-serializable value to send as the body; when given, it is encoded and a `Content-Type: application/json` header is set unless one is already present in `headers`, overriding `body`.
+- `version: http.Version` — Wire protocol version — `Version.auto` negotiates HTTP/2 via ALPN on `https://` and uses HTTP/1.1 on `http://`; `Version.http2` and `Version.http1_1` pin one and fail if the peer refuses it.
 
 **Raises**
 

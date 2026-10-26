@@ -34,11 +34,19 @@ def main() -> none
 end
 ```
 
-**On this page:** [`Socket`](#Socket) · [`Listener`](#Listener) · [`Stream`](#Stream) · [`connect`](#socket.connect) · [`listen`](#socket.listen) · [`from_fd`](#socket.from_fd) · [`listener_from_fd`](#socket.listener_from_fd) · [`set_timeout`](#socket.set_timeout)
+<Note>
+Only available on native builds.
+</Note>
+
+**On this page:** [`Socket`](#Socket) · [`Listener`](#Listener) · [`Stream`](#Stream) · [`connect`](#socket.connect) · [`listen`](#socket.listen) · [`listen_on`](#socket.listen_on) · [`from_fd`](#socket.from_fd) · [`listener_from_fd`](#socket.listener_from_fd) · [`set_timeout`](#socket.set_timeout) · [`raw_open`](#socket.raw_open) · [`bind_raw`](#socket.bind_raw) · [`connect_raw`](#socket.connect_raw) · [`listen_raw`](#socket.listen_raw) · [`accept_raw`](#socket.accept_raw) · [`local_address`](#socket.local_address) · [`peer_address`](#socket.peer_address) · [`set_nonblocking`](#socket.set_nonblocking) · [`wait_writable`](#socket.wait_writable) · [`pending_error`](#socket.pending_error) · [`error_text`](#socket.error_text) · [`raw_kind`](#socket.raw_kind) · [`sequenced_kind`](#socket.sequenced_kind) · [`stream_kind`](#socket.stream_kind)
 
 ## `Socket`
 
 <a id="Socket" />
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
+
 A connected TCP socket.
 
 Obtain one from `connect(host, port)` (client side) or `Listener.accept()`
@@ -161,6 +169,24 @@ fixed-size frame header).
 
 ---
 
+<a id="Socket.wait_readable" />
+```gust
+def Socket.wait_readable(timeout_ms: integer) -> bool
+```
+
+Wait until a `recv` on this socket would return without blocking, or
+until `timeout_ms` elapses. False means the timeout won.
+
+End of stream counts as readable: a `recv` on a peer that closed returns
+empty bytes at once. This is what an event loop drives a connection with —
+test readability, then read only when something is waiting.
+
+**Parameters**
+
+- `timeout_ms` — Milliseconds to wait; 0 polls, negative waits indefinitely.
+
+---
+
 <a id="Socket.close" />
 ```gust
 def Socket.close() -> none
@@ -201,6 +227,10 @@ cannot be determined.
 ## `Listener`
 
 <a id="Listener" />
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
+
 A listening TCP server socket. Create with `listen(port)`, then call
 `.accept()` in a loop to take incoming connections.
 
@@ -252,6 +282,10 @@ The raw file descriptor, for callers that need to poll it directly.
 ## `Stream`
 
 <a id="Stream" />
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
+
 A bidirectional byte stream — the shared surface of `socket.Socket`
 and `ssl.SSLSocket`.
 
@@ -299,6 +333,13 @@ def Stream.recv_exact(n: integer) -> bytes
 
 ---
 
+<a id="Stream.wait_readable" />
+```gust
+def Stream.wait_readable(timeout_ms: integer) -> bool
+```
+
+---
+
 <a id="Stream.close" />
 ```gust
 def Stream.close() -> none
@@ -332,6 +373,10 @@ def Stream.peer_ip() -> string
 def connect(host: string, port: integer) -> Socket
 ```
 
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
+
 Open a TCP connection to `host:port` and return the connected socket.
 
 The host is resolved via the system resolver, so a hostname or a literal
@@ -353,6 +398,10 @@ IPv4/IPv6 address both work.
 def listen(port: integer) -> Listener
 ```
 
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
+
 Bind a TCP listening socket on all interfaces at `port` and return it.
 
 `SO_REUSEADDR` is set and the listen backlog is 128.
@@ -367,10 +416,41 @@ Bind a TCP listening socket on all interfaces at `port` and return it.
 
 ---
 
+<a id="socket.listen_on" />
+```gust
+def listen_on(host: string, port: integer) -> Listener
+```
+
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
+
+Bind a TCP listening socket to `host` at `port` and return it.
+
+`host` names the interface to accept on: `"0.0.0.0"` (or `""`) binds every
+interface, `"127.0.0.1"` or `"localhost"` binds the loopback only, and a
+specific interface IP restricts the socket to that interface. `SO_REUSEADDR`
+is set and the listen backlog is 128.
+
+**Parameters**
+
+- `host: string` — Interface address or hostname to bind; `""` for all interfaces.
+- `port: integer` — TCP port to listen on.
+
+**Raises**
+
+- `IOError` — If `host` cannot be resolved, or the socket cannot be created, bound, or put into the listening state.
+
+---
+
 <a id="socket.from_fd" />
 ```gust
 def from_fd(fd: integer) -> Socket
 ```
+
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
 
 Wrap an already-connected file descriptor as a `Socket` — e.g. one
 accepted by a lower layer that hands back a raw fd. The descriptor is
@@ -387,6 +467,10 @@ adopted as-is (not duplicated).
 def listener_from_fd(fd: integer) -> Listener
 ```
 
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
+
 Wrap an existing listening file descriptor as a `Listener`.
 
 **Parameters**
@@ -400,6 +484,10 @@ Wrap an existing listening file descriptor as a `Listener`.
 def set_timeout(fd: integer, ms: integer) -> none
 ```
 
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
+
 Bound how long a single `recv`/`send` on `fd` may block, in milliseconds.
 A stalled call past the timeout raises `IOError`, the same as a hung peer. A
 `ms` of 0 clears the timeout, so calls block indefinitely.
@@ -408,3 +496,250 @@ A stalled call past the timeout raises `IOError`, the same as a hung peer. A
 
 - `fd: integer` — A connected socket file descriptor.
 - `ms: integer` — Timeout in milliseconds; 0 to block indefinitely.
+
+---
+
+<a id="socket.raw_open" />
+```gust
+def raw_open(domain: integer, kind: integer, protocol: integer) -> integer
+```
+
+Create a socket in any address family and return its file descriptor.
+
+`connect` and `listen` cover TCP, where a host and a port say everything
+about the address. This is the layer beneath them, for protocols whose
+addresses only their own specification describes — the caller names the
+family, builds the address bytes itself, and passes them to `bind_raw` or
+`connect_raw`.
+
+**Parameters**
+
+- `domain: integer` — The address family, e.g. 31 for Bluetooth on Linux.
+- `kind: integer` — The socket kind, from `raw_kind` or `sequenced_kind`.
+- `protocol: integer` — The protocol within the family, 0 for its default.
+
+**Raises**
+
+- `IOError` — If the family, kind or protocol is unsupported, or the process lacks the privileges the family requires.
+
+---
+
+<a id="socket.bind_raw" />
+```gust
+def bind_raw(fd: integer, address: bytes) -> none
+```
+
+Bind `fd` to a local address, whose bytes are the address structure the
+socket's family defines.
+
+**Parameters**
+
+- `fd: integer` — A descriptor from `raw_open`.
+- `address: bytes` — The family's address structure, laid out as its specification gives it.
+
+**Raises**
+
+- `IOError` — If the address is malformed, in use, or not permitted.
+
+---
+
+<a id="socket.connect_raw" />
+```gust
+def connect_raw(fd: integer, address: bytes) -> none
+```
+
+Connect `fd` to a peer address, whose bytes are the address structure
+the socket's family defines.
+
+On a socket left blocking this returns once the connection is established.
+On one made non-blocking by `set_nonblocking` it returns immediately and
+the connection is still being made — wait for it with `wait_writable` and
+then read `pending_error` to learn whether it succeeded.
+
+**Parameters**
+
+- `fd: integer` — A descriptor from `raw_open`.
+- `address: bytes` — The peer's address structure.
+
+**Raises**
+
+- `IOError` — If the address is malformed or the connection is refused.
+
+---
+
+<a id="socket.listen_raw" />
+```gust
+def listen_raw(fd: integer, backlog: integer) -> none
+```
+
+Put a bound socket into the listening state, so `accept_raw` can take
+connections from it.
+
+`listen` creates, binds and listens in one step, which it can do because a
+TCP address is only a port. This is that last step alone, for a socket the
+caller bound itself with `bind_raw`.
+
+**Parameters**
+
+- `fd: integer` — A descriptor from `raw_open`, already bound.
+- `backlog: integer` — How many connections may wait to be accepted at once.
+
+**Raises**
+
+- `IOError` — If the socket cannot be made to listen.
+
+---
+
+<a id="socket.accept_raw" />
+```gust
+def accept_raw(fd: integer) -> integer
+```
+
+Take the next connection waiting on a listening socket and return its
+descriptor.
+
+Blocks until a connection arrives. Waiting for `fd` to become readable
+first, with `os.fd_wait_readable`, is what bounds that wait.
+
+**Parameters**
+
+- `fd: integer` — A listening descriptor from `raw_open` and `listen_raw`.
+
+**Raises**
+
+- `IOError` — If the accept fails.
+
+---
+
+<a id="socket.local_address" />
+```gust
+def local_address(fd: integer) -> bytes
+```
+
+The address `fd` is bound to, as the address structure its family
+defines.
+
+A socket bound to an unspecified address or port is assigned a real one by
+the kernel, and this is what reads back which one it got.
+
+**Parameters**
+
+- `fd: integer` — A bound socket descriptor.
+
+**Raises**
+
+- `IOError` — If the descriptor is not a bound socket.
+
+---
+
+<a id="socket.peer_address" />
+```gust
+def peer_address(fd: integer) -> bytes
+```
+
+The address of the peer `fd` is connected to, as the address structure
+its family defines. This is how an accepted connection says who reached it.
+
+**Parameters**
+
+- `fd: integer` — A connected socket descriptor.
+
+**Raises**
+
+- `IOError` — If the descriptor is not a connected socket.
+
+---
+
+<a id="socket.set_nonblocking" />
+```gust
+def set_nonblocking(fd: integer, on: bool) -> none
+```
+
+Put `fd` into non-blocking mode, or take it out again. A non-blocking
+socket never waits: an operation that would block reports that instead.
+
+**Parameters**
+
+- `fd: integer` — An open socket descriptor.
+- `on: bool` — True to stop the socket blocking, false to let it block again.
+
+**Raises**
+
+- `IOError` — If the descriptor is not open.
+
+---
+
+<a id="socket.wait_writable" />
+```gust
+def wait_writable(fd: integer, timeout_ms: integer) -> bool
+```
+
+Wait until `fd` can be written without blocking, or until `timeout_ms`
+elapses. False means the timeout won.
+
+A connection in progress on a non-blocking socket completes by becoming
+writable, which is what makes this the other half of `connect_raw` there.
+
+**Parameters**
+
+- `fd: integer` — An open socket descriptor.
+- `timeout_ms: integer` — Milliseconds to wait; 0 polls, negative waits indefinitely.
+
+---
+
+<a id="socket.pending_error" />
+```gust
+def pending_error(fd: integer) -> integer
+```
+
+Take the error the socket recorded, or 0 when it recorded none. This is
+how a connection started on a non-blocking socket reports its outcome once
+`wait_writable` says it finished.
+
+**Parameters**
+
+- `fd: integer` — An open socket descriptor.
+
+---
+
+<a id="socket.error_text" />
+```gust
+def error_text(code: integer) -> string
+```
+
+Describe the error `pending_error` returned.
+
+**Parameters**
+
+- `code: integer` — An error number.
+
+---
+
+<a id="socket.raw_kind" />
+```gust
+def raw_kind() -> integer
+```
+
+The socket kind that hands the protocol's own packets straight through,
+for `raw_open`. A family's control channel usually wants this.
+
+---
+
+<a id="socket.sequenced_kind" />
+```gust
+def sequenced_kind() -> integer
+```
+
+The socket kind that preserves message boundaries on a connection, for
+`raw_open`.
+
+---
+
+<a id="socket.stream_kind" />
+```gust
+def stream_kind() -> integer
+```
+
+The socket kind that carries a connection as one continuous byte stream,
+for `raw_open`. What is written arrives in order, but not necessarily in the
+same number of pieces it was sent in.

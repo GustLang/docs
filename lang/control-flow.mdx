@@ -40,16 +40,56 @@ end
 
 ### Declaring a value for the condition
 
-The walrus operator `:=` is a statement, not an expression, so it cannot appear
-inside a condition (`if (n := next()) > 0` does not parse). Declare the value on
-its own line first, then branch on it:
+An `if` header may declare a variable with `:=`. The right-hand side is both the
+condition and the value bound to the name, which is in scope for the whole
+chain:
 
 ```gust
-n := next()
-if n > 0
-    print(n)
+if match := pattern.find(line)
+    print(match)
 end
 ```
+
+The bound value is tested the same way any condition is, so its type must be
+`bool`, a union, or `Any` — the same rule as a bare condition. The name is
+visible in every branch:
+
+```gust
+if ok := ms < budget
+    print("under budget")
+else
+    print("over by")
+    print(ok)
+end
+```
+
+When the right-hand side is an optional (`T | none`), entering the branch proves
+the value is present, so the bound name is narrowed to `T` inside the `then`
+branch — its fields, methods, and casts are available without a further check:
+
+```gust
+if conn := pool.checkout()
+    conn.send(request)
+end
+```
+
+Here `pool.checkout()` returns `Connection | none`; inside the branch `conn` is a
+`Connection`. In an `else` branch the name keeps its optional type.
+
+`else if` takes a binding too:
+
+```gust
+if a := first()
+    use(a)
+else if b := second()
+    use(b)
+end
+```
+
+The whole expression is the value, so `if x := 1 > 0` binds `x` to the result of
+`1 > 0` (a `bool`). The name follows the same rules as any local — reusing it
+elsewhere in the block or never reading it is reported just as it would be for a
+`:=` on its own line.
 
 ## Conditional expression (ternary)
 
@@ -84,6 +124,16 @@ end
 
 The condition must be `bool`, and it is re-checked before every iteration.
 `while` iterations run sequentially.
+
+A `while` header may declare a variable the same way `if` does. The right-hand
+side is re-evaluated and rebound each iteration, and the loop runs while that
+value stays truthy:
+
+```gust
+while line := input.next_line()
+    process(line)
+end
+```
 
 Use `while!` to spawn the whole loop as a detached background thread; control
 returns to the caller immediately while the loop runs on its own:
@@ -128,6 +178,16 @@ Iterate a list to bind each element in turn:
 ```gust
 for name in names
     print(name)
+end
+```
+
+When the elements are structs, the loop variable *is* the element, not a copy
+of it. Writing a field, calling a method that updates the struct, or assigning
+the variable a new value changes the list:
+
+```gust
+for server in servers
+    server.online = ping(server.ip)
 end
 ```
 

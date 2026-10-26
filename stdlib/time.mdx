@@ -1,16 +1,17 @@
 ---
 title: time
-description: "DateTime values: a calendar date and time of day paired with a Unix millisecond timestamp and a timezone label"
+description: "Core time access: read the current time and timestamp, and pause execution for a given number of milliseconds or microseconds"
 ---
 
 ```gust
 use time
 ```
 
-DateTime values: a calendar date and time of day paired with a Unix
-millisecond timestamp and a timezone label. Provides construction from a
-timestamp in a given timezone, conversion between timezones, string and
-dict rendering, and elapsed/difference durations.
+Core time access: read the current time and timestamp, and pause execution
+for a given number of milliseconds or microseconds.
+
+`now()` returns a `DateTime` (see `datetime.g`). For lightweight timing, take
+the Unix millisecond timestamp from it with `timestamp()` or an `integer` cast.
 
 **Examples**
 
@@ -19,27 +20,19 @@ use time
 
 def main() -> none
     dt := time.now()
-    tokyo := dt.to("Asia/Tokyo")
-    print(tokyo.timezone)           # Asia/Tokyo
-    print(dt.since(tokyo))          # 0ms — same instant, different label
+    print(dt)                       # e.g. 2026-04-14 18:30:45 UTC
+    print(dt.timestamp())           # Unix milliseconds
+    print(time.now() as integer)    # the same, as a cast
+    print(dt.format("%Y-%m-%d"))    # 2026-04-14
 end
 ```
 
-**On this page:** [`DateTime`](#DateTime) · [`Duration`](#Duration) · [`sleep`](#time.sleep) · [`now_ms`](#time.now_ms) · [`to_timezone`](#time.to_timezone) · [`make_duration`](#time.make_duration) · [`days_from_civil`](#time.days_from_civil) · [`to_epoch_ms`](#time.to_epoch_ms) · [`from_fields`](#time.from_fields) · [`parse`](#time.parse) · [`parse_iso`](#time.parse_iso) · [`now`](#time.now)
+**On this page:** [`DateTime`](#DateTime) · [`Duration`](#Duration) · [`sleep`](#time.sleep) · [`sleep_us`](#time.sleep_us) · [`from_timestamp`](#time.from_timestamp) · [`from_fields`](#time.from_fields) · [`parse`](#time.parse) · [`parse_iso`](#time.parse_iso) · [`now`](#time.now)
 
 ## Constants
 
 | Name | Type | Value |
 |------|------|-------|
-| `BYTE_PERCENT` | `integer` | `37` |
-| `BYTE_SPACE` | `integer` | `32` |
-| `BYTE_TAB` | `integer` | `9` |
-| `BYTE_MINUS` | `integer` | `45` |
-| `BYTE_PLUS` | `integer` | `43` |
-| `BYTE_COLON` | `integer` | `58` |
-| `BYTE_DOT` | `integer` | `46` |
-| `BYTE_UPPER_Z` | `integer` | `90` |
-| `BYTE_LOWER_Z` | `integer` | `122` |
 | `EST` | `string` | `"America/New_York"` |
 | `CST` | `string` | `"America/Chicago"` |
 | `MST` | `string` | `"America/Denver"` |
@@ -64,8 +57,12 @@ end
 
 <a id="DateTime" />
 A point in time, broken down into calendar fields plus a Unix
-millisecond timestamp and a timezone label. Construct one with
-`time.now()` or `time.to_timezone(ms, tz)`.
+millisecond timestamp and a timezone label.
+
+Construct one with `time.now()`, `time.from_timestamp(ms)`,
+`time.from_fields(...)`, or `time.parse(...)`, and move it between
+timezones with `to`. The calendar fields describe the instant as seen in
+`timezone`; `ms` is the same instant in every timezone.
 
 ```gust
 def DateTime
@@ -100,25 +97,28 @@ end
 def DateTime.to(tz: string) -> DateTime
 ```
 
-Converts this DateTime to a different timezone.
+<Note>
+Only available on Linux and macOS.
+</Note>
+
+The same instant seen from a different timezone. The calendar fields
+shift; `ms` does not.
+
+Reads the system timezone database, so it exists only on a target that has
+one; a board with no database has no `to`, and a call to it is a compile
+error rather than a runtime failure.
 
 **Parameters**
 
-- `tz` — Target timezone label.
+- `tz` — Target timezone label, e.g. 'Asia/Tokyo'. The `time` package defines constants for common zones.
+
+**Raises**
+
+- `ValueError` — `tz` names no zone in the database.
 
 ---
 
 <a id="DateTime.timestamp" />
-```gust
-def DateTime.__dict() -> dict[string, string]
-```
-
-Triggered by `dt as dict[string, string]`. Returns the date/time fields
-as zero-padded strings.
-
----
-
-<a id="DateTime.elapsed" />
 ```gust
 def DateTime.timestamp() -> integer
 ```
@@ -127,7 +127,7 @@ Returns the Unix timestamp in milliseconds.
 
 ---
 
-<a id="DateTime.since" />
+<a id="DateTime.elapsed" />
 ```gust
 def DateTime.elapsed() -> Duration
 ```
@@ -136,17 +136,21 @@ Returns the duration elapsed since this DateTime.
 
 ---
 
-<a id="DateTime.weekday" />
+<a id="DateTime.since" />
 ```gust
-def DateTime._fields() -> dict[string, string]
+def DateTime.since(other: DateTime) -> Duration
 ```
 
-The date/time components as zero-padded strings, keyed by name —
-the shared source for `__string` and `__dict`.
+Returns the duration between two DateTimes. Negative when `other` is the
+later of the two.
+
+**Parameters**
+
+- `other` — The DateTime to measure from.
 
 ---
 
-<a id="DateTime.day_of_year" />
+<a id="DateTime.weekday" />
 ```gust
 def DateTime.weekday() -> integer
 ```
@@ -155,7 +159,7 @@ Day of the week, 0=Sunday through 6=Saturday.
 
 ---
 
-<a id="DateTime.format" />
+<a id="DateTime.day_of_year" />
 ```gust
 def DateTime.day_of_year() -> integer
 ```
@@ -164,7 +168,7 @@ Ordinal day within the year, 1 for January 1st.
 
 ---
 
-<a id="DateTime.iso" />
+<a id="DateTime.format" />
 ```gust
 def DateTime.format(fmt: string) -> string
 ```
@@ -188,20 +192,28 @@ Any other `%X` sequence is emitted unchanged.
 
 - `fmt` — The format string.
 
+---
+
+<a id="DateTime.iso" />
+```gust
+def DateTime.iso() -> string
+```
+
+ISO 8601 / RFC 3339 rendering, e.g. `2026-06-23T14:30:45+0000`.
+
 ## `Duration`
 
 <a id="Duration" />
-Represents a span of time.
+A span of time.
+
+The span is stored once, in milliseconds; every other unit is a whole-unit
+view of it, truncated toward zero. A span from a `since` that runs backwards
+is negative.
 
 ```gust
 def Duration
 
     ms: integer
-    seconds: integer
-    minutes: integer
-    hours: integer
-    days: integer
-    years: integer
 
 end
 ```
@@ -209,11 +221,51 @@ end
 **Fields**
 
 - `ms: integer` — The span in milliseconds.
-- `seconds: integer` — The span in whole seconds.
-- `minutes: integer` — The span in whole minutes.
-- `hours: integer` — The span in whole hours.
-- `days: integer` — The span in whole days.
-- `years: integer` — The span in whole years.
+
+**Methods**
+
+<a id="Duration.seconds" />
+```gust
+def Duration.seconds() -> integer
+```
+
+The span in whole seconds.
+
+---
+
+<a id="Duration.minutes" />
+```gust
+def Duration.minutes() -> integer
+```
+
+The span in whole minutes.
+
+---
+
+<a id="Duration.hours" />
+```gust
+def Duration.hours() -> integer
+```
+
+The span in whole hours.
+
+---
+
+<a id="Duration.days" />
+```gust
+def Duration.days() -> integer
+```
+
+The span in whole days.
+
+---
+
+<a id="Duration.years" />
+```gust
+def Duration.years() -> integer
+```
+
+The span in whole years, counting a year as 365 days.
 
 ## Functions
 
@@ -224,87 +276,54 @@ def foreign sleep(ms: integer) -> none
 
 Pauses execution for the given number of milliseconds.
 
+A signal delivered to a handler partway through does not cut the wait
+short: whatever is left of it is waited out, so the figure asked for is
+the figure spent.
+
 **Parameters**
 
 - `ms: integer` — Number of milliseconds to sleep.
 
 ---
 
-<a id="time.now_ms" />
+<a id="time.sleep_us" />
 ```gust
-def foreign now_ms() -> integer
+def foreign sleep_us(us: integer) -> none
 ```
 
-Returns the current Unix timestamp in milliseconds.
+Pauses execution for the given number of microseconds.
 
----
+Sub-millisecond waits are what a bit-banged bus is made of. A device
+datasheet gives its setup, hold and settling times in microseconds, and a
+driver that rounds each of them up to a whole millisecond runs orders of
+magnitude slower than the part it is talking to allows.
 
-<a id="time.to_timezone" />
-```gust
-def to_timezone(ms: integer, tz: string) -> DateTime
-```
+The floor is the platform's rather than this call's. A hosted system
+schedules other work while it waits, so a short sleep returns once the
+scheduler comes back round and the figure is a minimum rather than a
+duration. Bare metal has no scheduler in the way and the wait is the
+hardware timer's, good to about a microsecond.
 
-Converts a Unix timestamp (ms) to a DateTime in the given timezone.
+As with `sleep`, a signal arriving partway through does not shorten the
+wait.
 
 **Parameters**
 
-- `ms: integer` — Unix timestamp in milliseconds.
-- `tz: string` — Target timezone label.
+- `us: integer` — Number of microseconds to sleep.
 
 ---
 
-<a id="time.make_duration" />
+<a id="time.from_timestamp" />
 ```gust
-def make_duration(ms: integer) -> Duration
+def from_timestamp(ms: integer) -> DateTime
 ```
 
-Breaks down milliseconds into all duration fields.
+Break a Unix millisecond timestamp into a UTC `DateTime`. Use `to` on
+the result for any other timezone.
 
 **Parameters**
 
-- `ms: integer` — The span in milliseconds.
-
----
-
-<a id="time.days_from_civil" />
-```gust
-def days_from_civil(year: integer, month: integer, day: integer) -> integer
-```
-
-Days since the Unix epoch (1970-01-01) for a proleptic Gregorian date.
-Negative for dates before the epoch. Hinnant's `days_from_civil`.
-
-**Parameters**
-
-- `year: integer` — Calendar year.
-- `month: integer` — Calendar month (1-12).
-- `day: integer` — Day of the month (1-31).
-
----
-
-<a id="time.to_epoch_ms" />
-```gust
-def to_epoch_ms(
-    year: integer,
-    month: integer,
-    day: integer,
-    hour: integer,
-    minute: integer,
-    second: integer,
-) -> integer
-```
-
-Unix millisecond timestamp for the given UTC calendar fields. Inverse of
-the calendar breakdown produced by `to_timezone(ms, "UTC")`.
-
-**Parameters**
-
-- `year: integer` — Calendar year.
-- `month: integer` — Calendar month (1-12).
-- `day: integer` — Day of the month.
-- `hour: integer` — Hour of the day (0-23).
-- `minute: integer` — Minute of the hour (0-59).
-- `second: integer` — Second of the minute (0-59).
+- `ms: integer` — Unix timestamp in milliseconds. Negative values (before 1970) are handled exactly.
 
 ---
 

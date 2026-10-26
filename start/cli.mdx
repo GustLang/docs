@@ -14,7 +14,7 @@ gust <command> [options] [file]
 | Command                 | Purpose |
 |-------------------------|---------|
 | [`gust run`](#run)      | Compile and execute a `.g` file. |
-| [`gust build`](#build)  | Compile to a native binary (or a Pico `.uf2` / ESP32 `.bin`). |
+| [`gust build`](#build)  | Compile to a native binary (or a Pico `.uf2`, ESP32 `.bin`, or bare-metal `.elf`). |
 | [`gust test`](#test)    | Discover and run `test_*.g` / `*_test.g` files. |
 | [`gust emit`](#emit)    | Print the generated C. |
 | [`gust check`](#check)  | Type-check without requiring `main()` or producing a binary. |
@@ -27,14 +27,19 @@ gust <command> [options] [file]
 | [`gust update`](#update) | Re-resolve dependency refs to their latest commit. |
 | [`gust remove`](#remove) | Drop a dependency from `gust.toml`, `gust.lock`, and `.gust/deps`. |
 | [`gust explain`](#explain) | Print the long form of an error code (e.g. `G0101`). |
-| [`gust clean`](#clean)  | Delete the on-disk object cache. |
+| [`gust clean`](#clean)  | Delete a project's local cache (or `--global` for the shared object cache). |
+| [`gust package-prebuilt-stdlib`](#package-prebuilt-stdlib) | Build stdlib/runtime objects for one target and publish them for this install to ship. |
+| [`gust targets`](#targets) | List the chips and boards `--target` accepts, validate their descriptors, or show one resolved. |
+| [`gust gen-device`](#gen-device) | Generate a `device.<chip>` register package from a chip's CMSIS-SVD file. |
 | [`gust lsp`](#lsp)      | Run the Gust language server over stdio. |
 | [`gust completion`](#completion) | Print a shell completion script. |
 | [`gust version`](#version) | Print the compiler version. |
 | [`gust repl`](#repl)    | Launch the interactive REPL. |
 | [`gust rules-doc`](#rules-doc) `[section]` | Print a rule-reference page (`formatter`, `errors`, or `warnings`) as MDX — used to generate the docs site's rules pages. |
+| [`gust unsafe-audit`](#unsafe-audit) `[path]` | List every unsafe site in a project — `@raw`, `@manual`, `@c_shim`, `@c_name`, `unsafe.*` calls, and `use unsafe`. |
 
-Running `gust` with no subcommand prints the top-level help, **not** the REPL — the REPL is reached only via an explicit [`gust repl`](#repl). The help groups the commands into four sections — **Build & Run** (`build`, `flash`, `run`, `record`), **Quality** (`test`, `check`, `format`, `explain`), **Project** (`add`, `install`/`sync`, `update`, `remove`, `clean`, `init`), and **Tooling** (`repl`, `version`, `lsp`, `completion`, `emit`, `rules-doc`).
+Running `gust` with no subcommand prints the top-level help, **not** the REPL — the REPL is reached only via an explicit [`gust repl`](#repl). The help groups the commands into four sections — **Build & Run** (`build`, `flash`, `run`, `record`, `gen-device`), **Quality** (`test`, `check`, `format`, `explain`, `unsafe-audit`), **Project** (`add`, `install`/`sync`, `update`, `remove`, `clean`, `init`), and **Tooling** (`repl`, `version`, `lsp`, `completion`, `emit`, `rules-doc`,
+`package-prebuilt-stdlib`).
 
 Every subcommand also accepts `--help` (`gust <command> --help`) — it prints that command's own usage, its positional arguments, and its flags, then exits `0`.
 
@@ -49,7 +54,7 @@ If a flag is both on the CLI and in [`gust.toml`](/tooling/project-config), the 
 ## `run`
 
 ```
-gust run [FILE] [BUILD FLAGS]
+gust run [FILE] [BUILD FLAGS] [-- ARGS...]
 ```
 
 Compile `FILE` (or `[project].entry`) to a temporary binary, execute it, and
@@ -63,12 +68,23 @@ Hello, world!
 $ gust run --release app.g
 ```
 
-<Note>
-`gust run` does not forward arbitrary arguments through to your program — any
-extra `--flags` are parsed by `gust` itself. To pass arguments to a program,
-build it first and run the binary directly. (`os.args()[0]` is the program
-name.)
-</Note>
+Arguments after the source file are passed through to the program, where they
+arrive as [`os.args()`](/stdlib/os). `os.args()[0]` is the temporary binary's
+path, and the forwarded arguments follow it.
+
+```bash
+$ gust run app.g input.txt
+```
+
+Options belong to `gust`, not to the program: `--release` after the file is
+still a build flag, and an option `gust` doesn't recognize is a usage error
+rather than a silently forwarded argument. Put a `--` separator ahead of the
+program's arguments to hand them over verbatim — everything after it belongs to
+the program, whatever it looks like.
+
+```bash
+$ gust run app.g -- --verbose --out result.txt
+```
 
 `run` always targets the **native** platform — it cannot execute a
 cross-compiled binary. If `[build].target` in `gust.toml` is set to a
@@ -90,12 +106,39 @@ gust build [FILE] [-o NAME]
           [--static | --no-static]
           [--release | --debug]
           [--cflag FLAG]...
-          [--no-auto-vendor] [--asan]
-          [--flash]
+          [--asan]
+          [--profile]
+          [--trace]
+          [--doc-cfg]
+          [--flash[=PATH]]
 ```
 
 Compile to a native binary. The default output name is the source stem —
 `hello.g` → `./hello` — or `[build].output` from `gust.toml`.
+
+<a id="build.ice" />
+### When the C compiler is the one complaining
+
+A build either succeeds or reports a Gust diagnostic against your source. It
+should never hand you a message from `cc` about generated C — if it does, that
+is a defect in gustc, not in your program, and it is reported as one:
+
+```text
+gustc internal error: generated C failed to compile — this is a compiler bug
+  generated translation unit: /tmp/gust_NQEKHN.c
+
+  /tmp/gust_NQEKHN.c:598:60: error: ...
+```
+
+The exit code is **70**, distinct from the `1` of an ordinary compile failure
+and the `2` of a usage error, so a script or CI job can tell the two apart
+without reading the text. The generated `.c` named in the banner is left on disk
+rather than cleaned up — attach it, and the program that produced it, to the
+report.
+
+C you supplied yourself is the one exception, and keeps ordinary reporting: a
+package's hand-written `.c` backing, a `@c_shim` signature that does not match
+its C side, vendored sources. Those can fail for reasons that are yours to fix.
 
 ### Flags
 
@@ -103,6 +146,29 @@ Compile to a native binary. The default output name is the source stem —
 **`flag -o, --output NAME`**
 
 Output binary path. Overrides `[build].output` in `gust.toml`.
+
+<a id="build.size" />
+**`flag --size`**
+
+After an embedded build, report what the image occupies in flash and in RAM,
+against what the target has room for.
+
+The figures come from the sections the linker placed, not from the file on
+disk: a `.uf2` restates every 256-byte page in a 512-byte block, so its size on
+disk is roughly twice what the board actually stores. Initialized data counts
+against both — it is held in flash and copied into RAM before `main` — which is
+what makes the two figures add up against the chip's own memory.
+
+RAM is what the image claims before it runs a line. It says nothing about the
+stack, which is not knowable without running the program, so a build already at
+90% here has overcommitted.
+
+```bash
+$ gust build --target nrf52840dk --size
+built: ./main.elf
+  flash: 15.5 KB / 1.0 MB (2%)
+  ram:   26.5 KB / 256.0 KB (11%)
+```
 
 <a id="build.target" />
 **`flag --target TRIPLE`**
@@ -118,6 +184,11 @@ Cross-compile for the given target. The value is one of:
   `esp32c6`, `esp32h2`, `esp32p4`; separators are ignored, so `esp32-s3`
   works) — builds a firmware `.bin` via ESP-IDF. Requires a sourced ESP-IDF
   environment (`idf.py` on `PATH`); see [`flash`](#flash).
+- A **board built with no vendor SDK** (`nrf52840dk`) — builds an `.elf`
+  linked from the descriptor's own memory map, with the vector table, reset
+  path and syscall floor generated. Requires only a cross toolchain for the
+  chip's triple (`arm-none-eabi-gcc`, or `clang` alongside it); see
+  [`flash`](#flash).
 - **`wasm`** (also accepts `wasm32` / `emscripten`) — builds a `.js` loader
   plus a `.wasm` module via `emcc`. Requires Emscripten (`emcc`) on `PATH`.
 
@@ -134,11 +205,27 @@ Examples:
 For an **ESP32** target, gustc emits the program C, generates a throwaway
 ESP-IDF project, and runs `idf.py set-target <chip> build` to produce the
 firmware `.bin`. ESP-IDF is not auto-fetched (unlike the Pico SDK) — source its
-environment first: `. $HOME/esp/esp-idf/export.sh`. The cross-platform HAL
-packages `time`, `pin`, `i2c`, and `cryptography.random` (plus every pure-Gust
-package) carry ESP-IDF backends, so the same Gust code runs on host and device;
-packages needing a facility not yet wired up (`wifi`, `bluetooth`, networking,
-…) are rejected up front with a clear reason.
+environment first: `. $HOME/esp/esp-idf/export.sh`. If `idf.py` is reachable but
+the chip's cross-compiler isn't on `PATH` (an `IDF_PATH`-only shell), the build
+stops with that activation step rather than a CMake failure.
+
+The cross-platform HAL packages `time`, `pin`, `i2c`, `spi`, and
+`cryptography.random` carry ESP-IDF backends, as do the on-chip peripherals
+`machine.adc`, `machine.pwm`, `machine.clocks`, `machine.flash`, `machine.otp`,
+and `machine.multicore` — so the same Gust code runs on host and device, or on
+either microcontroller family. The radios are wired up too: `wifi` over
+`esp_wifi`, and `bluetooth` over NimBLE in both low-energy roles (scan and
+connect as a central, advertise a GATT server as a peripheral) on any chip with
+a Bluetooth radio, which the S2 has not. `lvgl` builds too, driving an ST7789
+panel over SPI instead of a DRM card: the engine is compiled into the firmware
+from a pinned checkout gustc fetches on the first such build (into
+`~/.cache/gust/lvgl`, or `$LVGL_PATH` if set) — no system LVGL involved.
+Importing it, `bluetooth`, or `machine.flash`, switches the image onto a
+generated partition table with a 1.5 MB app region; `machine.flash` adds its
+1 MB writable data region on top, which needs a 4 MB flash. Packages needing a
+facility not yet wired up, and the `machine.*` subpackages whose peripheral is
+RP-series-only (`pio`, `interp`, `power`, `dma`), are rejected up front with a
+clear reason.
 
 For `--target wasm`, the output is normalized to a `.js` loader: `-o app.js`,
 or a directory (`-o dist/`, or an existing dir) producing
@@ -150,15 +237,16 @@ the browser sandbox are rejected up front. Size-optimized with `-Oz`.
 <a id="build.cc" />
 **`flag --cc DRIVER`**
 
-Override the C compiler driver. Default: `zig cc` if zig is installed, else
-the platform `cc`. Pass as one word — `"zig cc"`, `"gcc-13"`, `"clang"`.
+Override the C compiler driver. By default a native build uses the system
+`cc` (then `gcc`), while a cross build (`--target`) uses `zig cc`. Pass as one
+word — `"zig cc"`, `"gcc-13"`, `"clang"`.
 
 <a id="build.static" />
 **`flag --static, --no-static`**
 
 Force static / dynamic linking. `--static` is the default for
 `linux-musl` targets and ignored on macOS (which doesn't support fully static
-binaries). Overrides `[build].link_mode`.
+binaries). Overrides `[build].static`.
 
 <a id="build.release" />
 **`flag --release, --debug`**
@@ -175,13 +263,6 @@ Extra C compiler flag, appended to `[build].cflags`. Pass once per flag:
 gust build --cflag=-Wall --cflag=-Wextra app.g
 ```
 
-<a id="build.no-auto-vendor" />
-**`flag --no-auto-vendor`**
-
-Disable the auto-build of the libcurl+mbedTLS vendor bundle that powers
-`use requests`. With this flag, a missing bundle fails loudly with a hint
-instead of kicking off a compile.
-
 <a id="build.asan" />
 **`flag --asan`**
 
@@ -190,12 +271,74 @@ leak attribution. Implies a **debug** build (so `-O2`/LTO can't fold small
 allocations into the caller frame and erase the attribution). Slower; for
 debugging only.
 
+<a id="build.doc-cfg" />
+**`flag --doc-cfg`**
+
+Compile the declarations conditional compilation excludes for this target too,
+each tagged with the targets it is really available on (readable through
+`inspect.cfg`). For documentation generators: it lets one host build see a
+package's whole surface, including packages that exist on no host target. The
+kept code is never called, but it is compiled — this is not a flag for a binary
+you ship.
+
+<a id="build.profile" />
+**`flag --profile`**
+
+Time every Gust call. The binary prints a profile when it exits: one row per
+function with call count, time spent in the function itself (`tottime`), time
+including everything it called (`cumtime`), and the per-call averages of each —
+followed by the caller → callee edges behind those totals, so a hot function
+points at whoever is calling it.
+
+The report goes to stdout, or to `GUST_PROFILE_OUT` when that names a file;
+`GUST_PROFILE_TOP` sets how many rows each table shows (40 by default). A
+program stopped with Ctrl-C or `SIGTERM` still reports, so a server can be
+profiled under load and then shut down.
+
+Only your code and the standard library are instrumented; the runtime is not.
+Instrumentation costs a fixed amount per call, which weighs on small functions
+far more than large ones — read the numbers as relative weights rather than
+wall-clock truth.
+
+```bash
+$ gust build --release --profile server.g -o server
+$ GUST_PROFILE_OUT=profile.txt ./server        # Ctrl-C when done
+```
+
+<a id="build.trace" />
+**`flag --trace`**
+
+Instrument every function and method so the program can watch itself run. Each
+one reports on entry, on each return it takes, and on a raise that leaves it.
+Register a callback with [`trace.set_hook`](/stdlib/trace) to receive those
+reports — until you do, an instrumented build behaves exactly like an ordinary
+one.
+
+Only Gust bodies are instrumented, so a report always names a `.g` function and
+never the runtime C beneath it. The `__TRACING__` predefine reads `true` in a
+build made with this flag, which is how one source file can carry tracing-only
+code that costs nothing in a normal build.
+
+```bash
+$ gust run --trace app.g
+```
+
+Treat a traced binary as a debugging build, not one to ship: every event
+allocates a report, and instrumentation is emitted at every call site and every
+return.
+
 <a id="build.flash" />
-**`flag --flash`**
+**`flag --flash[=PATH]`**
 
 After an embedded build, flash the resulting image to a connected board — a
 Pico `.uf2` (`--target rp2350`/…, over BOOTSEL) or an ESP32 `.bin`
 (`--target esp32s3`/…, via `idf.py flash`). Ignored for other targets.
+
+Written bare, the board is looked for at the platform's usual device paths
+(`/dev/ttyACM*`, `/dev/cu.usbmodem*` for a Pico) and the first match wins.
+Every USB serial device shares those paths, so with more than one board
+attached, name the port: `--flash=/dev/ttyACM1`. The value has to be attached
+with `=`, since a following token can't be told apart from the source file.
 
 ```bash
 $ gust build hello.g                         # → ./hello
@@ -223,8 +366,23 @@ gust test [PATH] [--filter PATTERN] [-j N] [--timeout SECS] [--verbose]
 ```
 
 `gust test` also accepts the shared compile-time build flags from
-[`build`](#build) (`--release`, `--target`, `--cc`, `--cflag`, `--asan`, …),
+[`build`](#build) (`--release`, `--target`, `--cc`, `--cflag`, `--asan`,
+`--doc-cfg`, …),
 which are applied to every test binary it compiles.
+
+A host run builds at the manifest's optimize level, which is **release**
+unless `[build].optimize` says otherwise, so the suite exercises the code the
+way users ship it. Pass `--debug` for the iteration loop that would rather not
+pay for whole-program optimization on every file. A `--target <board>` run
+keeps the manifest's level either way — an image has flash and RAM to fit
+into.
+
+Building is also cached. A file whose sources, imports and build flags are
+unchanged since it was last built skips the compile entirely and runs the
+binary already on disk, so re-running a suite you have not touched costs
+little more than the tests' own execution. The cache lives in the project's
+own cache directory and plain `gust clean` clears it (see
+[Build cache](#build-cache)).
 
 Discover and run Gust tests. A test file is any `.g` file whose name matches
 **`test_*.g`** or **`*_test.g`**. Inside it, each test is a function decorated
@@ -241,8 +399,9 @@ end
 
 The compiler synthesizes the entry point: every `@test` function is registered
 as a test case and run in isolation, so a test file needs no hand-written
-`main`. Test files compile **and** run in parallel across CPUs, with a
-per-test timeout.
+`main`. Files are taken from source to result across CPUs, with a per-test
+timeout: each worker builds a file and runs it before starting the next, so
+the runs overlap the compiles rather than waiting on them.
 
 ```bash
 $ gust test
@@ -261,6 +420,29 @@ Each failing test prints a `FAIL` line (a crash mid-test prints `CRASH`) and a
 detail block in the `failures:` section at the end with its message and
 captured output. A test that called `t.skip(...)` prints `SKIP` and is counted
 separately.
+
+### Running on a board
+
+Name a board with `--target` (or set `[build].target` in `gust.toml`) and the
+same files run on hardware instead of on this machine. Each file is built as a
+firmware image with the synthesized entry point in it, written to the attached
+board, and its results are read back over the console the board's descriptor
+names in `[monitor]`. The report and the exit status are the same either way.
+
+```bash
+$ gust test --target pico2_w
+running 2 test files on pico2_w
+```
+
+A board runs one image at a time, so files run in sequence and `-j` does not
+apply. `--timeout` becomes how long each file's console is read for; a suite
+that goes quiet before it finishes prints what it did print, so a hang is
+visible rather than silent. Use `--flash=<path>` to name the board's port when
+more than one serial device is attached.
+
+A target whose descriptor has no `[monitor]` section cannot be read back from,
+and that is reported before anything is built — see
+[Target descriptors](/tooling/targets).
 
 ### `PATH`
 
@@ -346,14 +528,29 @@ $ gust emit hello.g | head
 ## `check`
 
 ```
-gust check PATH [--fix]
+gust check PATH [--fix] [--deep]
 ```
 
 Run the pipeline through the **analyzer only** — lex, parse, type-check.
 No binary is produced, and (unlike `build`) `main()` is **not** required.
 `PATH` is required — unlike `run`/`build`, `check` does not fall back to
-`[project].entry`. It may be a single `.g` / `.gml` file **or a directory**
-(recursively checks every `.g` / `.gml` underneath).
+`[project].entry`. It may be a single `.g` file **or a directory**
+(recursively checks every `.g` file underneath).
+
+A directory is checked a directory at a time, not a file at a time: the files
+of one directory share a namespace and are analyzed together as the one program
+they form, so their common import closure is resolved once for all of them.
+Each file still gets its own diagnostics and its own `ok:` line.
+
+<a id="check.gustignore" />
+A directory holding a **`.gustignore`** file is skipped whole, along with
+everything under it — by `gust check` and by [`gust format`](#format) alike.
+That is the escape hatch for sources that are not part of the tree's build: a
+corpus of deliberately invalid programs a test harness feeds to the compiler one
+at a time, say. The file's contents are free text, so write down why the
+directory is excluded for whoever finds it next. Naming a file inside an ignored
+directory explicitly still checks it — the marker excludes the *walk*, not the
+files.
 
 Use this for:
 
@@ -377,6 +574,16 @@ invocation converges: the analyze/fix cycle repeats until a pass applies
 nothing (overlapping fixes defer to the next pass), then prints a summary of
 how many issues were fixed.
 
+<a id="check.deep" />
+**`flag --deep`**
+
+Also type-check the bodies of every `use`d package, not just their signatures.
+Off by default: a package's bodies are checked when that package is checked,
+and `gust build` checks everything it compiles, so re-checking them for each
+file that merely imports them is the bulk of the work on a heavily-importing
+file and reports nothing about the file you asked about. Reach for `--deep`
+when you want one command to vet a package *and* everything it pulls in.
+
 ---
 
 ## `format`
@@ -385,8 +592,9 @@ how many issues were fixed.
 gust format PATH [--check] [--indent N] [--line-width N]
 ```
 
-`PATH` can be a single `.g` / `.gml` file or a directory (recurses into
-subdirectories). Directory runs format the files in parallel across CPUs.
+`PATH` can be a single `.g` file or a directory (recurses into
+subdirectories). Directory runs format the files in parallel across CPUs, and
+skip any directory holding a [`.gustignore`](#check.gustignore).
 
 ### Flags
 
@@ -418,15 +626,37 @@ gets an advisory `F018` warning instead. See [Formatter](/tooling/formatter).
 ## `flash`
 
 ```
-gust flash [FILE]
+gust flash [FILE] [--flash=PATH]
 ```
 
-Flash a built firmware image to a connected board. For a Pico this copies the
-`.uf2` over BOOTSEL (1200-baud touch); for an ESP32 target (per `[build].target`
-in `gust.toml`) it runs `idf.py flash`, writing the bootloader, partition table,
-and app via esptool. `FILE` defaults to `[build].output` or the entry name, with
-the target's suffix (`.uf2` for Pico, `.bin` for ESP32). Pair it with a build,
-or use `gust build --target esp32s3 --flash` to build and flash in one step.
+Flash a built firmware image to a connected board, by the method the target's
+[descriptor](/tooling/targets) names. For a Pico this copies the `.uf2` over
+BOOTSEL (1200-baud touch); for an ESP32 it runs `idf.py flash`, writing the
+bootloader, partition table, and app via esptool; for a board built with no
+vendor SDK it writes the `.elf` through a debug probe with `probe-rs`, which
+speaks the core architecture's own debug port and so reaches any such part.
+
+`FILE` defaults to `[build].output` or the entry name, with the suffix the
+target's builder writes (`.uf2` for Pico, `.bin` for ESP32, `.elf` for a
+no-SDK build) — so with
+`[build].target` set in `gust.toml`, `gust flash` alone is enough. An image
+names its own format, so passing one works from a directory that configures no
+target. Pair it with a build, or use `gust build --target esp32s3 --flash` to
+build and flash in one step.
+
+### Flags
+
+<a id="flash.flash" />
+**`flag --flash=PATH`**
+
+The board's serial port. Without it, the first device under the platform's
+usual paths (`/dev/ttyACM*`, `/dev/cu.usbmodem*`) is used — which is the wrong
+board as soon as a second USB serial device is attached, so name the port when
+more than one is plugged in:
+
+```bash
+$ gust flash --flash=/dev/ttyACM1
+```
 
 ---
 
@@ -565,6 +795,47 @@ a variable declared in a narrower scope than the reference site.
 
 ---
 
+## `unsafe-audit`
+
+```
+gust unsafe-audit [PATH]
+```
+
+List every place a project steps outside automatic memory management, so the
+code a reviewer must trust by hand can be read as one bounded set. `PATH` is a
+file or directory, defaulting to the current directory; a directory is scanned
+recursively (skipping `.gust` and `.gustignore` subtrees).
+
+Each site is grouped by category with a count, and a running total closes the
+report:
+
+- `@raw` structs — exempt from field ownership.
+- `@manual` functions — no automatic refcount injection.
+- `@c_shim` exports — a Gust body exported under a fixed C ABI symbol.
+- `@c_name` bindings — bound to a fixed C symbol.
+- `unsafe.*` calls — raw memory and pointer operations.
+- `use unsafe` — files that opt into the unsafe decorators.
+
+```bash
+$ gust unsafe-audit src
+Unsafe surface audit — src
+
+  @raw structs — exempt from field ownership (1)
+    src/ring.g:12  @raw
+
+  unsafe.* calls — raw memory and pointer operations (4)
+    src/ring.g:20  slot := unsafe.alloc(size)
+    ...
+
+Total: 5 site(s) across 1 file(s).
+```
+
+The scan is line-oriented and reports a marker wherever it appears — including
+one in a comment or in code a build excludes — which is what you want from an
+audit.
+
+---
+
 ## `add`
 
 ```
@@ -621,22 +892,155 @@ grammar, `gust.lock`, the shared package cache, and `GITHUB_TOKEN`.
 ## `clean`
 
 ```
-gust clean
+gust clean [path] [--global]
 ```
 
-Delete the on-disk object cache. The cache speeds up repeat builds by
-persisting compiled runtime + stdlib object files between runs — see the
-[build cache](#build-cache) section for details. Use `clean` after
-upgrading the compiler, or when you want to rule out a stale-cache bug.
+Delete a project's local cache — see the [build cache](#build-cache) section
+for what that holds and why it is split from the global one. With no `path`,
+`clean` looks for a `gust.toml` in the current directory; give one to clean a
+different project without `cd`-ing into it first. Use `clean` after editing a
+stdlib/runtime `.c` file the cache key can't see, or when you want to rule out
+a stale-cache bug.
 
 ```bash
 $ gust clean
-cleared object cache: /home/ada/.cache/gust/objcache
+cleared project cache: /home/ada/myapp/.gust/cache
+
+$ gust clean ../other-project
+cleared project cache: /home/ada/other-project/.gust/cache
 ```
 
-The command is idempotent — removing an already-empty cache is a no-op
-that still prints the path. Cache location honours `$XDG_CACHE_HOME`;
-unset, it defaults to `~/.cache/gust/objcache/`.
+Run from outside any project (no `gust.toml` in the current directory, and no
+`path` given), `clean` refuses rather than guessing:
+
+```bash
+$ gust clean
+gust clean: no gust.toml in '/home/ada' — run this from a project root, pass
+its path (`gust clean <path>`), or clear the shared cache with `gust clean --global`
+```
+
+**`--global`** deletes the object cache shared by every project on the
+machine instead — the compiled stdlib/runtime objects and transpiled runtime
+C. This is the one that's slow to rebuild, so it's a separate, explicit flag
+rather than something an ordinary `gust clean` sweeps up as a side effect.
+
+```bash
+$ gust clean --global
+cleared global object cache: /home/ada/.cache/gust/objcache
+```
+
+Both forms are idempotent — removing an already-empty cache is a no-op that
+still prints the path.
+
+---
+
+## `package-prebuilt-stdlib`
+
+```
+gust package-prebuilt-stdlib [--target TRIPLE] [--debug] [--cc CC]
+```
+
+Compile the runtime and every stdlib package's C backing for one target and
+publish the resulting objects into this install's [prebuilt objects](#prebuilt-objects)
+directory, where an ordinary build finds and promotes them instead of
+compiling the standard library from source. Meant for packaging a Gust
+install, not for day-to-day development — an existing checkout's warm object
+cache already gets the same speedup.
+
+```bash
+$ gust package-prebuilt-stdlib --target x86_64-linux-musl
+published prebuilt stdlib objects for x86_64-linux-musl (release)
+```
+
+`--target` defaults to the host's native triple. `--debug` builds the
+unoptimized variant instead of `release`. `--cc` overrides the compiler
+driver the same way [`build`](#build)'s does — a cross target needs `zig cc`.
+
+---
+
+## `targets`
+
+```
+gust targets [list|check|show <target>]
+```
+
+Report on the target descriptors — the chips and boards
+[`--target`](#build.target) accepts, one file each. See
+[Targets](/tooling/targets) for the descriptor format and how to add a board.
+
+- **`list`** (the default) — every buildable target, grouped by family.
+- **`check`** — validate every descriptor and report each problem at the line
+  and column that caused it. Exits non-zero when anything is wrong.
+- **`show <target>`** — resolve one name through its whole chain and print the
+  merged facts: triple, `cfg` keys, builder, flash method, memory, capabilities
+  and pin map.
+
+```bash
+$ gust targets show rp2350
+pico2  (board)
+  chain         cortex-m33 -> rp2 -> rp2350 -> pico2
+  triple        arm-none-eabi
+  builder       pico-sdk
+  ...
+```
+
+Naming a chip whose image needs a board resolves through to that board, which
+is why `rp2350` above reports as `pico2`.
+
+---
+
+## `gen-device`
+
+```
+gust gen-device <file.svd> [-o DIR] [--chip NAME]
+```
+
+Turn a vendor's CMSIS-SVD description of a chip into a Gust package of its
+registers, written to `device/<chip>/` — one file per peripheral, holding the
+peripheral's base address, an offset constant per register, shift and mask
+constants per field, and accessors that reach them over `unsafe`.
+
+An SVD is the one machine-readable description of a part that silicon vendors
+reliably publish. This is run once per chip rather than on every build, so the
+generated package belongs to the project the way a vendor header would — except
+that nothing in it is hand-transcribed, and so nothing in it can disagree with
+the datasheet.
+
+A register gets a reader only where the hardware reads and a writer only where
+it writes: reading a write-only register returns nothing meaningful, so the call
+is not offered. A register array keeps one name and takes an index.
+
+```bash
+$ gust gen-device nrf52840.svd
+generated: device/nrf52840 — 73 peripherals of the nrf52840
+  import them as `use device.nrf52840.<peripheral>`
+```
+
+```gust
+use device.nrf52840.p0
+
+def main() -> none
+    p0.set_dirset(1 << 13)
+    p0.set_outclr(1 << 13)
+end
+```
+
+The generated package is the floor, not the interface: it knows that GPIO port
+0 has an `OUT` register at `0x504`, and nothing about what a pin is. A
+peripheral backend is written on top of it — and until one exists, a program can
+drive the registers directly.
+
+### Flags
+
+<a id="gen-device.-o" />
+**`flag -o, --output DIR`**
+
+Where to write the package. Defaults to `device/<chip>`.
+
+<a id="gen-device.chip" />
+**`flag --chip NAME`**
+
+Override the package name, which otherwise comes from the SVD's own `<name>`.
 
 ---
 
@@ -759,28 +1163,78 @@ C traceback. See [Error handling](/lang/errors).
 
 ## Build cache
 
-To keep repeat builds fast, Gust caches the compiled **object files** (`.o`)
-for the C runtime and the stdlib package backings on disk. The first build
-that needs a given object compiles it; subsequent builds with the same
-configuration reuse it, so a warm build is effectively just the final link
-step. Cache writes are atomic (compile to a temp file, then `rename`), so the
-cache is safe to populate from the many parallel workers `gust test` spawns.
+To keep repeat builds fast, Gust caches build output on disk across two
+roots, split by whether the content is actually shareable across projects.
 
-**Location** — `$XDG_CACHE_HOME/gust/objcache/`, or `~/.cache/gust/objcache/`
-when `$XDG_CACHE_HOME` is unset. The cache is global (shared across all
-projects on the machine).
+**Global root** — `$XDG_CACHE_HOME/gust/objcache/`, or
+`~/.cache/gust/objcache/` when `$XDG_CACHE_HOME` is unset. Holds the compiled
+**object files** (`.o`) for the C runtime and the stdlib package backings, and
+the C transpiled from gustc's own `runtime/*.g` modules. These are
+content-keyed and identical for any two projects building with the same
+configuration, so this root is genuinely shared machine-wide — the first
+project to build a given config compiles it, and every other project just
+links against it.
 
-**Invalidation** — each object is keyed by a 64-bit FNV-1a hash over the
-**target triple, optimize level, cflags, C-compiler driver argv, the source
-file's content, and a fingerprint of all top-level `runtime/*.c` / `*.h`
-sources**. Changing any of those — editing a runtime or stdlib `.c` file,
-flipping `--release`/`--debug`, adding a `--cflag`, switching `--target` or
-`--cc` — misses and recompiles only what it should. You almost never need to
-clear the cache manually.
+**Project root** — `<project>/.gust/cache/`, next to the `.gust/deps` a
+project's dependencies already live in. Holds a program's merged packages
+translation unit, `gust test --target` device firmware images, and linked
+test binaries. These are all keyed by content that is already unique to one
+project's source tree, so despite being "cacheable" they were never actually
+shared — keeping them local means [`gust clean`](#clean) in one project can
+never delete another project's cache.
+
+Cache writes are atomic (compile to a temp file, then `rename`), so both
+roots are safe to populate from the many parallel workers `gust test` spawns.
+
+**Invalidation** — each object in the global root is keyed by a 64-bit
+FNV-1a hash over the **target triple, optimize level, cflags, C-compiler
+driver argv, the source file's content, and a fingerprint of all top-level
+`runtime/*.c` / `*.h` sources**. Changing any of those — editing a runtime or
+stdlib `.c` file, flipping `--release`/`--debug`, adding a `--cflag`,
+switching `--target` or `--cc` — misses and recompiles only what it should.
+You almost never need to clear either cache manually.
 
 **Manual clear** — when you *do* need a clean slate — bisecting a build bug,
-confirming a reproducer — use [`gust clean`](#clean). It removes the whole
-directory, which will simply be recreated on the next build.
+confirming a reproducer — use [`gust clean`](#clean) for the project root, or
+`gust clean --global` for the shared one. Either removes the whole directory,
+which will simply be recreated on the next build.
+
+### Prebuilt objects
+
+An install of Gust can ship the runtime and stdlib already compiled for one
+or more targets, so the very first build on a fresh checkout links instead of
+compiling the standard library from source. `gust package-prebuilt-stdlib`
+produces these objects; a build looks for them automatically — nothing to
+opt into.
+
+Because an object's cache key is derived purely from content (source bytes,
+flags, compiler identity, runtime tree fingerprint) and never from a path, a
+shipped object and a freshly compiled one with matching inputs land on the
+same key. A build that misses the warm global object cache checks the shipped
+objects next, before invoking the compiler at all; a hit there is copied into
+the global object cache and used exactly like one built locally — so
+`gust clean --global` never loses this shortcut for good, it just costs one
+copy to restore it. A project that overrides `[build].panic`,
+`[build].assertions`, or `[build].cflags` computes a different key and simply
+falls back to compiling from source, as it always did.
+
+**Location** — `<install>/prebuilt/<triple>/<optimize>/`, alongside the
+`runtime/` and `stdlib/` trees an install already has.
+
+### Test binaries
+
+[`gust test`](#test) caches one level up, keeping the whole linked binary for
+each test file. A file is looked up by a hash over the same build inputs as an
+object, plus the running compiler's own identity and the content of every
+source in the program's import closure — the file itself, each package it
+imports, and each package those import in turn. Editing one test file
+rebuilds that file; editing a stdlib package rebuilds the tests that reach it
+and no others; changing nothing rebuilds nothing, and the suite costs only the
+time the tests themselves take to run.
+
+The binaries live in `testbin/` under the project's own cache directory and
+are held to a fixed size budget, oldest first. [`gust clean`](#clean) (no
+`--global`) clears them along with the rest of the project cache.
 
 ## Cross-compilation
 
@@ -797,10 +1251,6 @@ gust build --target=aarch64-linux-gnu  -o app-arm    app.g
 `linux-musl` targets default to `--static`, producing single-file binaries
 that run on any Linux (no glibc dependency). macOS targets ignore
 `--static` — Apple doesn't support fully static binaries.
-
-For programs that `use requests`, the build needs a libcurl+mbedTLS vendor
-bundle for the target. It's built automatically on first use unless you
-passed `--no-auto-vendor`.
 
 The same `--target` flag also drives the two non-triple backends:
 `--target wasm` builds a browser bundle via Emscripten, and a Pico board name

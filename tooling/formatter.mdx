@@ -3,19 +3,23 @@ title: Formatter
 description: Format Gust source with the built-in opinionated gust format tool
 ---
 
-Gust ships with a built-in formatter. Run it with `gust format`. It reshapes layout only — never meaning — so a formatted file always compiles to the same program.
+Gust ships with a built-in formatter. Run it with `gust format`. It reshapes layout and deletes imports nothing in the file references, so a formatted file always compiles to the same program.
 
 ## Running the formatter
 
-Point `gust format` at a file or a directory:
+Point `gust format` at a file or a directory, or at several of either:
 
 ```bash
 gust format app.g                 # a single file
-gust format src/                  # recurse into every .g / .gml file under src/
+gust format src/                  # recurse into every .g file under src/
 gust format .                     # recurse in the current directory
+gust format app.g lib/ tests/     # several paths in one run
 ```
 
-The formatter handles both `.g` source and `.gml` markup files. A directory run walks the tree, collects every `.g` and `.gml` file, and formats them in parallel across your CPUs. Formatting is done in place, so back up or commit before the first run on a codebase you haven't touched in a while.
+A file named twice — on its own and inside a directory you also named — is
+formatted once.
+
+The formatter handles `.g` source files. A directory run walks the tree, collects every `.g` file, and formats them in parallel across your CPUs. Formatting is done in place, so back up or commit before the first run on a codebase you haven't touched in a while.
 
 When a run finishes it prints one line per rewritten file and a summary:
 
@@ -30,10 +34,10 @@ A single file that is already formatted prints `app.g already formatted`.
 
 Two checks keep the formatter from ever destroying content:
 
-- A `.g` file is lexed and parsed first. If it does not parse, the formatter reports the syntax error and leaves the file untouched rather than reshaping invalid source. (`.gml` markup is not Gust syntax and passes through this gate unchecked.)
+- A `.g` file is lexed and parsed first. If it does not parse, the formatter reports the syntax error and leaves the file untouched rather than reshaping invalid source.
 - A file containing a NUL byte is refused. The read would stop at the first NUL, so rewriting it would silently discard everything after it; the formatter prints an error and skips the file instead.
 
-Pointing `gust format` at a single file whose name does not end in `.g` or `.gml` is a usage error (exit code 2), as is a path that does not exist or a directory with no source files.
+Pointing `gust format` at a single file whose name does not end in `.g` is a usage error (exit code 2), as is a path that does not exist or a directory with no source files.
 
 ## Configuration
 
@@ -76,6 +80,18 @@ def main() -> none
     labels := {"x": 1, "y": 2}
 end
 ```
+
+### Compound assignment
+
+A statement that updates a variable or field from itself takes the compound form (`F023`):
+
+```gust
+i = i + 1          # becomes  i += 1
+p.x = p.x * 2      # becomes  p.x *= 2
+out = out + line   # becomes  out += line
+```
+
+`x OP= y` means `x = x OP (y)`, so the rewrite is made only when the right side already groups that way. A line such as `a = a - b - 1` (which computes `(a - b) - 1`) or `a = a + b if ok else 0` stays as written. Indexed targets (`a[i] = a[i] + 1`) are left alone. Add `F023` to `[lint] ignore` to turn the rewrite off.
 
 ### Indentation
 
@@ -153,9 +169,16 @@ Each contiguous run of `use` lines is reorganized:
 
 Module imports (`use pkg` and `use pkg as alias`) have no `from` clause and never merge.
 
-### Markup formatting
+### Unused imports
 
-Inside `.gml` files, each markup region is parsed and pretty-printed. An element renders on one line when the author wrote it on one line, and one element per line when the author spread its children across lines — authored line breaks are preserved rather than reflowed by width. Attribute spacing is normalized, self-closing tags render as `<tag />`, event bindings keep their `@` prefix (`@click={handler}`), and `<>` fragments are supported. Expression holes — `{expr}`, `{@ expr}`, and `{* expr}` — are preserved, and markup nested inside a hole is cleaned up too.
+An import nothing in the file references is deleted, whole statement at a time — the wrapped `use (a, b) from pkg` form goes with its continuation lines. This is the same removal `gust check --fix` applies to a `W0302` warning, so the two tools agree on what counts as unused.
+
+Two things keep an import you want:
+
+- `#gust-ignore W0302` on the import's own line, or `ignore = ["W0302"]` under `[lint]` for the whole project. The removal follows the warning, so whatever silences one silences the other.
+- An error anywhere in the file. A file that does not analyze cleanly keeps every import it has: an unresolved name can leave a genuinely used import looking unused, and the layout passes still run. Fix the errors and format again.
+
+Deciding this needs full name resolution, so the formatter runs the analyzer before it formats. It does that a directory at a time — the files of one directory share a namespace and resolve against one import closure, so a package pays for that closure once rather than once per file — and several directories at a time. Bodies of `use`d packages are not re-checked; whether *this* file uses an import does not depend on them. Editor formatting does not remove imports — see [the language server page](/tooling/lsp).
 
 ### Whitespace and newlines
 
@@ -165,13 +188,16 @@ Trailing whitespace is stripped from every line, trailing blank lines at end of 
 
 After formatting, any line still longer than `line_width` produces an `F018` warning (rendered `warning[F018]: …`, mirroring `gust check`). This is a warning, not a rewrite — the formatter never force-breaks a line mid-expression. Suppress it with `ignore = ["F018"]` under `[lint]`.
 
+A line is measured in characters, not bytes, so a comment carrying an em dash or a box-drawing rule counts the same as one written in ASCII.
+
 ## What the formatter does not do
 
 - Inline or extract functions, or otherwise rewrite logic.
 - Sort struct fields.
 - Break lines mid-expression. Long lines split only at bracketed groups; a line that is still too long after splitting (a long string literal, say) earns an `F018` warning rather than a forced break.
+- Delete anything other than an unreferenced import.
 
-This is on purpose. The formatter changes layout, not meaning, so you stay in control of the logic.
+This is on purpose. Beyond dropping imports the file does not use, the formatter changes layout, not meaning, so you stay in control of the logic.
 
 ## Checking without writing
 
@@ -181,7 +207,9 @@ Use `--check` to report what would change without rewriting anything. It exits `
 gust format --check .
 ```
 
-In `--check` mode the formatter also runs the analyzer over each file and reports its diagnostics — the `G`/`W` codes you would see from `gust check`, plus the formatter's own `F`-coded warnings — and prints `<file> needs formatting` for any file whose layout would change. This makes a single `gust format --check` a useful gate for both style and correctness.
+In `--check` mode the formatter also reports the analyzer's diagnostics — the `G`/`W` codes you would see from `gust check`, plus the formatter's own `F`-coded warnings — and prints `<file> needs formatting` for any file whose layout would change or that still carries an unused import. This makes a single `gust format --check` a useful gate for both style and correctness.
+
+Two limits on that gate, both because it is the *import* question the analysis is really there to answer. A directory whose files import nothing at all is reported on its syntax alone, since there is no import in it to be unused; and errors inside `use`d packages are not reported here. `gust check` is the tool that judges those.
 
 Alternatively, format in place and let your version control catch the diff:
 

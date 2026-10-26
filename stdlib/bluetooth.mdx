@@ -1,55 +1,445 @@
 ---
 title: bluetooth
-description: "A cross-platform Bluetooth Low Energy API covering both roles:"
+description: "Bluetooth Low Energy in both roles, through one set of objects:"
 ---
 
 ```gust
 use bluetooth
 ```
 
-A cross-platform Bluetooth Low Energy API covering both roles:
+Bluetooth Low Energy in both roles, through one set of objects:
 
-- Peripheral: advertise and expose a GATT server (services / characteristics
-  that a central can read, write, and subscribe to).
-- Central: scan for peripherals, connect, and read / write their
-  characteristics by UUID.
+- Central: `scan` for peripherals, `connect` to one, and drive its
+  characteristics.
+- Peripheral: `advertise` a GATT server other devices connect to.
 
-Backends are selected at the C-compile step. Both roles work on the Raspberry
-Pi Pico 2 W (CYW43 + BTstack) and on the Linux host: the central role uses
-BlueZ kernel sockets (HCI scan + L2CAP ATT), and the peripheral role registers
-a GATT server + LE advertisement with BlueZ over D-Bus (sd-bus). macOS and
-Windows are a compile-time error until their backends exist, rather than a
-misleading no-op. On Linux, both roles need privileges (HCI scanning needs
-CAP_NET_RAW + CAP_NET_ADMIN; registering a GATT app/advert with BlueZ is
-privileged too) — run as root. UUIDs use the `UUID` type: `UUID(value: 0x181A)`
-(16-bit) or `UUID(value: "0000180d-0000-1000-8000-00805f9b34fb")` (128-bit).
-Byte payloads are `list[integer]`.
+A connected peripheral is a `Device`; a served database belongs to a
+`Peripheral`. Both hand out the same `Service` and `Characteristic` types,
+because GATT is symmetric about the attribute — only which side initiates
+differs. A `Characteristic` is read with `read`, given a new value with `write`,
+and asked what the other end pushed with `received`, whichever role it came
+from.
 
-Scan for a peripheral, connect to the first result, and read a characteristic:
+Both roles work on the Raspberry Pi Pico 2 W (CYW43 + BTstack), on the ESP32
+(NimBLE), and on the Linux host: there the central role uses BlueZ kernel
+sockets (HCI scan + L2CAP ATT), and the peripheral role registers a GATT server
++ LE advertisement with BlueZ over D-Bus. Targets with no backend — macOS,
+Windows, the browser — have no `bluetooth` package, so an import there is a
+compile error rather than a misleading no-op. An ESP32 image needs a chip with
+a Bluetooth radio, which the S2 has not. On Linux, both roles need privileges
+(HCI scanning needs CAP_NET_RAW + CAP_NET_ADMIN; registering a GATT app and
+advertisement with BlueZ is privileged too) — run as root.
 
-**Examples**
+Serial connections over the classic radio are a surface of their own, since a
+device reached that way has no attributes to drive: `rfcomm_channel` asks a
+device which channel it serves a profile on, `rfcomm_connect` opens that
+channel, and `rfcomm_listen` serves one. Those exist on Linux only — the board
+backends serve the low-energy roles alone.
 
+UUIDs use the `UUID` type: `UUID(value: 0x181A)` (16-bit) or
+`UUID(value: "0000180d-0000-1000-8000-00805f9b34fb")` (128-bit). Payloads are
+`bytes`.
+
+Example — scan, connect to the first result, and read a characteristic:
 ```gust
 use bluetooth
 
 def main() -> none
-    HEART_RATE := bluetooth.UUID(value: "00002a37-0000-1000-8000-00805f9b34fb")
-    if bluetooth.scan(2000) > 0 and bluetooth.connect(bluetooth.scan_addr(0), 5000)
-        print(bluetooth.read(HEART_RATE, 2000))
-        bluetooth.disconnect()
+    HEART_RATE := bluetooth.UUID(value: 0x2A37)
+    for info in bluetooth.scan(2000)
+        with bluetooth.connect(info) as device
+            print(device.characteristic(HEART_RATE).read())
+        end
+        return
     end
 end
 ```
 
-**On this page:** [`UUID`](#UUID) · [`peripheral_init`](#bluetooth.peripheral_init) · [`raw_add_service`](#bluetooth.raw_add_service) · [`raw_add_characteristic`](#bluetooth.raw_add_characteristic) · [`peripheral_start`](#bluetooth.peripheral_start) · [`set_value`](#bluetooth.set_value) · [`notify`](#bluetooth.notify) · [`take_write`](#bluetooth.take_write) · [`is_connected`](#bluetooth.is_connected) · [`scan`](#bluetooth.scan) · [`scan_addr`](#bluetooth.scan_addr) · [`scan_name`](#bluetooth.scan_name) · [`scan_rssi`](#bluetooth.scan_rssi) · [`connect`](#bluetooth.connect) · [`raw_read`](#bluetooth.raw_read) · [`raw_write`](#bluetooth.raw_write) · [`disconnect`](#bluetooth.disconnect) · [`add_service`](#bluetooth.add_service) · [`add_characteristic`](#bluetooth.add_characteristic) · [`read`](#bluetooth.read) · [`write`](#bluetooth.write)
+<Note>
+Only available where `os == "linux" or has("ble")`.
+</Note>
+
+**On this page:** [`AdvertisingType`](#AdvertisingType) · [`AttributeOpcode`](#AttributeOpcode) · [`AttributeType`](#AttributeType) · [`AttributeError`](#AttributeError) · [`Property`](#Property) · [`AddressKind`](#AddressKind) · [`PacketKind`](#PacketKind) · [`EventCode`](#EventCode) · [`LeSubevent`](#LeSubevent) · [`ControllerCommand`](#ControllerCommand) · [`AdvertisingKind`](#AdvertisingKind) · [`ServiceData`](#ServiceData) · [`AdvertisingElement`](#AdvertisingElement) · [`CharacteristicDeclaration`](#CharacteristicDeclaration) · [`ServiceGroup`](#ServiceGroup) · [`AttributeInfo`](#AttributeInfo) · [`Notification`](#Notification) · [`UUID`](#UUID) · [`DeviceInfo`](#DeviceInfo) · [`Central`](#Central) · [`Characteristic`](#Characteristic) · [`Service`](#Service) · [`ServiceBuilder`](#ServiceBuilder) · [`HciEvent`](#HciEvent) · [`CommandOutcome`](#CommandOutcome) · [`AdvertisingReport`](#AdvertisingReport) · [`Device`](#Device) · [`Peripheral`](#Peripheral) · [`GattPeer`](#GattPeer) · [`GattServer`](#GattServer) · [`advertising_elements`](#bluetooth.advertising_elements) · [`advertising_name`](#bluetooth.advertising_name) · [`advertising_services`](#bluetooth.advertising_services) · [`advertising_solicited_services`](#bluetooth.advertising_solicited_services) · [`advertising_service_data`](#bluetooth.advertising_service_data) · [`advertising_flags`](#bluetooth.advertising_flags) · [`advertising_tx_power`](#bluetooth.advertising_tx_power) · [`advertising_appearance`](#bluetooth.advertising_appearance) · [`advertising_uri`](#bluetooth.advertising_uri) · [`advertising_manufacturer_data`](#bluetooth.advertising_manufacturer_data) · [`build_advertising_payload`](#bluetooth.build_advertising_payload) · [`uuid_from_wire`](#bluetooth.uuid_from_wire) · [`find`](#bluetooth.find) · [`scan`](#bluetooth.scan) · [`connect`](#bluetooth.connect) · [`advertise`](#bluetooth.advertise)
 
 ## Constants
 
 | Name | Type | Value |
 |------|------|-------|
-| `PROP_READ` | `integer` | `1` |
-| `PROP_WRITE` | `integer` | `2` |
-| `PROP_NOTIFY` | `integer` | `4` |
+| `ADVERTISING_MAX_PAYLOAD` | `integer` | `31` |
+| `ADVERTISING_GENERAL_DISCOVERABLE` | `integer` | `6` |
+| `ATTRIBUTE_FIRST_HANDLE` | `integer` | `1` |
+| `ATTRIBUTE_LAST_HANDLE` | `integer` | `65535` |
+| `BASE_UUID_SUFFIX` | `string` | `"-0000-1000-8000-00805F9B34FB"` |
+| `CONTROLLER_SUCCESS` | `integer` | `0` |
+| `BLUETOOTH_DOMAIN` | `integer` | `31` |
+| `CONTROLLER_PROTOCOL` | `integer` | `1` |
+| `L2CAP_PROTOCOL` | `integer` | `0` |
+| `USER_CHANNEL` | `integer` | `1` |
+| `ATTRIBUTE_CHANNEL` | `integer` | `4` |
+| `DEFAULT_ADAPTER` | `integer` | `0` |
+| `ADDRESS_BREDR` | `integer` | `0` |
+| `ADDRESS_PUBLIC` | `integer` | `1` |
+| `ADDRESS_RANDOM` | `integer` | `2` |
+| `ANY_ADDRESS` | `bytes` | defined in C |
+| `ADAPTER_REQUEST_KIND` | `integer` | `72` |
+| `ADAPTER_UP_REQUEST` | `integer` | `201` |
+| `ADAPTER_DOWN_REQUEST` | `integer` | `202` |
+| `CONTROLLER_PACKET_MAX` | `integer` | `512` |
+| `ATTRIBUTE_PACKET_MAX` | `integer` | `1024` |
+| `DEFAULT_TIMEOUT_MS` | `integer` | `5000` |
+
+## `AdvertisingType`
+
+<a id="AdvertisingType" />
+```gust
+enum AdvertisingType: integer
+```
+
+What one element of an advertising payload carries. Many more types are
+defined than a peripheral has room to broadcast, so an element's type code
+stays an `integer` and is compared against these.
+
+**Variants**
+
+- `flags = 1` — Discoverability and capability bits, which every connectable peripheral leads with.
+- `services_16_incomplete = 2` — Some of the 16-bit service UUIDs published.
+- `services_16_complete = 3` — All of them.
+- `services_32_incomplete = 4` — Some of the 32-bit service UUIDs published.
+- `services_32_complete = 5` — All of them.
+- `services_128_incomplete = 6` — Some of the 128-bit service UUIDs published.
+- `services_128_complete = 7` — All of them.
+- `name_shortened = 8` — As much of the device name as there was room for.
+- `name_complete = 9` — The whole device name.
+- `tx_power = 10` — The power the packet was transmitted at, in dBm, which with `rssi` estimates distance.
+- `services_16_solicited = 20` — 16-bit service UUIDs the device is looking for in a central rather than publishing itself.
+- `services_128_solicited = 21` — The same, as 128-bit UUIDs.
+- `service_data_16 = 22` — Data published under a 16-bit service UUID.
+- `appearance = 25` — What the device looks like, as an assigned category code.
+- `service_data_32 = 32` — Data published under a 32-bit service UUID.
+- `service_data_128 = 33` — Data published under a 128-bit service UUID.
+- `uri = 36` — A URI the device publishes, in the encoded form the specification defines.
+- `manufacturer_data = 255` — Vendor-defined bytes, opening with the company identifier the vendor is registered under.
+
+## `AttributeOpcode`
+
+<a id="AttributeOpcode" />
+```gust
+enum AttributeOpcode: integer
+```
+
+The packet kinds the attribute protocol defines, as the opcode byte
+every packet opens with. Requests are sent by the side that wants
+something; a response answers exactly one request; a notification or
+indication is pushed without being asked.
+
+**Variants**
+
+- `error_response = 1` — A request was refused, with a reason and the handle it concerned.
+- `find_information_request = 4`
+- `find_information_response = 5`
+- `read_by_type_request = 8` — Ask for every attribute of one type in a range.
+- `read_by_type_response = 9` — The attributes that request found.
+- `read_request = 10` — Ask for one attribute's value.
+- `read_response = 11` — That value.
+- `read_by_group_type_request = 16` — Ask for every grouping attribute of one type in a range.
+- `read_by_group_type_response = 17` — The groups that request found.
+- `write_request = 18` — Set one attribute's value.
+- `write_response = 19` — Acknowledgement that the write was applied.
+- `handle_value_notification = 27` — A pushed value needing no acknowledgement.
+- `handle_value_indication = 29` — A pushed value awaiting confirmation.
+- `handle_value_confirmation = 30` — That confirmation.
+
+## `AttributeType`
+
+<a id="AttributeType" />
+```gust
+enum AttributeType: integer
+```
+
+The attribute types a database is navigated by. Each is an attribute in
+its own right whose value describes what follows it.
+
+**Variants**
+
+- `primary_service = 10240` — Opens a service and spans every handle under it.
+- `characteristic_declaration = 10243` — Describes one characteristic and names the handle its value lives at.
+- `client_configuration = 10498` — A descriptor a central writes to subscribe to a characteristic's notifications.
+
+## `AttributeError`
+
+<a id="AttributeError" />
+```gust
+enum AttributeError: integer
+```
+
+Why a peer refused a request, as carried in an error response.
+
+**Variants**
+
+- `invalid_handle = 1` — No attribute lives at that handle.
+- `read_not_permitted = 2` — The attribute cannot be read.
+- `write_not_permitted = 3` — The attribute cannot be written.
+- `authentication_required = 5` — The link must be authenticated first.
+- `request_not_supported = 6` — The peer does not implement that request.
+- `attribute_not_found = 10` — No attribute in the range matched, which is also how a peer reports the end of a walk.
+- `invalid_value_length = 13` — The value written was the wrong size.
+- `encryption_required = 15` — The link must be encrypted first.
+- `insufficient_resources = 17` — The peer is out of room to serve the request.
+
+## `Property`
+
+<a id="Property" />
+```gust
+enum Property: integer
+```
+
+What a characteristic permits. The values are the GATT characteristic
+property bits, so a declaration read off the wire decodes straight into
+these.
+
+**Variants**
+
+- `broadcast = 1` — The value may be broadcast in advertising data.
+- `read = 2` — A central may read the value.
+- `write_without_response = 4` — A central may write without an acknowledgement.
+- `write = 8` — A central may write and is acknowledged.
+- `notify = 16` — A central may subscribe to unacknowledged value updates.
+- `indicate = 32` — A central may subscribe to acknowledged value updates.
+- `authenticated_signed_writes = 64` — Writes may carry a signature.
+- `extended = 128` — Further properties are declared in a descriptor.
+
+## `AddressKind`
+
+<a id="AddressKind" />
+```gust
+enum AddressKind: integer
+```
+
+How a device's address was assigned, which a connection has to name to
+reach it. The values are the address types used on the HCI wire.
+
+**Variants**
+
+- `public = 0` — A registered address, permanent to the device.
+- `random = 1` — A random address, which a privacy-conscious device rotates.
+
+## `PacketKind`
+
+<a id="PacketKind" />
+```gust
+enum PacketKind: integer
+```
+
+The indicator every packet on a controller channel opens with, naming
+which of the interface's packet formats follows.
+
+**Variants**
+
+- `command = 1` — A command from the host to the controller.
+- `acl = 2` — A data packet carrying a connection's payload either way.
+- `synchronous = 3` — A packet on a synchronous voice connection.
+- `event = 4` — A report from the controller to the host.
+- `iso = 5` — A packet on an isochronous stream, which carries audio.
+
+## `EventCode`
+
+<a id="EventCode" />
+```gust
+enum EventCode: integer
+```
+
+The events this package acts on. A controller emits many more, which
+`hci_parse_event` still decodes and callers skip, so an event code read off
+the wire stays an `integer` and is compared against these.
+
+**Variants**
+
+- `disconnection_complete = 5` — A connection has ended.
+- `command_complete = 14` — A command finished, carrying whatever it returns.
+- `command_status = 15` — A command was accepted and is still running.
+- `le_meta = 62` — A low-energy event, whose subevent code says which.
+
+## `LeSubevent`
+
+<a id="LeSubevent" />
+```gust
+enum LeSubevent: integer
+```
+
+Which low-energy event a `le_meta` event carries.
+
+**Variants**
+
+- `connection_complete = 1` — A connection has been established.
+- `advertising_report = 2` — One or more advertising packets were received.
+
+## `ControllerCommand`
+
+<a id="ControllerCommand" />
+```gust
+enum ControllerCommand: integer
+```
+
+The commands this package sends. The value is the opcode, which packs
+the command's group and its number within that group.
+
+**Variants**
+
+- `reset = 3075` — Return the controller to a known state.
+- `set_event_mask = 3073` — Choose which events the controller may report.
+- `le_set_event_mask = 8193` — Choose which low-energy events it may report.
+- `le_set_scan_parameters = 8203` — Set the scan type, interval and window.
+- `le_set_scan_enable = 8204` — Start or stop scanning.
+
+## `AdvertisingKind`
+
+<a id="AdvertisingKind" />
+```gust
+enum AdvertisingKind: integer
+```
+
+Which kind of advertising packet a report carries, which decides what
+can be done with the advertiser. The values are the event types used on the
+HCI wire.
+
+A device is worth passing to `connect` only when it sent a `connectable`
+or `directed` packet; the other kinds are broadcast-only, and a connection
+attempt against one times out rather than failing quickly.
+
+**Variants**
+
+- `connectable = 0` — Open to a connection from any central, and answers a scan request. The common case.
+- `directed = 1` — Open to a connection from one specific central, named in the packet, and carries no payload.
+- `scannable = 2` — Answers a scan request but accepts no connection.
+- `broadcast = 3` — Neither connectable nor scannable — a beacon.
+- `scan_response = 4` — The answer to a scan request, carrying whatever did not fit in the advertisement itself.
+- `unknown = 255` — An event type this package does not recognise.
+
+## `ServiceData`
+
+<a id="ServiceData" />
+Data an advertising payload publishes under a service UUID, which is
+where a beacon protocol built on an assigned service — rather than on a
+company identifier — carries its contents.
+
+```gust
+def ServiceData
+
+    uuid: UUID
+    data: bytes
+
+end
+```
+
+**Fields**
+
+- `uuid: UUID` — The service the data belongs to.
+- `data: bytes` — The bytes published under it, with the UUID already stripped.
+
+## `AdvertisingElement`
+
+<a id="AdvertisingElement" />
+One element of an advertising payload: a data-type code and the bytes
+carried under it, with the length prefix already consumed.
+
+```gust
+def AdvertisingElement
+
+    kind: integer
+    data: bytes
+
+end
+```
+
+**Fields**
+
+- `kind: integer` — The data-type code, e.g. `AdvertisingType.name_complete`.
+- `data: bytes` — The element's payload, which the type code gives meaning to.
+
+## `CharacteristicDeclaration`
+
+<a id="CharacteristicDeclaration" />
+One characteristic, as its declaration attribute describes it.
+
+```gust
+def CharacteristicDeclaration
+
+    declaration_handle: integer
+    properties: integer
+    value_handle: integer
+    uuid: UUID
+
+end
+```
+
+**Fields**
+
+- `declaration_handle: integer` — The handle the declaration itself sits at, which is where a walk resumes from to find the next one.
+- `properties: integer` — The declaration's property byte, decoded by `properties_from_mask`.
+- `value_handle: integer` — The handle the characteristic's value sits at, which is what reads and writes address.
+- `uuid: UUID` — The characteristic's UUID.
+
+## `ServiceGroup`
+
+<a id="ServiceGroup" />
+One primary service, as its group declaration describes it.
+
+```gust
+def ServiceGroup
+
+    start_handle: integer
+    end_handle: integer
+    uuid: UUID
+
+end
+```
+
+**Fields**
+
+- `start_handle: integer` — The first handle belonging to the service.
+- `end_handle: integer` — The last handle belonging to the service, which bounds a search for the characteristics under it.
+- `uuid: UUID` — The service's UUID.
+
+## `AttributeInfo`
+
+<a id="AttributeInfo" />
+One attribute and its type, as a find-information response reports it.
+Descriptors are found this way, having no declaration of their own.
+
+```gust
+def AttributeInfo
+
+    handle: integer
+    uuid: UUID
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The handle the attribute sits at.
+- `uuid: UUID` — The attribute's type, e.g. `AttributeType.client_configuration` for a subscription descriptor.
+
+## `Notification`
+
+<a id="Notification" />
+A value a peripheral pushed without being asked.
+
+```gust
+def Notification
+
+    handle: integer
+    data: bytes
+    acknowledge: bool
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The value handle the update belongs to, 0 when the packet was not a notification or indication.
+- `data: bytes` — The pushed value.
+- `acknowledge: bool` — Whether the peripheral expects a confirmation, which an indication asks for and a notification does not.
 
 ## `UUID`
 
@@ -57,8 +447,8 @@ end
 A Bluetooth UUID — a 16-bit code or a 128-bit string. Construct it with
 the `value` field.
 
-`print(u)` / f-strings render the canonical text, and `==` compares two
-UUIDs. Pass it to any API that takes a UUID (add_service / read / …).
+`print(u)` and f-strings render the canonical text, and `==` compares two
+UUIDs. Pass it to any API that takes a UUID.
 
 ```gust
 def UUID
@@ -72,6 +462,20 @@ end
 
 - `value: integer | string` — The UUID as a 16-bit integer code or a 128-bit dashed string.
 
+**Methods**
+
+<a id="UUID.wire" />
+```gust
+def UUID.wire() -> bytes
+```
+
+The UUID's big-endian wire bytes: two for a 16-bit code, sixteen for a
+128-bit one. This is the form the attribute layer matches on.
+
+**Raises**
+
+- `ValueError` — If the UUID holds a malformed string.
+
 **Examples**
 
 ```gust
@@ -79,300 +483,1061 @@ ENV  := bluetooth.UUID(value: 0x181A)
 UART := bluetooth.UUID(value: "6e400001-b5a3-f393-e0a9-e50e24dcca9e")
 ```
 
+## `DeviceInfo`
+
+<a id="DeviceInfo" />
+One advertising peripheral, as `scan` observed it. Pass it to `connect`
+to start talking to the device.
+
+A device broadcasts across several packets — an advertisement, and a scan
+response when asked — and `scan` folds all of them into one `DeviceInfo`.
+The parsed fields are the union of what those packets carried; `kind` and
+`rssi` describe the packets themselves, and `advertisement` and
+`scan_response` keep each payload as it arrived for anything this package
+does not parse.
+
+A field the device did not advertise is empty rather than absent, except
+where a legal value would be indistinguishable from absence: `flags`,
+`tx_power`, and `appearance` are `none` when unadvertised, since 0 means
+something in all three.
+
+```gust
+def DeviceInfo
+
+    address: string
+    address_kind: AddressKind
+    kind: AdvertisingKind
+    name: string
+    rssi: integer
+    tx_power: integer | none
+    services: list[UUID]
+    solicited_services: list[UUID]
+    service_data: list[ServiceData]
+    manufacturer_data: bytes
+    flags: integer | none
+    appearance: integer | none
+    uri: bytes
+    advertisement: bytes
+    scan_response: bytes
+
+end
+```
+
+**Fields**
+
+- `address: string` — The device's address, as "AA:BB:CC:DD:EE:FF". A device using a random address rotates it, so it is not a durable identity.
+- `address_kind: AddressKind` — How that address was assigned.
+- `kind: AdvertisingKind` — Which kind of advertising packet the device sent, which says whether `connect` can reach it at all. Never `scan_response`: a scan response is folded into the advertisement it answers.
+- `name: string` — The advertised name, or "" when the device advertises none. A complete name is preferred over a shortened one.
+- `rssi: integer` — Signal strength in dBm of the most recent packet, negative and closer to zero when nearer.
+- `tx_power: integer | none` — The power in dBm the device transmits at, or `none` when it does not say. `tx_power - rssi` is the path loss, which is what a distance estimate is built on.
+- `services: list[UUID]` — The service UUIDs the device advertises, which is often empty even on a device that publishes services once connected.
+- `solicited_services: list[UUID]` — Service UUIDs the device is looking for in a central, rather than ones it publishes.
+- `service_data: list[ServiceData]` — Data published under a service UUID, which is where a beacon protocol built on an assigned service carries its contents.
+- `manufacturer_data: bytes` — The raw manufacturer-specific advertising payload, which opens with the assigned company identifier.
+- `flags: integer | none` — The discoverability and capability bits, or `none` when the device advertises no flags element.
+- `appearance: integer | none` — The assigned appearance code, or `none` when unadvertised.
+- `uri: bytes` — The URI the device publishes, still encoded, or empty `bytes`.
+- `advertisement: bytes` — The advertising payload exactly as it arrived.
+- `scan_response: bytes` — The scan-response payload exactly as it arrived, or empty `bytes` when the device sent none.
+
+## `Central`
+
+<a id="Central" />
+The central connected to a served `Peripheral`, as the link reports it.
+`Peripheral.central` returns one for as long as that central stays
+connected.
+
+A peripheral learns far less about its peer than a central learns from
+scanning: it is told the address it was reached at, not the advertising
+payload behind it. A field the link does not carry is empty rather than
+absent, matching `DeviceInfo`.
+
+```gust
+def Central
+
+    address: string
+    address_kind: AddressKind
+    name: string
+    mtu: integer
+
+end
+```
+
+**Fields**
+
+- `address: string` — The central's address, as "AA:BB:CC:DD:EE:FF".
+- `address_kind: AddressKind` — How that address was assigned. A privacy-conscious central rotates a random address, so it is not a durable identity.
+- `name: string` — The central's name, or "" when the link does not name it. Only a backend whose Bluetooth daemon already knows the peer fills this; on a board the peripheral would have to turn around and read the central's own name characteristic to learn it.
+- `mtu: integer` — The negotiated attribute packet size in bytes, or 0 when the backend does not report one. A value longer than `mtu - 3` does not fit one packet and reaches the central truncated.
+
+## `Characteristic`
+
+<a id="Characteristic" />
+One GATT characteristic, on either side of a connection.
+
+Obtain one from `Device.characteristic`, `Service.characteristic`, or
+`ServiceBuilder.add_characteristic`. The three operations mean the same
+thing in both roles — read the current value, push a new one to the other
+end, take what the other end pushed at us — so code driving a
+characteristic does not care which side of the link it runs on.
+
+```gust
+def Characteristic
+
+    uuid: UUID
+    properties: list[Property]
+    _peer: GattPeer
+    _handle: integer
+
+end
+```
+
+**Fields**
+
+- `uuid: UUID` — The characteristic's UUID.
+- `properties: list[Property]` — What the characteristic permits.
+- `_peer: GattPeer` — The connection the attribute is reached through.
+- `_handle: integer` — The attribute's value handle in the peer's database.
+
+**Methods**
+
+<a id="Characteristic.read" />
+```gust
+def Characteristic.read() -> bytes
+```
+
+The characteristic's current value.
+
+On a remote characteristic this issues an attribute read and waits for the
+response, bounded by the owning `Device`'s timeout. On a local one it
+returns the stored value and cannot fail.
+
+**Raises**
+
+- `IOError` — If the peer is disconnected, or the read is refused or times out.
+
+---
+
+<a id="Characteristic.write" />
+```gust
+def Characteristic.write(data: bytes) -> none
+```
+
+Push `data` to the other end.
+
+On a remote characteristic this issues an attribute write and waits for the
+acknowledgement. On a local one `data` becomes the value a central reads,
+and is sent to any central subscribed to notifications — which is why a
+served characteristic needs no separate notify call.
+
+**Parameters**
+
+- `data` — The payload to write.
+
+**Raises**
+
+- `IOError` — If the peer is disconnected, or the write is refused or times out.
+
+---
+
+<a id="Characteristic.received" />
+```gust
+def Characteristic.received() -> bytes
+```
+
+Take what the other end last pushed to this characteristic, or empty
+`bytes` when nothing has arrived since the previous call.
+
+On a remote characteristic that is a notification from the peripheral,
+which `Device.subscribe` has to ask for first. On a local one it is a write
+from a connected central. Consuming, so each value is reported once.
+
+---
+
+<a id="Characteristic.permits" />
+```gust
+def Characteristic.permits(property: Property) -> bool
+```
+
+Whether the characteristic declares `property`.
+
+**Parameters**
+
+- `property` — The property to test for.
+
+---
+
+<a id="Characteristic.handle" />
+```gust
+def Characteristic.handle() -> integer
+```
+
+The attribute's value handle, for callers that speak the attribute
+protocol directly.
+
+## `Service`
+
+<a id="Service" />
+One GATT service and the characteristics under it — discovered from a
+connected peripheral, or declared on one this program serves.
+
+```gust
+def Service
+
+    uuid: UUID
+    characteristics: list[Characteristic]
+
+end
+```
+
+**Fields**
+
+- `uuid: UUID` — The service's UUID.
+- `characteristics: list[Characteristic]` — The characteristics the service publishes.
+
+**Methods**
+
+<a id="Service.characteristic" />
+```gust
+def Service.characteristic(uuid: UUID) -> Characteristic
+```
+
+The characteristic this service publishes under `uuid`.
+
+**Parameters**
+
+- `uuid` — UUID of the characteristic to look up.
+
+**Raises**
+
+- `ValueError` — If the service publishes no such characteristic.
+
+## `ServiceBuilder`
+
+<a id="ServiceBuilder" />
+A service being declared on a `Peripheral`. `Peripheral.add_service`
+returns one; add the service's characteristics to it before declaring the
+next service.
+
+```gust
+def ServiceBuilder
+
+    service: Service
+    _server: GattServer
+    _index: integer
+
+end
+```
+
+**Fields**
+
+- `service: Service` — The service as declared so far, which grows with each characteristic added.
+- `_server: GattServer` — The peripheral the declaration is being built on.
+- `_index: integer` — This service's position in that peripheral's database.
+
+**Methods**
+
+<a id="ServiceBuilder.add_characteristic" />
+```gust
+def ServiceBuilder.add_characteristic(
+    uuid: UUID,
+    properties: list[Property],
+) -> Characteristic
+```
+
+Add a characteristic to the service and return the handle used to serve
+it.
+
+**Parameters**
+
+- `uuid` — UUID of the characteristic to publish.
+- `properties` — What a connected central may do with it.
+
+**Raises**
+
+- `IOError` — If the peripheral has already started, another service has been begun since this builder was made, or its database is full.
+- `ValueError` — If `uuid` holds a malformed UUID string.
+
+## `HciEvent`
+
+<a id="HciEvent" />
+One event received from the controller, with its packet indicator and
+length prefix consumed.
+
+```gust
+def HciEvent
+
+    code: integer
+    params: bytes
+
+end
+```
+
+**Fields**
+
+- `code: integer` — The event code, e.g. `EventCode.command_complete`. Zero when the packet was not a well-formed event.
+- `params: bytes` — The event's parameters, whose layout the event code gives.
+
+## `CommandOutcome`
+
+<a id="CommandOutcome" />
+What a controller reported about a command it finished processing.
+
+```gust
+def CommandOutcome
+
+    opcode: integer
+    status: integer
+
+end
+```
+
+**Fields**
+
+- `opcode: integer` — The command the outcome belongs to, or 0 when the event was not a completion at all.
+- `status: integer` — The controller's status byte, `CONTROLLER_SUCCESS` when the command was accepted.
+
+## `AdvertisingReport`
+
+<a id="AdvertisingReport" />
+One advertising packet the controller received while scanning.
+
+```gust
+def AdvertisingReport
+
+    address: string
+    address_kind: AddressKind
+    kind: AdvertisingKind
+    rssi: integer
+    data: bytes
+
+end
+```
+
+**Fields**
+
+- `address: string` — The advertiser's address, as "AA:BB:CC:DD:EE:FF".
+- `address_kind: AddressKind` — How that address was assigned.
+- `kind: AdvertisingKind` — Which kind of advertising packet this is, which says whether the advertiser can be connected to.
+- `rssi: integer` — Signal strength in dBm.
+- `data: bytes` — The raw advertising payload, for `advertising_name` and its companions to interpret.
+
+## `Device`
+
+<a id="Device" />
+<Note>
+Only available on Linux.
+</Note>
+
+An open connection to a peripheral. `connect` returns one; `close`, or
+leaving the `with` block holding it, ends the connection.
+
+**Implements:** [`GattPeer`](#GattPeer)
+
+```gust
+def Device implements GattPeer
+
+    info: DeviceInfo
+    timeout_ms: integer
+    _fd: integer
+    _open: ref[bool]
+    _inbound: dict[integer, bytes]
+    _declarations: list[CharacteristicDeclaration]
+
+end
+```
+
+**Fields**
+
+- `info: DeviceInfo` — What the scan reported about the peripheral.
+- `timeout_ms: integer` — How long one attribute exchange may take before it raises.
+- `_fd: integer` — The connected attribute channel.
+- `_open: ref[bool]` — False once the connection has been closed locally. Held in a reference so every `Characteristic` handed out sees the close.
+- `_inbound: dict[integer, bytes]` — Values the peripheral pushed, by handle, awaiting collection by `Characteristic.received`.
+- `_declarations: list[CharacteristicDeclaration]` — The peripheral's characteristic declarations, walked on first use and kept for the life of the connection.
+
+**Methods**
+
+<a id="Device.characteristic" />
+```gust
+def Device.characteristic(uuid: UUID) -> Characteristic
+```
+
+The characteristic the peripheral publishes under `uuid`.
+
+The first lookup walks the peripheral's database; later ones are answered
+from what that walk found.
+
+**Parameters**
+
+- `uuid` — UUID of the characteristic to reach.
+
+**Raises**
+
+- `IOError` — If the connection is closed or the walk fails.
+- `ValueError` — If the peripheral publishes no such characteristic.
+
+---
+
+<a id="Device.services" />
+```gust
+def Device.services() -> list[Service]
+```
+
+The primary services the peripheral publishes, each with the
+characteristics declared under it.
+
+**Raises**
+
+- `IOError` — If the connection is closed or the walk fails.
+
+---
+
+<a id="Device.subscribe" />
+```gust
+def Device.subscribe(uuid: UUID, on: bool) -> none
+```
+
+Ask the peripheral to push updates to characteristic `uuid`, which
+`Characteristic.received` then collects.
+
+A characteristic that does not declare `Property.notify` has nothing to
+subscribe to, and the peripheral refuses.
+
+**Parameters**
+
+- `uuid` — UUID of the characteristic to subscribe to.
+- `on` — False to stop the updates again.
+
+**Raises**
+
+- `IOError` — If the connection is closed, the characteristic has no subscription descriptor, or the peripheral refuses.
+- `ValueError` — If the peripheral publishes no such characteristic.
+
+---
+
+<a id="Device.read_value" />
+```gust
+def Device.read_value(handle: integer) -> bytes
+```
+
+Read the attribute at `handle`. `Characteristic.read` is the surface for
+this.
+
+**Parameters**
+
+- `handle` — The attribute's value handle.
+
+**Raises**
+
+- `IOError` — If the connection is closed, or the read is refused or times out.
+
+---
+
+<a id="Device.write_value" />
+```gust
+def Device.write_value(handle: integer, data: bytes) -> none
+```
+
+Write `data` to the attribute at `handle`. `Characteristic.write` is the
+surface for this.
+
+**Parameters**
+
+- `handle` — The attribute's value handle.
+- `data` — The value to write.
+
+**Raises**
+
+- `IOError` — If the connection is closed, or the write is refused or times out.
+
+---
+
+<a id="Device.take_inbound" />
+```gust
+def Device.take_inbound(handle: integer) -> bytes
+```
+
+Take the update the peripheral last pushed for `handle`.
+`Characteristic.received` is the surface for this.
+
+An update may arrive while some other exchange is waiting for its response,
+in which case that exchange has already set it aside; the rest are read off
+the channel here, since a program that has subscribed and does nothing but
+poll issues no exchange for them to arrive during.
+
+**Parameters**
+
+- `handle` — The attribute's value handle.
+
+---
+
+<a id="Device.is_open" />
+```gust
+def Device.is_open() -> bool
+```
+
+True until the connection is closed locally. A peripheral that drops the
+link is noticed at the next exchange, which raises.
+
+---
+
+<a id="Device.close" />
+```gust
+def Device.close() -> none
+```
+
+End the connection. Idempotent, so closing twice is harmless and a
+`with` block may be left early.
+
+## `Peripheral`
+
+<a id="Peripheral" />
+<Note>
+Only available on Linux.
+</Note>
+
+A GATT server this program publishes. `advertise` returns one; declare
+its services, call `start`, and serve until `stop`.
+
+**Implements:** [`GattPeer`](#GattPeer), [`GattServer`](#GattServer)
+
+```gust
+def Peripheral implements GattPeer, GattServer
+
+    name: string
+    _handles: dict[string, integer]
+    _properties: dict[string, integer]
+    _services: ref[integer]
+    _started: ref[bool]
+
+end
+```
+
+**Fields**
+
+- `name: string` — The name advertised to scanning centrals.
+- `_handles: dict[string, integer]` — The value handle serving each declared characteristic, by UUID text.
+- `_properties: dict[string, integer]` — What each declared characteristic permits, by UUID text.
+- `_services: ref[integer]` — How many services have been declared. Held in a reference so a `ServiceBuilder` handed out earlier sees later declarations.
+- `_started: ref[bool]` — Whether the database has been published.
+
+**Methods**
+
+<a id="Peripheral.add_service" />
+```gust
+def Peripheral.add_service(uuid: UUID) -> ServiceBuilder
+```
+
+Begin a service. Add its characteristics to the returned builder before
+beginning another one.
+
+**Parameters**
+
+- `uuid` — UUID of the service to publish.
+
+**Raises**
+
+- `IOError` — If the database has already been published, or the daemon refuses another service.
+- `ValueError` — If `uuid` holds a malformed UUID string.
+
+---
+
+<a id="Peripheral.declare_characteristic" />
+```gust
+def Peripheral.declare_characteristic(
+    service_index: integer,
+    uuid: UUID,
+    properties: list[Property],
+) -> Characteristic
+```
+
+Add a characteristic to a service being declared.
+`ServiceBuilder.add_characteristic` is the surface for this.
+
+**Parameters**
+
+- `service_index` — The service to add to, which must be the one most recently begun.
+- `uuid` — UUID of the characteristic to publish.
+- `properties` — What a connected central may do with it.
+
+**Raises**
+
+- `IOError` — If the database has been published, the service is not the one still being declared, or the daemon refuses another characteristic.
+- `ValueError` — If `uuid` holds a malformed UUID string.
+
+---
+
+<a id="Peripheral.start" />
+```gust
+def Peripheral.start() -> none
+```
+
+Publish the declared database and begin advertising.
+
+Nothing is served before this, and nothing may be declared after it.
+
+**Raises**
+
+- `IOError` — If the daemon refuses the database or the advertisement, or if the server has already started.
+
+---
+
+<a id="Peripheral.characteristic" />
+```gust
+def Peripheral.characteristic(uuid: UUID) -> Characteristic
+```
+
+The characteristic this server publishes under `uuid`, for code that
+declared it elsewhere and only has the UUID at hand.
+
+**Parameters**
+
+- `uuid` — UUID of a characteristic already declared.
+
+**Raises**
+
+- `ValueError` — If no characteristic was declared under `uuid`.
+
+---
+
+<a id="Peripheral.is_connected" />
+```gust
+def Peripheral.is_connected() -> bool
+```
+
+True while a central is connected. A served characteristic may be
+written at any time regardless — an update with nobody subscribed simply
+goes nowhere.
+
+---
+
+<a id="Peripheral.central" />
+```gust
+def Peripheral.central() -> Central | none
+```
+
+The central currently connected, or `none` when none is.
+
+The daemon owns the link, so what it already knows about the peer comes
+back with it — including a name, which a board-side peripheral never
+learns. It does not report the negotiated attribute packet size, so `mtu`
+is 0.
+
+---
+
+<a id="Peripheral.read_value" />
+```gust
+def Peripheral.read_value(handle: integer) -> bytes
+```
+
+The value a central reading `handle` would receive right now.
+`Characteristic.read` is the surface for this.
+
+**Parameters**
+
+- `handle` — The value handle of a declared characteristic.
+
+---
+
+<a id="Peripheral.write_value" />
+```gust
+def Peripheral.write_value(handle: integer, data: bytes) -> none
+```
+
+Publish `data` as the value at `handle` and push it to any central
+subscribed to it. `Characteristic.write` is the surface for this.
+
+**Parameters**
+
+- `handle` — The value handle of a declared characteristic.
+- `data` — The value to publish.
+
+---
+
+<a id="Peripheral.take_inbound" />
+```gust
+def Peripheral.take_inbound(handle: integer) -> bytes
+```
+
+Take what a central last wrote to `handle`.
+`Characteristic.received` is the surface for this.
+
+**Parameters**
+
+- `handle` — The value handle of a declared characteristic.
+
+---
+
+<a id="Peripheral.stop" />
+```gust
+def Peripheral.stop() -> none
+```
+
+Withdraw the database and stop advertising. Idempotent.
+
+## `GattPeer`
+
+<a id="GattPeer" />
+The connection a `Characteristic` reaches its attribute through: a
+`Device` for a characteristic on a peripheral this program connected to, a
+`Peripheral` for one this program serves.
+
+Programs use `Characteristic.read`, `.write` and `.received` rather than
+calling these. Implementing this interface is what lets one pair of GATT
+types describe both roles.
+
+**Implemented by:** [`Device`](#Device), [`Peripheral`](#Peripheral)
+
+**Methods**
+
+<a id="GattPeer.read_value" />
+```gust
+def GattPeer.read_value(handle: integer) -> bytes
+```
+
+---
+
+<a id="GattPeer.write_value" />
+```gust
+def GattPeer.write_value(handle: integer, data: bytes) -> none
+```
+
+---
+
+<a id="GattPeer.take_inbound" />
+```gust
+def GattPeer.take_inbound(handle: integer) -> bytes
+```
+
+## `GattServer`
+
+<a id="GattServer" />
+The half of a `Peripheral` that builds its own attribute database.
+`ServiceBuilder` declares through this; a `Device` does not implement it,
+because a peripheral's database is fixed by the time a central sees it.
+
+**Implemented by:** [`Peripheral`](#Peripheral)
+
+**Methods**
+
+<a id="GattServer.declare_characteristic" />
+```gust
+def GattServer.declare_characteristic(
+    service_index: integer,
+    uuid: UUID,
+    properties: list[Property],
+) -> Characteristic
+```
+
 ## Functions
 
-<a id="bluetooth.peripheral_init" />
+<a id="bluetooth.advertising_elements" />
 ```gust
-def foreign peripheral_init(name: string) -> bool
+def advertising_elements(payload: bytes) -> list[AdvertisingElement]
 ```
 
-Bring up BLE as a peripheral with advertised device `name`. Call before
-add_service / add_characteristic. Returns true on success.
+Split an advertising payload into its elements, in the order the
+advertiser placed them.
+
+A payload arrives from a radio, so it may be truncated or malformed: an
+element claiming more bytes than remain ends the walk, and what was parsed
+before it is returned rather than discarded.
 
 **Parameters**
 
-- `name: string` — Device name to advertise.
+- `payload: bytes` — The raw advertising or scan-response payload.
 
 ---
 
-<a id="bluetooth.raw_add_service" />
+<a id="bluetooth.advertising_name" />
 ```gust
-def foreign raw_add_service(uuid: string, uuid_bytes: list[integer]) -> none
+def advertising_name(payload: bytes) -> string
 ```
 
-Internal parsed form of add_service.
+The device name an advertising payload carries, or "" when it carries
+none. A complete name is preferred over a shortened one.
 
 **Parameters**
 
-- `uuid: string` — Canonical UUID text for the service.
-- `uuid_bytes: list[integer]` — The UUID's big-endian wire bytes (2 or 16).
+- `payload: bytes` — The raw advertising or scan-response payload.
 
 ---
 
-<a id="bluetooth.raw_add_characteristic" />
+<a id="bluetooth.advertising_services" />
 ```gust
-def foreign raw_add_characteristic(
-    uuid: string,
-    uuid_bytes: list[integer],
-    properties: integer,
-) -> integer
+def advertising_services(payload: bytes) -> list[UUID]
 ```
 
-Internal parsed form of add_characteristic.
+The service UUIDs an advertising payload lists, in all three widths,
+complete lists and incomplete ones alike.
+
+A device that lists nothing here may still publish services once connected:
+31 bytes rarely hold a full list, and the specification lets a peripheral
+advertise none at all.
 
 **Parameters**
 
-- `uuid: string` — Canonical UUID text for the characteristic.
-- `uuid_bytes: list[integer]` — The UUID's big-endian wire bytes (2 or 16).
-- `properties: integer` — OR of PROP_* flags granting read/write/notify.
+- `payload: bytes` — The raw advertising or scan-response payload.
 
 ---
 
-<a id="bluetooth.peripheral_start" />
+<a id="bluetooth.advertising_solicited_services" />
 ```gust
-def foreign peripheral_start() -> none
+def advertising_solicited_services(payload: bytes) -> list[UUID]
 ```
 
-Finalize the GATT database and begin advertising. Call after all
-services / characteristics are added.
-
----
-
-<a id="bluetooth.set_value" />
-```gust
-def foreign set_value(handle: integer, data: list[integer]) -> none
-```
-
-Set the stored value a central reads from characteristic `handle`.
+The service UUIDs an advertising payload solicits — services the device
+wants to find in a central rather than ones it publishes itself.
 
 **Parameters**
 
-- `handle: integer` — Characteristic handle returned by add_characteristic.
-- `data: list[integer]` — Byte payload to store as the characteristic value.
+- `payload: bytes` — The raw advertising or scan-response payload.
 
 ---
 
-<a id="bluetooth.notify" />
+<a id="bluetooth.advertising_service_data" />
 ```gust
-def foreign notify(handle: integer, data: list[integer]) -> integer
+def advertising_service_data(payload: bytes) -> list[ServiceData]
 ```
 
-Push `data` to a subscribed central as a notification on `handle`.
-Returns 0 on success, non-zero if not connected / not subscribed.
+Every block of service data an advertising payload carries, in the order
+the advertiser placed them, each paired with the service UUID it was
+published under.
 
 **Parameters**
 
-- `handle: integer` — Characteristic handle returned by add_characteristic.
-- `data: list[integer]` — Byte payload to send as the notification.
+- `payload: bytes` — The raw advertising or scan-response payload.
 
 ---
 
-<a id="bluetooth.take_write" />
+<a id="bluetooth.advertising_flags" />
 ```gust
-def foreign take_write(handle: integer) -> list[integer]
+def advertising_flags(payload: bytes) -> integer | none
 ```
 
-Consume the most recent value a central wrote to `handle` (empty list if
-none since the last call). Poll this to react to writes.
+The discoverability and capability bits an advertising payload leads
+with, or `none` when it carries no flags element at all — which is itself
+meaningful, since a non-connectable beacon commonly omits it.
+
+`ADVERTISING_GENERAL_DISCOVERABLE` names the bits a connectable peripheral
+sets.
 
 **Parameters**
 
-- `handle: integer` — Characteristic handle returned by add_characteristic.
+- `payload: bytes` — The raw advertising or scan-response payload.
 
 ---
 
-<a id="bluetooth.is_connected" />
+<a id="bluetooth.advertising_tx_power" />
 ```gust
-def foreign is_connected() -> bool
+def advertising_tx_power(payload: bytes) -> integer | none
 ```
 
-True while a central is connected.
+The power in dBm the packet was transmitted at, or `none` when the
+payload does not say.
+
+Together with a `DeviceInfo`'s `rssi` this gives the path loss, which is
+the basis of every distance estimate — the difference, not either number
+alone, is what varies with range.
+
+**Parameters**
+
+- `payload: bytes` — The raw advertising or scan-response payload.
+
+---
+
+<a id="bluetooth.advertising_appearance" />
+```gust
+def advertising_appearance(payload: bytes) -> integer | none
+```
+
+The assigned appearance code an advertising payload carries, or `none`
+when it carries none. Zero is a legal code meaning "unknown", so it is
+distinct from absence.
+
+**Parameters**
+
+- `payload: bytes` — The raw advertising or scan-response payload.
+
+---
+
+<a id="bluetooth.advertising_uri" />
+```gust
+def advertising_uri(payload: bytes) -> bytes
+```
+
+The URI an advertising payload publishes, or empty `bytes` when it
+publishes none.
+
+The value is returned as encoded rather than as text: the first two octets
+are a scheme code from the assigned-numbers table, standing in for a prefix
+like "https:", and the rest is the remainder of the URI in UTF-8. Expanding
+the code needs that table, which the specification revises independently of
+this package, so the choice of table is left to the caller.
+
+**Parameters**
+
+- `payload: bytes` — The raw advertising or scan-response payload.
+
+---
+
+<a id="bluetooth.advertising_manufacturer_data" />
+```gust
+def advertising_manufacturer_data(payload: bytes) -> bytes
+```
+
+The manufacturer-specific bytes an advertising payload carries, opening
+with the two-byte company identifier, or empty `bytes` when it carries
+none.
+
+**Parameters**
+
+- `payload: bytes` — The raw advertising or scan-response payload.
+
+---
+
+<a id="bluetooth.build_advertising_payload" />
+```gust
+def build_advertising_payload(name: string, services: list[UUID]) -> bytes
+```
+
+The advertising payload a connectable peripheral broadcasts: the
+discoverable flags, the device name, and as many of the 16-bit service
+UUIDs as fit beside it.
+
+Everything is fitted into the 31 octets one packet holds. A name too long
+for what remains is carried shortened rather than dropped, and the service
+list is marked incomplete when it did not all fit. A 128-bit service UUID is
+left out: at 16 octets each they leave no room for a name, and a central
+finds those services once connected.
+
+**Parameters**
+
+- `name: string` — The device name to advertise.
+- `services: list[UUID]` — The service UUIDs the peripheral publishes.
+
+---
+
+<a id="bluetooth.uuid_from_wire" />
+```gust
+def uuid_from_wire(raw: bytes) -> UUID
+```
+
+The `UUID` a big-endian wire form denotes: a two-byte form becomes a
+16-bit code, a sixteen-byte form the dashed 128-bit text.
+
+A four-byte form is the 32-bit shorthand, which denotes the 128-bit UUID
+that places those four bytes ahead of the Bluetooth base UUID. One whose
+top two bytes are zero denotes the same UUID as the 16-bit code in its low
+two bytes, and is returned in that shorter form so it compares equal to the
+same service advertised either way.
+
+**Parameters**
+
+- `raw: bytes` — Two, four, or sixteen big-endian UUID bytes.
+
+**Raises**
+
+- `ValueError` — If `raw` is none of those three widths.
+
+---
+
+<a id="bluetooth.find" />
+```gust
+def find(name: string, service: UUID, timeout_ms: integer) -> list[DeviceInfo]
+```
+
+Scan for advertising peripherals and keep those matching every filter
+given. An omitted filter matches anything, so `find()` is `scan`.
+
+A peripheral that advertises no name, or none of its service UUIDs, cannot
+match a filter on what it does not advertise — filter on `name` only for
+devices known to publish one.
+
+**Parameters**
+
+- `name: string` — Advertised name to match exactly, or "" for any.
+- `service: UUID` — Advertised service UUID to match, or the reserved 16-bit code 0 for any.
+- `timeout_ms: integer` — Milliseconds to scan for.
 
 ---
 
 <a id="bluetooth.scan" />
 ```gust
-def foreign scan(timeout_ms: integer) -> integer
+def scan(timeout_ms: integer) -> list[DeviceInfo]
 ```
 
-Scan for advertising peripherals for `timeout_ms`. Returns the number
-found; read them with scan_addr / scan_name / scan_rssi (0 .. count-1).
+<Note>
+Only available on Linux.
+</Note>
+
+Listen for advertising peripherals for `timeout_ms` and return each one
+seen, most recently reported first seen once.
+
+A device that advertises repeatedly appears once, with the strongest
+information gathered across its packets: many advertising packets carry no
+name, so a name seen in any of them is kept.
+
+Scanning takes the adapter away from the system's Bluetooth daemon for the
+duration and hands it back before returning.
 
 **Parameters**
 
-- `timeout_ms: integer` — Milliseconds to scan for advertising peripherals.
+- `timeout_ms: integer` — Milliseconds to listen for.
 
----
+**Raises**
 
-<a id="bluetooth.scan_addr" />
-```gust
-def foreign scan_addr(index: integer) -> string
-```
-
-Address of scan result `index` ("aa:bb:cc:dd:ee:ff"), or "" if out of range.
-
-**Parameters**
-
-- `index: integer` — Zero-based scan result index.
-
----
-
-<a id="bluetooth.scan_name" />
-```gust
-def foreign scan_name(index: integer) -> string
-```
-
-Advertised name of scan result `index` ("" if none).
-
-**Parameters**
-
-- `index: integer` — Zero-based scan result index.
-
----
-
-<a id="bluetooth.scan_rssi" />
-```gust
-def foreign scan_rssi(index: integer) -> integer
-```
-
-Signal strength (dBm) of scan result `index`.
-
-**Parameters**
-
-- `index: integer` — Zero-based scan result index.
+- `IOError` — If the adapter cannot be claimed, which usually means the process lacks CAP_NET_RAW and CAP_NET_ADMIN — run as root.
 
 ---
 
 <a id="bluetooth.connect" />
 ```gust
-def foreign connect(addr: string, timeout_ms: integer) -> bool
+def connect(info: DeviceInfo, timeout_ms: integer) -> Device
 ```
 
-Connect to the peripheral at `addr` ("aa:bb:cc:dd:ee:ff"), waiting up to
-`timeout_ms`. Returns true on success.
+<Note>
+Only available on Linux.
+</Note>
+
+Open an attribute channel to the peripheral `info` names.
+
+Hold the result in a `with` block, which closes the connection on every
+exit path.
 
 **Parameters**
 
-- `addr: string` — Peripheral address as "aa:bb:cc:dd:ee:ff".
-- `timeout_ms: integer` — Milliseconds to wait for the connection.
-
----
-
-<a id="bluetooth.raw_read" />
-```gust
-def foreign raw_read(
-    uuid_bytes: list[integer],
-    timeout_ms: integer,
-) -> list[integer]
-```
-
-Internal parsed form of read.
-
-**Parameters**
-
-- `uuid_bytes: list[integer]` — Big-endian wire bytes (2 or 16) of the characteristic UUID.
-- `timeout_ms: integer` — Milliseconds to wait for the read.
-
----
-
-<a id="bluetooth.raw_write" />
-```gust
-def foreign raw_write(
-    uuid_bytes: list[integer],
-    data: list[integer],
-    timeout_ms: integer,
-) -> bool
-```
-
-Internal parsed form of write.
-
-**Parameters**
-
-- `uuid_bytes: list[integer]` — Big-endian wire bytes (2 or 16) of the characteristic UUID.
-- `data: list[integer]` — Byte payload to write.
-- `timeout_ms: integer` — Milliseconds to wait for the write.
-
----
-
-<a id="bluetooth.disconnect" />
-```gust
-def foreign disconnect() -> none
-```
-
-Disconnect from the peripheral.
-
----
-
-<a id="bluetooth.add_service" />
-```gust
-def add_service(uuid: UUID) -> none
-```
-
-Begin a GATT service with `uuid`. Characteristics added after this
-belong to it.
-
-**Parameters**
-
-- `uuid: UUID` — UUID of the service to begin.
+- `info: DeviceInfo` — A scan result, from `scan` or `find`.
+- `timeout_ms: integer` — Milliseconds to wait for the connection, and the bound on every attribute exchange over it afterwards.
 
 **Raises**
 
-- `ValueError` — If `uuid` holds a malformed UUID string.
+- `IOError` — If the peripheral cannot be reached, refuses the connection, or does not answer within `timeout_ms`.
+- `ValueError` — If `info` carries a malformed address.
 
 ---
 
-<a id="bluetooth.add_characteristic" />
+<a id="bluetooth.advertise" />
 ```gust
-def add_characteristic(uuid: UUID, properties: integer) -> integer
+def advertise(name: string) -> Peripheral
 ```
 
-Add a characteristic (OR of PROP_* flags) to the current service.
-Returns a handle used with set_value / notify / take_write.
+<Note>
+Only available on Linux.
+</Note>
+
+Open a GATT server that will advertise as `name`.
+
+The database is declared after this and published by `start`, so nothing is
+broadcast until then. Hold the result in a `with` block, which withdraws
+the server on every exit path.
 
 **Parameters**
 
-- `uuid: UUID` — UUID of the characteristic to add.
-- `properties: integer` — OR of PROP_* flags granting read/write/notify.
+- `name: string` — The name to advertise to scanning centrals.
 
 **Raises**
 
-- `ValueError` — If `uuid` holds a malformed UUID string.
-
----
-
-<a id="bluetooth.read" />
-```gust
-def read(uuid: UUID, timeout_ms: integer) -> list[integer]
-```
-
-Read the characteristic `uuid` from the connected peripheral (discovers
-it if needed). Empty list on error.
-
-**Parameters**
-
-- `uuid: UUID` — UUID of the characteristic to read.
-- `timeout_ms: integer` — Milliseconds to wait for the read.
-
-**Raises**
-
-- `ValueError` — If `uuid` holds a malformed UUID string.
-
----
-
-<a id="bluetooth.write" />
-```gust
-def write(uuid: UUID, data: list[integer], timeout_ms: integer) -> bool
-```
-
-Write `data` to characteristic `uuid` on the connected peripheral.
-Returns true on success.
-
-**Parameters**
-
-- `uuid: UUID` — UUID of the characteristic to write.
-- `data: list[integer]` — Byte payload to write.
-- `timeout_ms: integer` — Milliseconds to wait for the write.
-
-**Raises**
-
-- `ValueError` — If `uuid` holds a malformed UUID string.
+- `IOError` — If the system's Bluetooth daemon cannot be reached, which usually means it is not running or the process is not privileged.

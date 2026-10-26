@@ -257,6 +257,8 @@ The tested type may be:
 
 The type in a type pattern must be fully concrete — it may not contain `Any`, because a boxed value records no box-time tag for an `Any` element and so could never match exactly. When the scrutinee already has a concrete static type, a type-pattern arm folds to a compile-time constant; when it is boxed (`Any` or a union), the arm compares the value's box-time type tag at runtime.
 
+When the scrutinee is a union-typed variable, the arm **narrows** it: inside `case integer` the variable is a plain `integer`, with no cast. See [Matching a union](/lang/unions#matching-a-union).
+
 ## Wildcards and the default arm
 
 `else` is the catch-all. It runs when no `case` matched, and its presence makes any `match` complete regardless of the scrutinee type:
@@ -298,22 +300,37 @@ Add the missing cases or an `else` arm to resolve it. This applies to both backe
 
 ## Guards
 
-The parser accepts a trailing `if` condition on a `case`, and the analyzer type-checks it: the guard expression must be `bool`, and a guarded arm is excluded from exhaustiveness checking.
-
-However, code generation does **not** yet apply the guard at runtime. A guarded arm fires whenever its pattern matches, exactly as if the `if` clause were absent — the condition has no effect. Do not rely on guards. Branch inside the arm body instead:
+A `case` takes a trailing `if` condition. The arm fires only when its pattern matches *and* the guard holds; a failing guard hands the value on to the arms below it, exactly as a failing pattern does.
 
 ```gust
-match n
-    case 1
-        if n > 5
-            handle_large()
-        else
-            handle_small()
-        end
-    else
-        handle_other()
+match s
+    case Circle(r) if r > 10
+        return "big circle"
+    case Circle(r)
+        return "small circle"
+    case Rect(w, h) if w == h
+        return "square"
+    case Rect(w, h)
+        return "rect"
 end
 ```
+
+The guard is checked after the pattern's binds are in scope, so it can read them — `if r > 10` above sees the `r` its own arm bound.
+
+The guard expression must be `bool`, and a guarded arm is excluded from exhaustiveness checking: the compiler cannot know the condition holds, so the arms it guards do not count as covering their variants.
+
+## When you only care about one variant
+
+A `match` with a single `case` and an `else` is an `if` written the long way. Test the tag with `is` instead — the binding form opens the variant's payload for the branch, exactly as a `case` does:
+
+```gust
+if e is Ident(name, line)
+    return lookup(name, line)
+end
+return "?"
+```
+
+The full rules for binding with `is` are on [Tagged unions](/lang/unions#testing-one-variant-with-is).
 
 ## Other current limitations
 

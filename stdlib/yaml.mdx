@@ -1,15 +1,43 @@
 ---
 title: yaml
-description: "Line-cursor block parser"
+description: "A practical YAML parser that decodes a document into native Gust values"
 ---
 
 ```gust
 use yaml
 ```
 
-Line-cursor block parser. `YamlParser` advances over the source line by line,
-turning indentation-based block mappings and sequences, plain and block
-scalars, and document boundaries into native values.
+A practical YAML parser that decodes a document into native Gust values.
+`parse` reads the text and returns a `dict[string, Any]`; nested mappings
+become `dict[string, Any]`, sequences become `list[Any]`, and scalars become
+`integer` / `float` / `bool` / `string` / `none`.
+
+Read a value back with an `as` cast (`doc["port"] as integer`,
+`doc["nested"] as dict[string, Any]`, `doc["items"] as list[Any]`), test for a
+key with `in`, and fill a struct in one step with `doc as MyConfig` — each
+field is matched to the like-named key.
+
+This covers the YAML most configuration files use: block mappings and
+sequences (indentation-based and nested), flow collections (`[a, b]`,
+`{k: v}`), single/double-quoted and plain scalars with `null`/bool/int/
+float typing, literal (`|`) and folded (`>`) block scalars with chomping
+indicators, `#` comments, and `---` / `...` document markers (the first
+document is parsed). It is not a full YAML 1.2 implementation — anchors,
+aliases, tags, and multi-line plain scalars are out of scope, and the
+document root must be a mapping.
+
+**Examples**
+
+```gust
+use yaml
+
+def main() -> none
+    doc := yaml.parse("name: gust\nport: 8080\ntags:\n  - fast\n  - safe")
+    print(doc["name"] as string)        # gust
+    print(doc["port"] as integer)       # 8080
+    print((doc["tags"] as list[Any]).length)   # 2
+end
+```
 
 **On this page:** [`YamlParser`](#YamlParser) · [`FlowScanner`](#FlowScanner) · [`YamlError`](#YamlError) · [`parse`](#yaml.parse) · [`encode`](#yaml.encode)
 
@@ -226,6 +254,28 @@ Parse a `{...}` flow mapping into a `dict[string, Any]`.
 
 - `YamlError` — when the mapping is unterminated or an entry separator is missing.
 
+## `YamlError`
+
+<a id="YamlError" />
+Raised by `parse` on malformed YAML (for example an unterminated flow
+collection or a non-mapping document root).
+
+**Implements:** [`Error`](#Error)
+
+```gust
+def YamlError implements Error
+
+    message: string
+    line: integer
+
+end
+```
+
+**Fields**
+
+- `message: string` — human-readable description of the parse failure.
+- `line: integer` — the 1-based source line the error was detected on.
+
 ## Functions
 
 <a id="yaml.parse" />
@@ -282,21 +332,4 @@ def main() -> none
     doc: dict[string, Any] = {"name": "gust", "port": 8080}
     print(yaml.encode(doc))   # name: gust\nport: 8080
 end
-```
-
-## Errors
-
-<a id="YamlError" />
-```gust
-error YamlError(message: string, line: integer)
-```
-
-Raised by `parse` on malformed YAML (for example an unterminated flow
-collection or a non-mapping document root).
-
-Fields:
-
-```gust
-message: human-readable description of the parse failure.
-line: the 1-based source line the error was detected on.
 ```

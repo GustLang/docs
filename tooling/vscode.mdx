@@ -18,11 +18,12 @@ The Gust VS Code extension gives you the full editor experience: syntax highligh
   ```bash
   cd gust-extension/
   npm install
-  npm run package   # produces gust-<version>.vsix
+  npm run package                     # esbuild bundle → out/extension.js (minified)
+  npx @vscode/vsce package            # wrap it into gust-<version>.vsix
   code --install-extension gust-0.0.6.vsix
   ```
 
-  `npm run package` bundles the extension with esbuild and writes `gust-<version>.vsix`; substitute the version printed by the build. Use `npm run watch` while hacking on the extension to rebuild on save.
+  `npm run package` bundles the extension with esbuild into `out/extension.js`; packaging into an installable `.vsix` is a separate `vsce package` step. Substitute the version from `package.json` (currently `0.0.6`) in the install command. Use `npm run watch` while hacking on the extension to rebuild on save.
 
   </Tab>
 </Tabs>
@@ -30,10 +31,9 @@ The Gust VS Code extension gives you the full editor experience: syntax highligh
 The extension activates when a workspace contains a `gust.toml` (`workspaceContains:**/gust.toml`). It registers three file types:
 
 - `.g` — Gust source (aliases: `G`, `Gust`)
-- `.gml` — Gust Markup (aliases: `GML`, `Gust Markup`)
 - `gust.toml` — the project manifest, highlighted as TOML
 
-All three carry the Gust logo as their file icon.
+Both carry the Gust logo as their file icon.
 
 ## Requirements
 
@@ -57,7 +57,7 @@ When the language server starts it derives `$GUST_ROOT` by walking up from the `
 
 ### Syntax highlighting
 
-TextMate grammars ship for `.g`, `.gml`, and `gust.toml`, so highlighting works even before the language server has loaded. The `.g` grammar scopes keywords, control flow, `use` imports and decorators, primitive and collection types, struct/interface/enum declarations, operators (arithmetic, comparison, bitwise, assignment, the walrus `:=`, the pipe, and the `->` return arrow), numeric literals in every base (decimal, hex, octal, binary, and float), booleans and `none`, escape sequences, and regex literals. String highlighting covers plain `"..."` and triple-quoted `"""..."""` strings, and it highlights the interpolated expressions inside `{...}` in f-strings as real code rather than plain text.
+TextMate grammars ship for `.g` and `gust.toml`, so highlighting works even before the language server has loaded. The `.g` grammar scopes keywords, control flow, `use` imports and decorators, primitive and collection types, struct/interface/enum declarations, operators (arithmetic, comparison, bitwise, assignment, the walrus `:=`, the pipe, and the `->` return arrow), numeric literals in every base (decimal, hex, octal, binary, and float), booleans and `none`, escape sequences, and regex literals. String highlighting covers plain `"..."` and triple-quoted `"""..."""` strings, and it highlights the interpolated expressions inside `{...}` in f-strings as real code rather than plain text.
 
 The `!` concurrency suffix on `def!`/`for!`/`while!` gets its own scope, styled bold red so parallel code stands out at a glance. That color is applied through a bundled `editor.tokenColorCustomizations` rule.
 
@@ -75,7 +75,7 @@ The language configuration also provides:
 
 ### Snippets
 
-Typing a prefix in a `.g` or `.gml` file expands a full block with tab stops:
+Typing a prefix in a `.g` file expands a full block with tab stops:
 
 | Prefix | Expands to |
 |--------|------------|
@@ -98,7 +98,7 @@ Typing a prefix in a `.g` or `.gml` file expands a full block with tab stops:
 
 ### New-file template
 
-Creating an empty `.g` or `.gml` file scaffolds a runnable stub:
+Creating an empty `.g` file scaffolds a runnable stub:
 
 ```gust
 def main() -> none
@@ -110,7 +110,7 @@ The template is inserted only when the new file is empty, so it never overwrites
 
 ### REPL (interactive window)
 
-**Gust: Open REPL** opens a notebook-style interactive window beside the editor. Each cell accepts `g` or `gml` code, compiles and runs against a live session, and streams the result back into the cell output. Cells share state within a window and are numbered in execution order. Every REPL window gets its own session, and closing the window tears the session down. **Gust: Reset REPL Session** clears the active window's state without closing it.
+**Gust: Open REPL** opens a notebook-style interactive window beside the editor. Each cell accepts Gust code, compiles and runs against a live session, and streams the result back into the cell output. Cells share state within a window and are numbered in execution order. Every REPL window gets its own session, and closing the window tears the session down. **Gust: Reset REPL Session** clears the active window's state without closing it.
 
 ## Settings
 
@@ -122,7 +122,7 @@ The template is inserted only when the new file is empty, so it never overwrites
 
 The extension contributes these commands (Command Palette → "Gust:"):
 
-- **Gust: Run File in Terminal** — runs `gustc run` on the active `.g`/`.gml` file in a reused "Gust" integrated terminal, saving the file first if it is dirty. Also available from the editor title bar's run button, the editor context menu, and the explorer context menu.
+- **Gust: Run File in Terminal** — runs `gustc run` on the active `.g` file in a reused "Gust" integrated terminal, saving the file first if it is dirty. Also available from the editor title bar's run button, the editor context menu, and the explorer context menu.
 - **Gust: Open REPL** — opens the interactive window described above. Also available from the editor title bar on `.g` files.
 - **Gust: Reset REPL Session** — clears the active REPL session's state. Shown in the Command Palette only while a notebook editor is active.
 - **Gust: Restart Language Server** — stops and respawns `gustc lsp`.

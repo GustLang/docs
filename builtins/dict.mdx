@@ -60,6 +60,20 @@ Triggered by `d as bool`. True for non-empty dicts.
 
 ---
 
+<a id="dict.__eq" />
+```gust
+def dict.__eq(other: dict[K, V]) -> bool
+```
+
+Triggered by `==` and `!=` (auto-negated). Two dicts are equal when they
+hold the same keys mapped to equal values.
+
+**Parameters**
+
+- `other: dict[K, V]` — The dict to compare against.
+
+---
+
 <a id="dict.__length" />
 ```gust
 def dict.__length() -> integer
@@ -129,7 +143,9 @@ def dict.get(key: K) -> V | none
 ```
 
 Look up `key`, returning `V | none`. Returns `none` when the key is missing,
-so callers must narrow with `is not none` before using the value.
+so callers must narrow with `is not none` before using the value. With a
+second argument, `get(key, default)` returns `default` for a missing key and
+the result is a plain `V`.
 
 **Parameters**
 
@@ -188,3 +204,16 @@ Copy every entry from `other` into this dict. Existing keys are overwritten.
 **Parameters**
 
 - `other: dict[K, V]` — The dict whose entries are copied into this dict.
+
+---
+
+<a id="dict.contains" />
+```gust
+def dict.contains(key: K) -> bool
+```
+
+True if `key` has an entry in the dict. The method form of `key in d`.
+
+**Parameters**
+
+- `key: K` — The key whose presence is being tested.

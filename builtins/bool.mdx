@@ -23,7 +23,8 @@ Operators:
 Casting:
 ```gust
   x as string         # "true" or "false"
-  x as integer        # not supported on bool itself; use `1 if x else 0`
+  x as integer        # 1 if true, 0 if false
+  x as float          # 1.0 if true, 0.0 if false
 ```
 
 ## Dunders
@@ -34,6 +35,24 @@ def bool.__string() -> string
 ```
 
 Triggered by `print(b)` and f-string interpolation. Returns "true" or "false".
+
+---
+
+<a id="bool.__integer" />
+```gust
+def bool.__integer() -> integer
+```
+
+Triggered by `b as integer`. Returns 1 for `true`, 0 for `false`.
+
+---
+
+<a id="bool.__float" />
+```gust
+def bool.__float() -> float
+```
+
+Triggered by `b as float`. Returns 1.0 for `true`, 0.0 for `false`.
 
 ---
 
@@ -52,6 +71,58 @@ def bool.__eq(other: bool) -> bool
 ```
 
 Triggered by `==` and `!=` (auto-negated).
+
+**Parameters**
+
+- `other: bool` — The bool to compare against.
+
+---
+
+<a id="bool.__lt" />
+```gust
+def bool.__lt(other: bool) -> bool
+```
+
+Triggered by `<`. `false` orders before `true`.
+
+**Parameters**
+
+- `other: bool` — The bool to compare against.
+
+---
+
+<a id="bool.__lte" />
+```gust
+def bool.__lte(other: bool) -> bool
+```
+
+Triggered by `<=`.
+
+**Parameters**
+
+- `other: bool` — The bool to compare against.
+
+---
+
+<a id="bool.__gt" />
+```gust
+def bool.__gt(other: bool) -> bool
+```
+
+Triggered by `>`.
+
+**Parameters**
+
+- `other: bool` — The bool to compare against.
+
+---
+
+<a id="bool.__gte" />
+```gust
+def bool.__gte(other: bool) -> bool
+```
+
+Triggered by `>=`.
 
 **Parameters**
 

@@ -1,13 +1,13 @@
 ---
 title: barcode
-description: "A pure-Gust 1D (linear) barcode encoder"
+description: "A pure-Gust barcode encoder: the linear symbologies below, and QR"
 ---
 
 ```gust
 use barcode
 ```
 
-A pure-Gust 1D (linear) barcode encoder.
+A pure-Gust barcode encoder: the linear symbologies below, and QR.
 
 Every encoder turns a payload string into a `Barcode` — a symbology name, the
 human-readable text, and a *module string*: one character per module where `1`
@@ -29,6 +29,9 @@ UPC-A     — `upca`: 11 digits plus a computed check digit (an EAN-13 with a
             leading zero).
 ```
 
+QR is two-dimensional, so `qr` hands back a `QrCode` rather than a `Barcode` —
+a square grid of modules, rendered by the same four renderers. See `qr.g`.
+
 Malformed input — an unsupported character, a wrong digit count, or a bad
 check digit — raises `BarcodeError`.
 
@@ -41,7 +44,7 @@ print(bc.to_ascii())
 bc.save("svg", "book.svg")
 ```
 
-**On this page:** [`Barcode`](#Barcode) · [`BarcodeError`](#BarcodeError) · [`encode`](#barcode.encode) · [`code39`](#barcode.code39) · [`code39_checked`](#barcode.code39_checked) · [`code128`](#barcode.code128) · [`ean13`](#barcode.ean13) · [`upca`](#barcode.upca) · [`ean8`](#barcode.ean8)
+**On this page:** [`Barcode`](#Barcode) · [`QrCode`](#QrCode) · [`QrField`](#QrField) · [`BarcodeError`](#BarcodeError) · [`encode`](#barcode.encode) · [`code39`](#barcode.code39) · [`code39_checked`](#barcode.code39_checked) · [`code128`](#barcode.code128) · [`ean13`](#barcode.ean13) · [`upca`](#barcode.upca) · [`ean8`](#barcode.ean8) · [`qr`](#barcode.qr) · [`wifi_join`](#barcode.wifi_join) · [`qr_format_bits`](#barcode.qr_format_bits)
 
 ## Constants
 
@@ -56,6 +59,20 @@ bc.save("svg", "book.svg")
 | `EAN_G` | `list[string]` | `["0100111", "0110011", "0011011", "0100001", "0011101", "011…]` |
 | `EAN_R` | `list[string]` | `["1110010", "1100110", "1101100", "1000010", "1011100", "100…]` |
 | `EAN13_PARITY` | `list[string]` | `["000000", "001011", "001101", "001110", "010011", "011001",…]` |
+| `QR_VERSION_MAX` | `integer` | `6` |
+| `QR_DATA_CODEWORDS` | `list[integer]` | `[16, 28, 44, 64, 86, 108]` |
+| `QR_EC_CODEWORDS` | `list[integer]` | `[10, 16, 26, 18, 24, 16]` |
+| `QR_BLOCK_COUNT` | `list[integer]` | `[1, 1, 1, 2, 2, 4]` |
+| `QR_ALIGNMENT_CENTER` | `list[integer]` | `[0, 18, 22, 26, 30, 34]` |
+| `QR_MODE_BYTE` | `integer` | `4` |
+| `QR_PAD_A` | `integer` | `236` |
+| `QR_PAD_B` | `integer` | `17` |
+| `QR_LEVEL_M_BITS` | `integer` | `0` |
+| `QR_FORMAT_GENERATOR` | `integer` | `1335` |
+| `QR_FORMAT_MASK` | `integer` | `21522` |
+| `QR_FIELD_MODULUS` | `integer` | `285` |
+| `QR_MASK_COUNT` | `integer` | `8` |
+| `QR_FINDER_LIKE` | `string` | `"10111010000"` |
 
 ## `Barcode`
 
@@ -230,6 +247,252 @@ barcode.ean13("400638133393").save("svg", "book.svg")
 Overwrites any existing file at `path`.
 </Warning>
 
+## `QrCode`
+
+<a id="QrCode" />
+A finished QR symbol.
+
+```gust
+def QrCode
+
+    text: string
+    size: integer
+    modules: string
+
+end
+```
+
+**Fields**
+
+- `text: string` — the payload the symbol carries.
+- `size: integer` — the symbol's width in modules, which is also its height.
+- `modules: string` — one character per module in row-major order, `1` for dark and `0` for light. This is the canonical form every renderer draws from, as it is for `Barcode`.
+
+**Methods**
+
+<a id="QrCode.dark" />
+```gust
+def QrCode.dark(x: integer, y: integer) -> bool
+```
+
+Whether the module at `x`, `y` is dark, counting from the top-left
+corner of the symbol itself — the quiet zone around it belongs to whoever
+is drawing.
+
+**Parameters**
+
+- `x` — column, from 0.
+- `y` — row, from 0.
+
+---
+
+<a id="QrCode.module_count" />
+```gust
+def QrCode.module_count() -> integer
+```
+
+The number of modules in the symbol, counting both directions.
+
+---
+
+<a id="QrCode.to_bits" />
+```gust
+def QrCode.to_bits() -> string
+```
+
+The module rows as `1`/`0` lines, top row first.
+
+---
+
+<a id="QrCode.to_ascii" />
+```gust
+def QrCode.to_ascii() -> string
+```
+
+Render the symbol as block characters for terminal display, with the
+four-module quiet zone the specification asks for.
+
+Two characters are drawn per module, since a terminal cell is about twice
+as tall as it is wide and a symbol drawn one-for-one is too squat to scan.
+
+---
+
+<a id="QrCode.to_ascii_with" />
+```gust
+def QrCode.to_ascii_with(quiet_zone: integer) -> string
+```
+
+Render the symbol as block characters, two per module.
+
+**Parameters**
+
+- `quiet_zone` — light margin, in modules, added on every side.
+
+---
+
+<a id="QrCode.to_svg" />
+```gust
+def QrCode.to_svg() -> string
+```
+
+Render the symbol as an SVG document: 8px modules and the four-module
+quiet zone the specification asks for.
+
+---
+
+<a id="QrCode.to_svg_with" />
+```gust
+def QrCode.to_svg_with(module_size: integer, quiet_zone: integer) -> string
+```
+
+Render the symbol as an SVG document.
+
+Dark modules are drawn as one rectangle each on a light background, which
+every renderer draws identically and no viewer needs a font for.
+
+**Parameters**
+
+- `module_size` — width and height in pixels of a single module.
+- `quiet_zone` — light margin, in modules, added on every side.
+
+---
+
+<a id="QrCode.to_pbm" />
+```gust
+def QrCode.to_pbm() -> string
+```
+
+Render the symbol as a plain (P1) Netpbm bitmap: each module 4px square,
+with the four-module quiet zone the specification asks for.
+
+---
+
+<a id="QrCode.to_pbm_with" />
+```gust
+def QrCode.to_pbm_with(scale: integer, quiet_zone: integer) -> string
+```
+
+Render the symbol as a plain (P1) Netpbm bitmap.
+
+In PBM a `1` pixel is black and `0` is white, matching the module string.
+
+**Parameters**
+
+- `scale` — width and height in pixels of a single module.
+- `quiet_zone` — light margin, in modules, added on every side.
+
+---
+
+<a id="QrCode.render" />
+```gust
+def QrCode.render(format: string) -> string
+```
+
+Render the symbol to a string in the named `format`, using each
+renderer's defaults.
+
+**Parameters**
+
+- `format` — one of "svg", "pbm", "ascii" (alias "txt"/"text"), or "bits".
+
+**Raises**
+
+- `BarcodeError` — when `format` is not a recognized render format.
+
+---
+
+<a id="QrCode.save" />
+```gust
+def QrCode.save(format: string, path: string) -> none
+```
+
+Render the symbol in `format` and write it to `path`.
+
+**Parameters**
+
+- `format` — see `render` — "svg", "pbm", "ascii" (alias "txt"/"text"), or "bits".
+- `path` — the file to write.
+
+**Raises**
+
+- `BarcodeError` — when `format` is not a recognized render format.
+- `IOError` — when the file cannot be written.
+
+<Warning>
+Overwrites any existing file at `path`.
+</Warning>
+
+## `QrField`
+
+<a id="QrField" />
+Arithmetic in GF(256), as the exponential and logarithm tables every
+multiplication in it is a pair of lookups into.
+
+```gust
+def QrField
+
+    exp: list[integer]
+    log: list[integer]
+
+end
+```
+
+**Fields**
+
+- `exp: list[integer]` — the powers of the field's primitive element, listed twice over so that a sum of two logarithms never has to be reduced.
+- `log: list[integer]` — the inverse of `exp`, indexed by field element.
+
+**Methods**
+
+<a id="QrField.multiply" />
+```gust
+def QrField.multiply(a: integer, b: integer) -> integer
+```
+
+The product of `a` and `b` in the field.
+
+**Parameters**
+
+- `a` — one factor.
+- `b` — the other.
+
+---
+
+<a id="QrField.generator" />
+```gust
+def QrField.generator(degree: integer) -> list[integer]
+```
+
+The generator polynomial of the given degree — the product of
+`x - a^i` for each `i` below it — as `degree` coefficients from the highest
+power down, with the leading 1 left implicit.
+
+The remainder step divides by exactly these coefficients, so the length
+matters: a polynomial carrying its leading 1 would produce one correction
+codeword too many and shift every one of them.
+
+**Parameters**
+
+- `degree` — how many error-correction codewords the polynomial produces.
+
+---
+
+<a id="QrField.remainder" />
+```gust
+def QrField.remainder(
+    data: list[integer],
+    generator: list[integer],
+) -> list[integer]
+```
+
+The error-correction codewords for one block: `data` as a polynomial,
+divided by `generator`, with the remainder handed back.
+
+**Parameters**
+
+- `data` — the block's data codewords.
+- `generator` — the generator polynomial for this many correction codewords.
+
 ## Functions
 
 <a id="barcode.encode" />
@@ -358,6 +621,69 @@ matches the computed check.
 **Raises**
 
 - `BarcodeError` — when `data` is not 7 or 8 digits, or the supplied 8th check digit is wrong.
+
+---
+
+<a id="barcode.qr" />
+```gust
+def qr(data: string) -> QrCode
+```
+
+Encode `data` as the smallest QR symbol that holds it.
+
+**Parameters**
+
+- `data: string` — what a reader should come away with. Taken as bytes, so anything outside ASCII is encoded as its UTF-8 sequence and costs a byte per unit.
+
+**Raises**
+
+- `BarcodeError` — when `data` is longer than a version 6 symbol holds.
+
+**Examples**
+
+```gust
+barcode.qr("WIFI:T:nopass;S:Setup-4C21;P:;;").save("pbm", "join.pbm")
+```
+
+---
+
+<a id="barcode.wifi_join" />
+```gust
+def wifi_join(ssid: string, password: string) -> string
+```
+
+The payload a phone camera reads as "join this network" — the `WIFI:`
+form every mainstream camera app understands — ready to hand to `qr`.
+
+**Parameters**
+
+- `ssid: string` — the network name.
+- `password: string` — the passphrase, or "" for an open network.
+
+**Examples**
+
+```gust
+barcode.qr(barcode.wifi_join("Setup-4C21", "")).save("svg", "join.svg")
+```
+
+---
+
+<a id="barcode.qr_format_bits" />
+```gust
+def qr_format_bits(mask: integer) -> integer
+```
+
+The fifteen bits of format information a level M symbol drawn with
+`mask` carries: five bits of level and mask, ten of BCH remainder, the
+whole exclusive-ored with the specification's constant so that a blank
+symbol is not a valid one.
+
+Exposed because it is the one part of a symbol that can be checked against
+the specification's own table without a reader.
+
+**Parameters**
+
+- `mask: integer` — which of the eight masks the symbol is drawn with.
 
 ## Errors
 

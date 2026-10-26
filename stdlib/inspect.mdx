@@ -49,7 +49,7 @@ use SymbolKind from inspect
 if inspect.kind(item) == SymbolKind.Function ...
 ```
 
-**On this page:** [`SymbolKind`](#SymbolKind) · [`Parameter`](#Parameter) · [`Signature`](#Signature) · [`DocEntry`](#DocEntry) · [`doc`](#inspect.doc) · [`name`](#inspect.name) · [`kind`](#inspect.kind) · [`line`](#inspect.line) · [`file`](#inspect.file) · [`signature`](#inspect.signature) · [`params`](#inspect.params) · [`param_types`](#inspect.param_types) · [`return_type`](#inspect.return_type) · [`fields`](#inspect.fields) · [`field_types`](#inspect.field_types) · [`methods`](#inspect.methods) · [`variants`](#inspect.variants) · [`members`](#inspect.members) · [`describe`](#inspect.describe) · [`entries`](#inspect.entries) · [`is_function`](#inspect.is_function) · [`is_struct`](#inspect.is_struct) · [`is_enum`](#inspect.is_enum) · [`is_interface`](#inspect.is_interface) · [`is_error`](#inspect.is_error) · [`is_type`](#inspect.is_type) · [`is_method`](#inspect.is_method) · [`decorators`](#inspect.decorators)
+**On this page:** [`SymbolKind`](#SymbolKind) · [`Parameter`](#Parameter) · [`Signature`](#Signature) · [`DocEntry`](#DocEntry) · [`doc`](#inspect.doc) · [`name`](#inspect.name) · [`kind`](#inspect.kind) · [`line`](#inspect.line) · [`cfg`](#inspect.cfg) · [`file`](#inspect.file) · [`signature`](#inspect.signature) · [`params`](#inspect.params) · [`param_types`](#inspect.param_types) · [`return_type`](#inspect.return_type) · [`fields`](#inspect.fields) · [`field_types`](#inspect.field_types) · [`methods`](#inspect.methods) · [`variants`](#inspect.variants) · [`members`](#inspect.members) · [`describe`](#inspect.describe) · [`entries`](#inspect.entries) · [`is_function`](#inspect.is_function) · [`is_struct`](#inspect.is_struct) · [`is_enum`](#inspect.is_enum) · [`is_interface`](#inspect.is_interface) · [`is_error`](#inspect.is_error) · [`is_type`](#inspect.is_type) · [`is_method`](#inspect.is_method) · [`decorators`](#inspect.decorators)
 
 ## `SymbolKind`
 
@@ -157,6 +157,8 @@ def DocEntry
     is_foreign: bool
     method_is_private: list[bool]
     method_is_foreign: list[bool]
+    cfg: string
+    method_cfg: list[string]
 
 end
 ```
@@ -174,7 +176,7 @@ end
 - `line: integer` — The source line where the declaration appears.
 - `file: string` — The source file the declaration was defined in.
 - `const_type: string` — A constant's declared type (empty for non-constants).
-- `const_value: string` — A constant's source-level value (empty for non-constants).
+- `const_value: string` — A constant's source-level value (empty for non-constants and for a foreign constant, whose value its C source defines).
 - `method_signatures: list[string]` — The `name(p: t) -> ret` spelling per entry in `methods`.
 - `method_docs: list[string]` — The docstring per entry in `methods`.
 - `enum_base: string` — An enum's backing type (`"integer"` / `"string"`); empty otherwise.
@@ -187,6 +189,8 @@ end
 - `is_foreign: bool` — True when a function or method is `foreign` (its body lives in linked C); false for every non-callable.
 - `method_is_private: list[bool]` — Per entry in `methods`, whether that method is private.
 - `method_is_foreign: list[bool]` — Per entry in `methods`, whether that method is `foreign`.
+- `cfg: string` — The conditional-compilation predicate the declaration is available under (e.g. `target == "pico" or target == "esp"`), or "" when it exists on every target. Comes from the declaration's own `@cfg` or, failing that, from its file's `#gust:cfg` pragma.
+- `method_cfg: list[string]` — Per entry in `methods`, that method's own conditional availability predicate, or "" when it matches the type's.
 
 ## Functions
 
@@ -240,6 +244,26 @@ def foreign line(item: Any) -> integer
 
 The source line where the declaration appears (relative to its own
 file — see `file`). 0 if it can't be resolved.
+
+**Parameters**
+
+- `item: Any` — A declaration reference to inspect.
+
+---
+
+<a id="inspect.cfg" />
+```gust
+def foreign cfg(item: Any) -> string
+```
+
+The conditional-compilation predicate the declaration is available under
+— `target == "pico" or target == "esp"`, `os == "linux"`, and so on — or ""
+when it exists on every target. A declaration's own `@cfg` wins; without one
+it inherits the `#gust:cfg` pragma gating its file.
+
+Building with `--doc-cfg` keeps the declarations excluded for the target
+being compiled, so a documentation generator sees a package's whole surface
+and can label each part with the targets it exists on.
 
 **Parameters**
 
@@ -377,8 +401,10 @@ def foreign members(item: Any) -> list[string]
 ```
 
 Every member name of a type (fields plus methods) or the exported
-names of a package. The declaration-only, namespaced form of the
-built-in `dir` (use `dir(value)` for a runtime value's members).
+names of a package, followed by the reflection properties the
+declaration answers to (`__DOC__`, `__NAME__`, `__FILE__`). The
+declaration-only, namespaced form of the built-in `dir` (use
+`dir(value)` for a runtime value's members).
 
 **Parameters**
 

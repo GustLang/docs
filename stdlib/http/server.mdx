@@ -1,23 +1,31 @@
 ---
 title: http.server
-description: "The request dispatcher: the pure-Gust routing engine"
+description: "The `Server` object: construction (`serve`/`Server(port:)`), route registration (`get`/`post`/...), before/after middleware, static-file mounts, route groups, and the accept loop"
 ---
 
 ```gust
 use http.server
 ```
 
-The request dispatcher: the pure-Gust routing engine. Once `transport.g` has
-parsed a connection into a `Request`, it calls `server._dispatch(request)`,
-which runs the outermost-first middleware chain: a `Next` link is threaded
-through each registered middleware outermost-first, and when the chain is
-exhausted `_route` does path-pattern matching with `{name}` capture,
-static-file resolution, and 404/405 — all here in Gust. The whole package is
-Gust over the `socket` byte stream (request parsing, response writing, and the
-`spawn`-per-connection accept loop); only the raw socket syscalls beneath
-`socket` are C. Part of the `http.server` package.
+The `Server` object: construction (`serve`/`Server(port:)`), route
+registration (`get`/`post`/...), before/after middleware, static-file
+mounts, route groups, and the accept loop. The route table, middleware,
+and mounts live here as plain Gust data — registering a route is a list
+append, with no socket involved. The socket is bound lazily, only when
+`run`/`next` actually needs it. Dispatch logic lives in `dispatch.g`.
+Part of the `http.server` package.
+
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
 
 **On this page:** [`Next`](#Next) · [`Group`](#Group) · [`Middleware`](#Middleware) · [`Request`](#Request) · [`Response`](#Response) · [`Route`](#Route) · [`WsRoute`](#WsRoute) · [`StaticMount`](#StaticMount) · [`Server`](#Server) · [`status_response`](#http.server.status_response) · [`ok`](#http.server.ok) · [`text`](#http.server.text) · [`html`](#http.server.html) · [`json_response`](#http.server.json_response) · [`created`](#http.server.created) · [`no_content`](#http.server.no_content) · [`redirect`](#http.server.redirect) · [`redirect_permanent`](#http.server.redirect_permanent) · [`bad_request`](#http.server.bad_request) · [`unauthorized`](#http.server.unauthorized) · [`forbidden`](#http.server.forbidden) · [`not_found`](#http.server.not_found) · [`server_error`](#http.server.server_error)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `RESERVED_HEADERS` | `dict[string, bool]` | `{"content-type": true, "content-length": true, "connection":…}` |
 
 ## `Next`
 
@@ -268,7 +276,7 @@ def Request
 
     method: string
     path: string
-    headers: Headers
+    headers: http.Headers
     body: string
     remote_ip: string
     version: string
@@ -282,7 +290,7 @@ end
 
 - `method: string` — HTTP method (e.g. "GET", "POST"), uppercased.
 - `path: string` — Request path with the query string stripped, e.g. "/users".
-- `headers: Headers` — Request headers as a `Headers` view. Use `headers.get(name)` or `headers[name]` (case-insensitive, "" if absent).
+- `headers: http.Headers` — Request headers as a `Headers` view. Use `headers.get(name)` or `headers[name]` (case-insensitive, "" if absent).
 - `body: string` — Raw request body.
 - `remote_ip: string` — Client IP address as text (empty if unavailable).
 - `version: string` — HTTP version token, e.g. "HTTP/1.1".
@@ -376,7 +384,7 @@ def Response
     status: integer
     body: string
     content_type: string
-    headers: dict[string, string]
+    headers: dict[string, list[string]]
     _file: string
 
 end
@@ -387,7 +395,7 @@ end
 - `status: integer` — HTTP status code (e.g. 200, 404). A status of 0 is the internal "no match" signal from static-file resolution.
 - `body: string` — Response body.
 - `content_type: string` — The value for the Content-Type header.
-- `headers: dict[string, string]` — Extra response headers (e.g. Set-Cookie). Reserved headers (Content-Type/Length, Connection) are ignored here.
+- `headers: dict[string, list[string]]` — Extra response headers as a field set — lowercased name to that header's lines. Build it with `with_header`/`with_cookie`. Reserved headers (Content-Type/Length, Connection) are ignored here.
 - `_file: string` — Internal — when non-empty, the framework streams this file's raw bytes as the body (binary-safe), ignoring `body`. Set via `with_file`; used by static-file serving.
 
 **Methods**
@@ -397,9 +405,15 @@ end
 def Response.with_header(name: string, value: string) -> Response
 ```
 
-Set a response header and return this same Response so calls chain.
+Set a response header, replacing any value already set under that name
+(matched case-insensitively), and return this same Response so calls chain.
 Reserved headers (Content-Type/Content-Length/Connection) are managed
 by the framework and any set here are ignored when the response is sent.
+
+A header whose value is defined as a comma-separated list takes that list
+as one value, e.g. `with_header("Vary", "Accept, Accept-Encoding")`: the
+only header a response may repeat is `Set-Cookie`, which `with_cookie`
+writes.
 
 **Parameters**
 
@@ -414,7 +428,9 @@ def Response.with_cookie(name: string, value: string) -> Response
 ```
 
 Add a `Set-Cookie: name=value; Path=/` header and return this
-Response so calls chain.
+Response so calls chain. Each call adds a cookie of its own: `Set-Cookie`
+is sent as one line per cookie, never comma-joined, since a cookie's
+`Expires` date contains a comma.
 
 **Parameters**
 
@@ -481,7 +497,7 @@ def WsRoute
 
     pattern: string
     segments: list[string]
-    handler: Function(Request, Connection)[none]
+    handler: Function(Request, websockets.Connection)[none]
 
 end
 ```
@@ -490,7 +506,7 @@ end
 
 - `pattern: string` — Path pattern, e.g. "/ws/&#123;room&#125;".
 - `segments: list[string]` — `pattern` pre-split into non-empty path segments, computed once at registration so matching a request needs no re-split.
-- `handler: Function(Request, Connection)[none]` — Function invoked with the upgraded Request and the open WebSocket Connection.
+- `handler: Function(Request, websockets.Connection)[none]` — Function invoked with the upgraded Request and the open WebSocket Connection.
 
 ## `StaticMount`
 
@@ -502,7 +518,7 @@ served from files under `root`.
 def StaticMount
 
     prefix: string
-    root: Path
+    root: fs.Path
 
 end
 ```
@@ -510,7 +526,7 @@ end
 **Fields**
 
 - `prefix: string` — URL path prefix to match, e.g. "/assets".
-- `root: Path` — Filesystem directory to serve files from.
+- `root: fs.Path` — Filesystem directory to serve files from.
 
 ## `Server`
 
@@ -540,6 +556,8 @@ def Server
     statics: list[StaticMount]
     websocket_routes: list[WsRoute]
     _handle: integer
+    _worker_handles: list[integer]
+    _closed: ref[bool]
 
 end
 ```
@@ -552,6 +570,8 @@ end
 - `statics: list[StaticMount]` — Static-file mounts, checked after dynamic routes miss.
 - `websocket_routes: list[WsRoute]` — WebSocket routes, matched on a request that carries a WebSocket `Upgrade` header before normal HTTP dispatch.
 - `_handle: integer`
+- `_worker_handles: list[integer]`
+- `_closed: ref[bool]`
 
 **Methods**
 
@@ -733,9 +753,9 @@ Register an `OPTIONS` route. See `route`.
 <a id="Server.websocket" />
 ```gust
 def Server.websocket(
-    handler: Function(Request, Connection)[none],
+    handler: Function(Request, websockets.Connection)[none],
     path: string,
-) -> Function(Request, Connection)[none]
+) -> Function(Request, websockets.Connection)[none]
 ```
 
 Register a WebSocket handler served on the same port as the HTTP routes.
@@ -754,7 +774,7 @@ Register imperatively or with a decorator — both register the same route.
 - `handler` — Function invoked with the Request and the upgraded Connection.
 - `path` — Path pattern to match, e.g. "/ws" or "/ws/&#123;room&#125;".
 
-**Returns** `Function(Request, Connection)[none]`
+**Returns** `Function(Request, websockets.Connection)[none]`
 
 `handler` unchanged, so the method also serves as an
 `@app.websocket(path)` decorator.
@@ -836,7 +856,7 @@ decorator.
 
 <a id="Server.static" />
 ```gust
-def Server.static(url_prefix: string, fs_root: Path) -> none
+def Server.static(url_prefix: string, fs_root: fs.Path) -> none
 ```
 
 Serve files under `fs_root` for request paths beginning with
@@ -856,14 +876,23 @@ the file extension, and bytes are streamed verbatim (binary-safe).
 def Server.run() -> none
 ```
 
-Block forever, spawning a detached thread per accepted connection.
-Each thread parses the request and hands it to the Gust dispatcher, which
+Block forever, serving every accepted connection as a lightweight
+fiber. One scheduler thread runs per CPU, all accepting from the shared
+listening socket; a connection is served on the thread that accepted it,
+and thousands of idle connections cost pages of memory rather than
+threads. Each request is parsed and handed to the Gust dispatcher, which
 runs before-middleware, matches a route (or a static mount), runs
-after-middleware, and returns the Response the thread then sends.
+after-middleware, and returns the Response the fiber then sends.
 Unmatched paths get `404 Not Found`; a path that matches but not its
 method gets `405 Method Not Allowed`. A handler that raises becomes
 `500 Internal Server Error`. Returns when the listening socket is closed
 (e.g. another thread calls `server.close()`).
+
+Connections are persistent: a fiber keeps serving requests off its
+connection until the client asks to close it (`Connection: close`, or an
+HTTP/1.0 request that does not ask to keep it open) or goes away. A client
+issuing many requests therefore pays for one connection and one fiber
+rather than one of each per request.
 
 **Raises**
 
@@ -882,7 +911,8 @@ call to return. A no-op on a server that never bound.
 **Examples**
 
 ```gust
-app := http.Server(port: 8080)
+use http.server
+app: constant[server.Server] = server.Server(port: 8080)
 
 @app.get("/users/{id}")
 def show_user(req: http.Request) -> http.Response

@@ -1,23 +1,46 @@
 ---
 title: Error handling
-description: First-class typed errors in Gust — declaring, raising, catching, re-raising, propagation, catchable runtime errors, and the built-in error types
+description: First-class typed errors in Gust — the `Error` interface, declaring error structs, raising, catching, re-raising, propagation, catchable runtime errors, and the built-in error types
 ---
 
-Errors in Gust are first-class typed values. You declare them with `error`,
-raise them with `raise`, and catch them with `try` / `catch`. Every catch arm
-matches on the error's type, so handling is exhaustive and precise rather than
-string-based.
+Errors in Gust are first-class typed values. An error type is an ordinary
+struct that `implements Error`; you raise one with `raise`, and catch one with
+`try` / `catch`. Every typed `catch` arm matches on the error struct's type, so
+handling is exhaustive and precise rather than string-based.
+
+## The `Error` interface
+
+Every error type conforms to the built-in `Error` interface, which pins a
+`message: string` property as the common surface each error must declare:
+
+```gust
+interface Error
+    message: string
+end
+```
+
+`Error` lives in the prelude, so you refer to it by name in `implements Error`
+without importing anything.
 
 ## Declaring an error type
 
-`error` declarations are top-level. The **first** field must be exactly
-`message: string` — the compiler enforces this (`G0602`) so the runtime can
-read the message of any uncaught error. Additional fields may follow, in any
+An error is a `def` struct that lists `Error` in its `implements` clause. The
+struct must declare `message: string` as its first field — the contract the
+interface pins — and may add any number of its own fields after it, in any
 order and of any type:
 
 ```gust
-error LatencyError(message: string, server: string)
-error ConfigError(message: string, key: string, value: string)
+def LatencyError implements Error
+    message: string
+    server: string
+end
+
+
+def ConfigError implements Error
+    message: string
+    key: string
+    value: string
+end
 ```
 
 An extra field can itself be a struct, a list, a dict, an enum, or another
@@ -29,15 +52,15 @@ def SourcePos
     line: integer
 end
 
-error ParseError(message: string, pos: SourcePos)
+
+def ParseError implements Error
+    message: string
+    pos: SourcePos
+end
 ```
 
-Two rules govern the shape of an error type:
-
-- **`message: string` must come first.** Omitting it, or placing another field
-  before it, is a compile error (`G0602`, `invalid-error-layout`).
-- **The name should end in `Error`.** This is a convention, not a hard rule; a
-  name that does not end in `Error` triggers the style warning `W0109`.
+Convention: a type intended to be raised ends its name in `Error`
+(`ValueError`, `ConfigError`, …). This is a style guideline, not a hard rule.
 
 ## Raising
 
@@ -63,9 +86,10 @@ raise ConfigError(
 ```
 
 The value is always constructed at the `raise` site — you write
-`raise ErrorName(...)`, never `raise some_variable`. Once raised, control leaves
-the current function immediately and unwinds outward until a matching `catch` is
-found (or the program terminates; see [Unhandled errors](#unhandled-errors)).
+`raise ErrorName(...)`, never `raise some_variable`. Once raised, control
+leaves the current function immediately and unwinds outward until a matching
+`catch` is found (or the program terminates; see [Unhandled
+errors](#unhandled-errors)).
 
 The analyzer checks each `raise` against the error type's declaration and
 rejects any of the following with `G0802` (`invalid-error-usage`):
@@ -77,8 +101,8 @@ rejects any of the following with `G0802` (`invalid-error-usage`):
 
 ## Catching
 
-A `try` block runs its body; if any statement in it raises, control transfers to
-the first matching `catch` arm.
+A `try` block runs its body; if any statement in it raises, control transfers
+to the first matching `catch` arm.
 
 ```gust
 try
@@ -89,8 +113,9 @@ catch ValueError as e
 end
 ```
 
-Inside the arm, the bound variable is the caught error. You read its fields with
-ordinary field access — `e.message`, plus any type-specific fields:
+Inside a typed arm, the bound variable is the caught error struct instance.
+You read its fields with ordinary field access — `e.message`, plus any
+type-specific fields:
 
 ```gust
 try
@@ -106,7 +131,8 @@ The bound `e` is a borrow valid only within its own arm.
 ### Multiple typed arms
 
 List several `catch` clauses to handle different types. Arms are tested
-top-to-bottom against the raised error's type, and the first matching arm runs:
+top-to-bottom against the raised error's type, and the first matching arm
+runs:
 
 ```gust
 try
@@ -133,10 +159,9 @@ end
 
 ### Catch-all
 
-A bare `catch` with **no type** matches any error, whatever its type. It binds
-nothing, so read the message only through the specific arms above it. A
-catch-all must be the **last** arm — arms after it are unreachable, and placing
-one before another arm is a compile error (`G0802`):
+A bare `catch` with **no type** matches any error, whatever its type. A
+catch-all must be the **last** arm — arms after it are unreachable, and
+placing one before another arm is a compile error (`G0802`):
 
 ```gust
 try
@@ -147,6 +172,33 @@ catch
     print("something else went wrong")
 end
 ```
+
+To read the error a catch-all handled, bind it with `catch as e`. The binding
+is a snapshot carrying the caught type's name and its message — the surface a
+handler reports when it does not name a specific type:
+
+```gust
+try
+    do_work()
+catch as e
+    print(f"{e.name}: {e.message}")   # e.g. "ValueError: bad input"
+end
+```
+
+The catch-all binding prints as `name: message`, so logging the error directly
+is enough:
+
+```gust
+try
+    handler(request)
+catch as e
+    eprint(f"request failed: {e}")
+end
+```
+
+Unlike a typed arm, a catch-all binding exposes only the `name` and `message`
+every error shares — not the type-specific fields of the concrete error. Use a
+typed `catch ValueError as e` arm when you need those.
 
 A catch-all may also stand alone as the only arm, catching everything the body
 can raise:
@@ -161,12 +213,13 @@ end
 
 ### No matching arm
 
-If none of the typed arms match the raised error and there is no catch-all, the
-error keeps propagating to the next enclosing `try` — as if this `try` had not
-been entered. A catch-all is the only way to guarantee an error is stopped here.
+If none of the typed arms match the raised error and there is no catch-all,
+the error keeps propagating to the next enclosing `try` — as if this `try`
+had not been entered. A catch-all is the only way to guarantee an error is
+stopped here.
 
-There is no `finally` clause. Run cleanup either after the `try` (on the success
-path) or inside each arm.
+There is no `finally` clause. Run cleanup either after the `try` (on the
+success path) or inside each arm.
 
 ## Re-raising
 
@@ -191,14 +244,15 @@ else is a compile error (`G0802`).
 
 An unhandled `raise` unwinds the call stack: it leaves the raising function,
 then its caller, and so on, until it reaches a `try` whose `catch` arms match.
-The enclosing `try` need not be in the same function — it can be several frames
-up.
+The enclosing `try` need not be in the same function — it can be several
+frames up.
 
 ```gust
 def read_port() -> integer
     raw := fs.read_file("port.txt")     # may raise IOError
     return raw.trim() as integer        # may raise ValueError
 end
+
 
 def main() -> none
     try
@@ -212,10 +266,10 @@ def main() -> none
 end
 ```
 
-`return`, `break`, and `continue` inside a `try` body are all handled correctly:
-leaving a `try` early keeps the internal try-frame bookkeeping balanced, so
-later raises still find the right handler. You do not need to catch an error just
-to return early.
+`return`, `break`, and `continue` inside a `try` body are all handled
+correctly: leaving a `try` early keeps the internal try-frame bookkeeping
+balanced, so later raises still find the right handler. You do not need to
+catch an error just to return early.
 
 ### Unhandled errors
 
@@ -244,17 +298,17 @@ when you need the frames.
 
 ## Catchable runtime errors
 
-Several runtime faults raise ordinary, catchable errors of the built-in types —
-so a bad index or a divide-by-zero behaves exactly like an explicit `raise` and
-can be handled with the same `try` / `catch`:
+Several runtime faults raise ordinary, catchable errors of the built-in types
+— so a bad index or a divide-by-zero behaves exactly like an explicit `raise`
+and can be handled with the same `try` / `catch`:
 
 - **Division or modulo by zero** raises `ValueError` (message `"division by
   zero"`, `"integer division by zero"`, or `"integer modulo by zero"`).
 - **List, string, or `bytes` index out of range** raises `IndexError`, as does
   popping from an empty list.
 - **A missing dict key** raises `KeyError`.
-- **A failed cast or parse** — such as `s as integer` on non-numeric text, or an
-  `Any` value cast to the wrong type — raises `ValueError`.
+- **A failed cast or parse** — such as `s as integer` on non-numeric text, or
+  an `Any` value cast to the wrong type — raises `ValueError`.
 
 ```gust
 def safe_at(xs: list[integer], i: integer) -> integer
@@ -277,7 +331,7 @@ Five error types are available in every program without `use`. They are also
 documented on the [built-in error types](/builtins/errors) page.
 
 <a id="ValueError" />
-**`error ValueError(message: string)`**
+**`def ValueError implements Error`**
 
 Invalid input: parse failure, out-of-range value, an argument that violates a
 precondition, division by zero, or a failed cast.
@@ -291,7 +345,7 @@ raise ValueError(message: "port must be positive")
 ```
 
 <a id="IOError" />
-**`error IOError(message: string, path: string)`**
+**`def IOError implements Error`**
 
 Filesystem, network, or device I/O failure.
 
@@ -301,7 +355,7 @@ Filesystem, network, or device I/O failure.
 - `path: string` — the path or URL involved (may be empty).
 
 <a id="IndexError" />
-**`error IndexError(message: string, index: integer)`**
+**`def IndexError implements Error`**
 
 Out-of-range access on a `list`, `string`, or `bytes`.
 
@@ -311,7 +365,7 @@ Out-of-range access on a `list`, `string`, or `bytes`.
 - `index: integer` — the offending index.
 
 <a id="KeyError" />
-**`error KeyError(message: string, key: string)`**
+**`def KeyError implements Error`**
 
 Missing dict key.
 
@@ -321,7 +375,7 @@ Missing dict key.
 - `key: string` — the key that wasn't present.
 
 <a id="RuntimeError" />
-**`error RuntimeError(message: string)`**
+**`def RuntimeError implements Error`**
 
 Anything that doesn't fit the more specific errors: not-implemented paths,
 invariant violations, unexpected state.

@@ -35,6 +35,14 @@ The lock spins while waiting rather than parking the waiting thread, so it is
 suited to short critical sections. A thread must not attempt to acquire a lock
 it already holds; doing so spins forever.
 
+The gate is one atomic compare-and-swap, so the package exists only where the
+architecture has one. The eZ80 does not, and there `use sync` is a compile
+error naming the target rather than a lock that fails to link.
+
+<Note>
+Only available where `arch != "ez80"`.
+</Note>
+
 **On this page:** [`Lock`](#Lock) · [`new_lock`](#sync.new_lock)
 
 ## `Lock`

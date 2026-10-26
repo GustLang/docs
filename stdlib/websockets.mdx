@@ -1,21 +1,35 @@
 ---
 title: websockets
-description: "Minimal RFC 6455 WebSocket support for plain `ws://` connections"
+description: "Minimal RFC 6455 WebSocket support for `ws://` and `wss://` connections"
 ---
 
 ```gust
 use websockets
 ```
 
-Minimal RFC 6455 WebSocket support for plain `ws://` connections.
+Minimal RFC 6455 WebSocket support for `ws://` and `wss://` connections.
 
-Implemented entirely in Gust on top of `socket` (raw TCP), `cryptography.sha`
-(the SHA-1 handshake key), `cryptography.random` (secure masking keys), and
-`convert` (base64) — no C in this package. Covers both client connections
-(`connect`) and a server that accepts connections (`listen` + `accept`), plus
-sending text, receiving messages, ping/pong, and close handling. Plaintext
-only — `wss://` needs a TLS layer wrapping the socket; the `cryptography.ssl`
-package provides that wrapper.
+Implemented entirely in Gust on top of `socket` (raw TCP), `cryptography.ssl`
+(the TLS layer behind `wss://`), `cryptography.sha` (the SHA-1 handshake key),
+`cryptography.random` (secure masking keys), and `convert` (base64). Covers
+both client connections (`connect`) and a server that accepts connections
+(`listen` + `accept`), plus sending text, receiving messages, ping/pong, and
+close handling. A server listens in plaintext only; a TLS server needs
+`cryptography.ssl` wrapping the accepted socket by hand.
+
+Messages are read either by blocking in `Connection.recv`, or by handing a
+callback to `Connection.poll` (which waits at most as long as it is told) or to
+`Connection.run` (which dispatches until the peer closes). The callback form is
+what lets one flow drive a connection alongside other work, since a `poll` that
+finds nothing returns instead of blocking.
+
+`WS_GUID` is the fixed handshake UUID of RFC 6455, appended to a
+`Sec-WebSocket-Key` before hashing. `WS_MAX_FRAME_SIZE` caps how large an
+inbound payload may be: a 64-bit length read straight off the wire could
+otherwise demand an enormous allocation from one crafted 10-byte frame, so a
+frame declaring more than 64 MiB raises instead. `WS_MAX_HANDSHAKE` is the
+matching cap on the opening handshake's header block, read in
+`WS_HANDSHAKE_CHUNK`-sized blocks.
 
 **Examples**
 
@@ -25,11 +39,15 @@ use websockets
 def main() -> none
     conn := websockets.connect("ws://example.com/socket")
     conn.send("hello")
-    reply := conn.recv()
-    print(reply.data)
-    conn.close()
+    conn.run(def(msg: websockets.Message) -> none
+        print(msg.data)
+    end)
 end
 ```
+
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
 
 **On this page:** [`Server`](#Server) · [`Connection`](#Connection) · [`Message`](#Message) · [`connect`](#websockets.connect) · [`listen`](#websockets.listen) · [`accept_upgrade`](#websockets.accept_upgrade)
 
@@ -40,6 +58,7 @@ end
 | `WS_GUID` | `string` | `"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"` |
 | `WS_MAX_FRAME_SIZE` | `integer` | `67108864` |
 | `WS_MAX_HANDSHAKE` | `integer` | `65536` |
+| `WS_HANDSHAKE_CHUNK` | `integer` | `4096` |
 
 ## `Server`
 
@@ -51,14 +70,14 @@ opening handshake.
 ```gust
 def Server
 
-    _listener: Listener
+    _listener: socket.Listener
 
 end
 ```
 
 **Fields**
 
-- `_listener: Listener` — The underlying TCP listening socket.
+- `_listener: socket.Listener` — The underlying TCP listening socket.
 
 **Methods**
 
@@ -93,18 +112,20 @@ client side, or `Server.accept()` on the server side.
 ```gust
 def Connection
 
-    _sock: Stream
+    _sock: socket.Stream
     _client_side: bool
     _open: bool
+    _pending: bytes
 
 end
 ```
 
 **Fields**
 
-- `_sock: Stream` — The underlying byte stream (plaintext `socket.Socket` or TLS).
+- `_sock: socket.Stream` — The underlying byte stream (plaintext `socket.Socket` or TLS).
 - `_client_side: bool` — True for client connections (which must mask frames).
 - `_open: bool` — False once the connection has been closed.
+- `_pending: bytes` — Octets read past the opening handshake, consumed before the socket is read again.
 
 **Methods**
 
@@ -134,6 +155,72 @@ def Connection.recv() -> Message
 Block until the next data or close message arrives. Ping frames are
 answered automatically. A close frame (or a dropped connection) returns
 `Message(opcode: 8, data: "")`.
+
+**Raises**
+
+- `RuntimeError` — If an incoming frame declares a payload larger than the 64 MiB cap.
+
+---
+
+<a id="Connection.has_message" />
+```gust
+def Connection.has_message(timeout_ms: integer) -> bool
+```
+
+True when `recv` would return without waiting — a frame has arrived, or
+the connection is finished and `recv` would report the close at once. False
+means `timeout_ms` elapsed with the connection still idle.
+
+A ping arriving on its own makes this true while `recv` still has no
+message to hand back: `recv` answers the ping and waits again. Use `poll`
+to bound that wait as well.
+
+**Parameters**
+
+- `timeout_ms` — Milliseconds to wait; 0 polls, negative waits indefinitely.
+
+---
+
+<a id="Connection.poll" />
+```gust
+def Connection.poll(
+    timeout_ms: integer,
+    on_message: Function(Message)[none],
+) -> bool
+```
+
+Wait at most `timeout_ms` for one message and pass it to `on_message`,
+returning true when a message was dispatched and false when the wait
+elapsed first. Ping frames are answered without ending the wait, and the
+remaining budget carries across them.
+
+This is the non-blocking form of `recv`: with a `timeout_ms` of 0 it
+dispatches whatever has already arrived and returns immediately, so a flow
+with other work to do can drive a connection without parking in a read.
+
+**Parameters**
+
+- `timeout_ms` — Milliseconds to wait; 0 polls, negative waits indefinitely.
+- `on_message` — Invoked with the message, once, before this returns true.
+
+**Raises**
+
+- `RuntimeError` — If an incoming frame declares a payload larger than the 64 MiB cap.
+
+---
+
+<a id="Connection.run" />
+```gust
+def Connection.run(on_message: Function(Message)[none]) -> none
+```
+
+Pass every message to `on_message` until the connection closes, then
+return. The closing message is dispatched too, so a handler sees the end of
+the stream as `Message.is_close()`.
+
+**Parameters**
+
+- `on_message` — Invoked with each message in the order it arrives.
 
 **Raises**
 
@@ -229,16 +316,18 @@ True when the peer sent a close frame or the socket closed.
 def connect(endpoint: string) -> Connection
 ```
 
-Connect to a plain `ws://host[:port]/path` WebSocket endpoint.
+Connect to a `ws://host[:port]/path` or `wss://host[:port]/path`
+WebSocket endpoint. A `wss://` endpoint runs the same handshake over a
+verifying TLS connection.
 
 **Parameters**
 
-- `endpoint: string` — The `ws://host[:port]/path` endpoint to connect to.
+- `endpoint: string` — The `ws://` or `wss://` endpoint to connect to. A query string, if any, is sent with the request target.
 
 **Raises**
 
-- `RuntimeError` — If `endpoint` is not a `ws://` URL, the server does not accept the upgrade, or it returns an invalid `Sec-WebSocket-Accept`.
-- `IOError` — If the underlying TCP connection cannot be established.
+- `RuntimeError` — If `endpoint` is neither a `ws://` nor a `wss://` URL, the server does not accept the upgrade, or it returns an invalid `Sec-WebSocket-Accept`.
+- `IOError` — If the underlying connection cannot be established.
 
 ---
 
@@ -261,7 +350,11 @@ Listen for WebSocket clients on `port`.
 
 <a id="websockets.accept_upgrade" />
 ```gust
-def accept_upgrade(sock: Stream, key: string) -> Connection
+def accept_upgrade(
+    sock: socket.Stream,
+    key: string,
+    buffered: bytes,
+) -> Connection
 ```
 
 Complete the server side of a WebSocket opening handshake on a byte
@@ -276,8 +369,9 @@ off to WebSocket handling once it has recognised the upgrade request itself.
 
 **Parameters**
 
-- `sock: Stream` — The byte stream carrying the just-received upgrade request.
+- `sock: socket.Stream` — The byte stream carrying the just-received upgrade request.
 - `key: string` — The request's `Sec-WebSocket-Key` header value.
+- `buffered: bytes` — Octets the caller read past the request's header block, which may already hold the client's first frames. Pass `b""` when the reader stopped at the blank line.
 
 **Raises**
 

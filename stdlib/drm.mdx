@@ -21,10 +21,12 @@ each iteration and calls `flush` to present it.
 
 Colors are 24-bit `0xRRGGBB` integers, stored directly as XRGB8888 pixels.
 
-Linux only, and requires DRM master — no window system or compositor may own
+Linux only — the package exists on no other target, so an import elsewhere is
+a compile error. Requires DRM master: no window system or compositor may own
 the display (a bare console the program takes over, or a device with the
-console detached from the card). On other platforms, or when no display can be
-acquired, `open` returns -1 and the drawing calls are no-ops.
+console detached from the card). A `Display` that could not acquire the screen
+is returned closed rather than raising — check `ok`, and the drawing calls are
+no-ops either way.
 
 **Examples**
 
@@ -33,99 +35,98 @@ use drm
 
 def main() -> none
     screen := drm.open(0)
-    if screen < 0
+    if not screen.ok()
         return
     end
-    drm.clear(screen, 0x101828)
-    drm.fill_rect(screen, 20, 20, 200, 80, 0x3B82F6)
-    drm.flush(screen)
-    drm.close(screen)
+    screen.clear(0x101828)
+    screen.fill_rect(20, 20, 200, 80, 0x3B82F6)
+    screen.flush()
+    screen.close()
 end
 ```
 
-**On this page:** [`open`](#drm.open) · [`width`](#drm.width) · [`height`](#drm.height) · [`bpp`](#drm.bpp) · [`clear`](#drm.clear) · [`set_pixel`](#drm.set_pixel) · [`fill_rect`](#drm.fill_rect) · [`flush`](#drm.flush) · [`close`](#drm.close)
+<Note>
+Only available on Linux.
+</Note>
 
-## Functions
+**On this page:** [`Display`](#Display) · [`open`](#drm.open)
 
-<a id="drm.open" />
+## `Display`
+
+<a id="Display" />
+A display this program is scanning out to, and its off-screen back
+buffer.
+
+Drawing calls target the back buffer; `flush` presents it. Calls on a
+closed display are no-ops, and the geometry queries report 0.
+
 ```gust
-def foreign open(index: integer) -> integer
+def Display
+
+    handle: integer
+
+end
 ```
 
-Open `/dev/dri/card<index>`, acquire the first connected display, set its
-preferred video mode, and begin double-buffered scanout. Returns a handle
-(>= 0) for the drawing calls, or -1 on error (device missing, no permission,
-no connected display, or another process holds DRM master). Both buffers
-start black.
+**Fields**
 
-**Parameters**
+- `handle: integer` — The acquired display, or -1 if it could not be acquired.
 
-- `index: integer` — DRM card index (0 for `/dev/dri/card0`).
+**Methods**
+
+<a id="Display.ok" />
+```gust
+def Display.ok() -> bool
+```
+
+Whether the display was acquired successfully.
 
 ---
 
-<a id="drm.width" />
+<a id="Display.width" />
 ```gust
-def foreign width(handle: integer) -> integer
+def Display.width() -> integer
 ```
 
-Width of the active video mode in pixels, or 0 for an invalid handle.
-
-**Parameters**
-
-- `handle: integer` — A handle from `open`.
+Width of the active video mode in pixels, or 0 if it is not open.
 
 ---
 
-<a id="drm.height" />
+<a id="Display.height" />
 ```gust
-def foreign height(handle: integer) -> integer
+def Display.height() -> integer
 ```
 
-Height of the active video mode in pixels, or 0 for an invalid handle.
-
-**Parameters**
-
-- `handle: integer` — A handle from `open`.
+Height of the active video mode in pixels, or 0 if it is not open.
 
 ---
 
-<a id="drm.bpp" />
+<a id="Display.bpp" />
 ```gust
-def foreign bpp(handle: integer) -> integer
+def Display.bpp() -> integer
 ```
 
-Bits per pixel of the presented buffers (always 32 for XRGB8888), or 0
-for an invalid handle.
-
-**Parameters**
-
-- `handle: integer` — A handle from `open`.
+Bits per pixel of the presented buffers — always 32 for XRGB8888, or 0
+if it is not open.
 
 ---
 
-<a id="drm.clear" />
+<a id="Display.clear" />
 ```gust
-def foreign clear(handle: integer, rgb: integer) -> none
+def Display.clear(rgb: integer) -> none
 ```
 
 Fill the entire back buffer with `rgb`. Not visible until `flush`.
 
 **Parameters**
 
-- `handle: integer` — A handle from `open`.
-- `rgb: integer` — Color as `0xRRGGBB`.
+- `rgb` — Color as `0xRRGGBB`.
 
 ---
 
-<a id="drm.set_pixel" />
+<a id="Display.set_pixel" />
 ```gust
-def foreign set_pixel(
-    handle: integer,
-    x: integer,
-    y: integer,
-    rgb: integer,
-) -> none
+def Display.set_pixel(x: integer, y: integer, rgb: integer) -> none
 ```
 
 Set the pixel at (`x`, `y`) to `rgb` in the back buffer. Coordinates
@@ -133,17 +134,15 @@ outside the display are ignored. Not visible until `flush`.
 
 **Parameters**
 
-- `handle: integer` — A handle from `open`.
-- `x: integer` — Column, 0 at the left.
-- `y: integer` — Row, 0 at the top.
-- `rgb: integer` — Color as `0xRRGGBB`.
+- `x` — Column, 0 at the left.
+- `y` — Row, 0 at the top.
+- `rgb` — Color as `0xRRGGBB`.
 
 ---
 
-<a id="drm.fill_rect" />
+<a id="Display.fill_rect" />
 ```gust
-def foreign fill_rect(
-    handle: integer,
+def Display.fill_rect(
     x: integer,
     y: integer,
     w: integer,
@@ -158,40 +157,51 @@ back buffer. The rectangle is clipped to the display. Not visible until
 
 **Parameters**
 
-- `handle: integer` — A handle from `open`.
-- `x: integer` — Left edge column.
-- `y: integer` — Top edge row.
-- `w: integer` — Rectangle width in pixels.
-- `h: integer` — Rectangle height in pixels.
-- `rgb: integer` — Color as `0xRRGGBB`.
+- `x` — Left edge column.
+- `y` — Top edge row.
+- `w` — Rectangle width in pixels.
+- `h` — Rectangle height in pixels.
+- `rgb` — Color as `0xRRGGBB`.
 
 ---
 
-<a id="drm.flush" />
+<a id="Display.flush" />
 ```gust
-def foreign flush(handle: integer) -> none
+def Display.flush() -> none
 ```
 
 Present the back buffer: page-flip it onto the display, block until the
 flip completes at the next vertical refresh, then swap buffers so subsequent
-drawing targets the newly hidden buffer. The freshly exposed back buffer
-still holds the previous frame, so a caller that does not redraw the whole
-frame each time should `clear` first.
+drawing targets the newly hidden buffer.
 
-**Parameters**
-
-- `handle: integer` — A handle from `open`.
+The freshly exposed back buffer still holds the frame before last, so a
+caller that does not redraw the whole frame each time should `clear` first.
 
 ---
 
-<a id="drm.close" />
+<a id="Display.close" />
 ```gust
-def foreign close(handle: integer) -> none
+def Display.close() -> none
 ```
 
-Restore the display's prior mode, release the buffers, drop DRM master,
-and free the handle.
+Restore the display's prior mode, release the buffers, and drop DRM
+master. Drawing calls after this are no-ops.
+
+## Functions
+
+<a id="drm.open" />
+```gust
+def open(index: integer) -> Display
+```
+
+Open `/dev/dri/card<index>`, acquire the first connected display, set its
+preferred video mode, and begin double-buffered scanout. Both buffers start
+black.
+
+A card that is missing, cannot be opened for lack of permission, has no
+connected display, or is held by another DRM master yields a closed
+`Display` rather than raising — check `ok`.
 
 **Parameters**
 
-- `handle: integer` — A handle from `open`.
+- `index: integer` — DRM card index (0 for `/dev/dri/card0`).

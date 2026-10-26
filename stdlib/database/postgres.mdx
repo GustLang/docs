@@ -43,6 +43,10 @@ def main() -> none
 end
 ```
 
+<Note>
+Only available on native builds.
+</Note>
+
 **On this page:** [`PgConnection`](#PgConnection) · [`PgCursor`](#PgCursor) · [`connect`](#database.postgres.connect)
 
 ## Constants
@@ -62,10 +66,10 @@ end
 <a id="PgConnection" />
 An open PostgreSQL session. Obtain one from `connect(...)`.
 
-**Implements:** [`Connection`](#Connection)
+**Implements:** [`database.Connection`](#database.Connection)
 
 ```gust
-def PgConnection implements Connection
+def PgConnection implements database.Connection
 
     _conn: integer
     _open: bool
@@ -82,7 +86,10 @@ end
 
 <a id="PgConnection.execute" />
 ```gust
-def PgConnection.execute(sql: string, params: list[Value]) -> ExecResult
+def PgConnection.execute(
+    sql: string,
+    params: list[database.Value],
+) -> database.ExecResult
 ```
 
 Run a non-`SELECT` statement and report rows affected. Bind `?`
@@ -107,7 +114,10 @@ query result instead.
 
 <a id="PgConnection.query" />
 ```gust
-def PgConnection.query(sql: string, params: list[Value]) -> Cursor
+def PgConnection.query(
+    sql: string,
+    params: list[database.Value],
+) -> database.Cursor
 ```
 
 Run a query and return a `database.Cursor` over the result. libpq
@@ -173,10 +183,10 @@ True while the connection has not been closed.
 <a id="PgCursor" />
 A forward-only walk over a materialized libpq result set.
 
-**Implements:** [`Cursor`](#Cursor)
+**Implements:** [`database.Cursor`](#database.Cursor)
 
 ```gust
-def PgCursor implements Cursor
+def PgCursor implements database.Cursor
 
     _res: integer
     _cols: list[string]
@@ -211,7 +221,7 @@ last row has been consumed.
 
 <a id="PgCursor.row" />
 ```gust
-def PgCursor.row() -> Row
+def PgCursor.row() -> database.Row
 ```
 
 The current row — call only after `next()` returned true. Each column is

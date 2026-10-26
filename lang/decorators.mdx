@@ -174,13 +174,24 @@ end
 ```
 
 The hook runs for every way of building the value — named-argument and
-positional constructors and a `dict as Struct` cast alike — so `area` is always
-consistent. The method is also an ordinary method: you can still call
-`c.derive_area()` by hand.
+positional constructors, and a `dict as Struct` or `list as Struct` cast,
+alike — so `area` is always consistent. The method is also an ordinary
+method: you can still call `c.derive_area()` by hand.
 
 Because the constructor invokes it on the new instance with no arguments, a
 `@post_init` method must be an instance method (not `@static`), take no
 parameters, and return `none`. Breaking any of those is error `G0614`.
+
+`@post_init` hooks a constructor, and only a struct has one, so it belongs on a
+method — `def Circle.derive_area()`. On a free function there is nothing to
+attach it to, and that is `G0614` as well:
+
+```gust
+@post_init
+def derive_area() -> none    # G0614 — write it as `def Circle.derive_area()`
+    print("never runs")
+end
+```
 
 ### `@manual` and `@raw` (unsafe)
 
@@ -219,7 +230,7 @@ def Handle
 end
 ```
 
-See [unsafe](/stdlib/unsafe) for the low-level access these decorators pair with.
+See [unsafe](/stdlib/unsafe) for the low-level access these decorators pair with, and [C interop](/lang/ffi-intro) for how they fit into binding C code.
 
 ### `@derive`
 
@@ -238,12 +249,26 @@ import pragma are covered under [conditional compilation](/lang/conditional-comp
 
 ### Reserved names (`G0606`)
 
-The nine built-in names — `inline`, `no_tco`, `static`, `test`, `post_init`,
-`manual`, `raw`, `derive`, and `cfg` — are **reserved**. You may still declare an
+The built-in names — `inline`, `no_tco`, `static`, `test`, `post_init`,
+`manual`, `raw`, `derive`, and `cfg`, plus the two standard-library C-interop
+markers `c_name` and `c_shim` — are **reserved**. You may still declare an
 ordinary function with one of these names, but you may not define a *custom
 decorator* (a `Function`-wildcard template, described below) with one, because
 `@name` always binds to the builtin and the template could never run. The
 compiler rejects that with error `G0606`.
+
+### Unknown names
+
+Every other `@name` must resolve to a function in scope, because that is all a
+decorator is. A name that is neither a built-in marker nor a visible function is
+an undefined function, reported with a suggestion where one is close:
+
+```gust
+@postinit                    # undefined function 'postinit' — did you mean '@post_init'?
+def Circle.check() -> none
+    print(radius)
+end
+```
 
 ## User decorators
 

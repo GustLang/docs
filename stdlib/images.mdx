@@ -11,9 +11,13 @@ Self-contained image processing with no external runtime dependency, backed
 by the public-domain stb headers vendored in this package. Decoding covers PNG,
 JPEG, BMP, GIF (first frame), TGA, PSD, HDR, and PNM; encoding covers PNG,
 JPEG, BMP, and TGA. Images are 8-bit/channel in mode `L`, `LA`, `RGB`, or
-`RGBA`. Operations work on file paths and include creating, saving,
-resizing, thumbnailing, cropping, rotating, mode conversion, grayscale, and
-blur, plus orientation queries on the `Image` metadata type.
+`RGBA`.
+
+`open` decodes a file into an `Image` holding its pixels. Every operation —
+resize, thumbnail, crop, rotate, mode conversion, grayscale, and blur — is a
+method returning a new `Image`, so a pipeline runs entirely in memory and
+touches the disk once, at the closing `save`. Use `info` when only a file's
+dimensions and format are wanted: it reads the header without decoding.
 
 Decoding, encoding, and resizing run through the stb libraries; every other
 operation — channel conversion, colour fill, luma, sampling, blur, crop, and
@@ -27,39 +31,57 @@ use images
 def main() -> none
     img := images.open("photo.png")
     print(f"{img.width}x{img.height}")   # e.g. 1920x1080
-    images.thumbnail("photo.png", "thumb.png", 128, 128)
+    img.thumbnail(128, 128).grayscale().save("thumb.png")
 end
 ```
 
-**On this page:** [`Image`](#Image) · [`open`](#images.open) · [`new_image`](#images.new_image) · [`encode`](#images.encode) · [`save`](#images.save) · [`resize`](#images.resize) · [`thumbnail`](#images.thumbnail) · [`crop`](#images.crop) · [`rotate`](#images.rotate) · [`convert`](#images.convert) · [`grayscale`](#images.grayscale) · [`blur`](#images.blur)
+The stb decoders keep their scratch state in thread-local storage and the
+package reads and writes whole files, neither of which the TI calculators
+have, so it does not exist on that family.
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
+
+**On this page:** [`Image`](#Image) · [`ImageInfo`](#ImageInfo) · [`open`](#images.open) · [`info`](#images.info) · [`new_image`](#images.new_image) · [`from_pixels`](#images.from_pixels)
 
 ## `Image`
 
 <a id="Image" />
-Metadata for an image on disk. Operations return a fresh `Image`
-describing the output path.
+A decoded image: its pixels and the geometry describing them.
+
+Obtain one from `open`, `new_image`, or `from_pixels`. Operations return a
+new `Image` and never modify the receiver, so an intermediate result can be
+reused. `save` writes the pixels to disk.
 
 ```gust
 def Image
 
-    path: string
+    pixels: bytes
     width: integer
     height: integer
-    mode: string
-    format: string
+    channels: integer
 
 end
 ```
 
 **Fields**
 
-- `path: string` — Filesystem path to the image.
+- `pixels: bytes` — Row-major 8-bit pixel bytes, `width` × `height` × `channels`.
 - `width: integer` — Image width in pixels.
 - `height: integer` — Image height in pixels.
-- `mode: string` — Pixel mode (`L`, `LA`, `RGB`, or `RGBA`).
-- `format: string` — Image format (e.g. `PNG`, `JPEG`).
+- `channels: integer` — Bytes per pixel — 1 (`L`), 2 (`LA`), 3 (`RGB`), or 4 (`RGBA`). `mode` reports the same thing as a name.
 
 **Methods**
+
+<a id="Image.mode" />
+```gust
+def Image.mode() -> string
+```
+
+The pixel mode name — `L`, `LA`, `RGB`, or `RGBA`.
+
+---
 
 <a id="Image.aspect_ratio" />
 ```gust
@@ -95,131 +117,44 @@ def Image.is_square() -> bool
 
 True when width and height are equal.
 
-## Functions
+---
 
-<a id="images.open" />
+<a id="Image.resize" />
 ```gust
-def foreign open(path: string) -> Image
+def Image.resize(new_width: integer, new_height: integer) -> Image
 ```
 
-Open an image file and return its metadata.
+Resample to exactly `new_width` × `new_height`, ignoring aspect ratio.
 
 **Parameters**
 
-- `path: string` — Filesystem path to the image to open.
+- `new_width` — Target width in pixels.
+- `new_height` — Target height in pixels.
+
+**Raises**
+
+- `ValueError` — Either dimension is zero or negative.
 
 ---
 
-<a id="images.new_image" />
+<a id="Image.thumbnail" />
 ```gust
-def new_image(
-    path: string,
-    width: integer,
-    height: integer,
-    mode: string,
-    color: string,
-) -> Image
+def Image.thumbnail(max_width: integer, max_height: integer) -> Image
 ```
 
-Create a new image filled with `color` and write it to `path`.
+Resample to fit inside `max_width` × `max_height` while preserving the
+aspect ratio. An image already within the bounds is returned unscaled.
 
 **Parameters**
 
-- `path: string` — Destination filesystem path.
-- `width: integer` — Image width in pixels.
-- `height: integer` — Image height in pixels.
-- `mode: string` — Pixel mode (`L`, `LA`, `RGB`, or `RGBA`).
-- `color: string` — Fill color — a named color (`"white"`, `"red"`, `"transparent"`, …), hex (`"#336699"`, `"#RRGGBBAA"`), or `"rgb(r, g, b)"` / `"rgba(r, g, b, a)"`.
+- `max_width` — Maximum width in pixels.
+- `max_height` — Maximum height in pixels.
 
 ---
 
-<a id="images.encode" />
+<a id="Image.crop" />
 ```gust
-def encode(
-    pixels: bytes,
-    width: integer,
-    height: integer,
-    mode: string,
-    dst: string,
-    format: string,
-) -> Image
-```
-
-Encode raw pixel bytes to an image file.
-
-**Parameters**
-
-- `pixels: bytes` — Row-major 8-bit pixel bytes, `width` × `height` × the channel count implied by `mode`.
-- `width: integer` — Image width in pixels.
-- `height: integer` — Image height in pixels.
-- `mode: string` — Pixel mode (`L`, `LA`, `RGB`, or `RGBA`).
-- `dst: string` — Destination path to write.
-- `format: string` — Output format (`"PNG"`, `"JPEG"`, `"BMP"`, or `"TGA"`); pass `""` to infer it from the `dst` extension.
-
----
-
-<a id="images.save" />
-```gust
-def save(src: string, dst: string, format: string) -> Image
-```
-
-Save `src` to `dst`, optionally forcing an output format.
-
-**Parameters**
-
-- `src: string` — Source image path.
-- `dst: string` — Destination path to write.
-- `format: string` — Output format (`"PNG"`, `"JPEG"`, `"BMP"`, or `"TGA"`); pass `""` to infer it from the `dst` extension.
-
----
-
-<a id="images.resize" />
-```gust
-def foreign resize(
-    src: string,
-    dst: string,
-    width: integer,
-    height: integer,
-) -> Image
-```
-
-Resize `src` exactly to `width` × `height` and write `dst`.
-
-**Parameters**
-
-- `src: string` — Source image path.
-- `dst: string` — Destination path to write.
-- `width: integer` — Target width in pixels.
-- `height: integer` — Target height in pixels.
-
----
-
-<a id="images.thumbnail" />
-```gust
-def thumbnail(
-    src: string,
-    dst: string,
-    max_width: integer,
-    max_height: integer,
-) -> Image
-```
-
-Resize `src` to fit inside the bounds while preserving aspect ratio.
-
-**Parameters**
-
-- `src: string` — Source image path.
-- `dst: string` — Destination path to write.
-- `max_width: integer` — Maximum width in pixels.
-- `max_height: integer` — Maximum height in pixels.
-
----
-
-<a id="images.crop" />
-```gust
-def crop(
-    src: string,
-    dst: string,
+def Image.crop(
     left: integer,
     top: integer,
     right: integer,
@@ -227,73 +162,240 @@ def crop(
 ) -> Image
 ```
 
-Crop the rectangle `[left, top, right, bottom)` from `src`.
+Copy the rectangle `[left, top, right, bottom)` into a new image. The box
+is clamped to the image bounds.
 
 **Parameters**
 
-- `src: string` — Source image path.
-- `dst: string` — Destination path to write.
-- `left: integer` — Left edge (inclusive) in pixels.
-- `top: integer` — Top edge (inclusive) in pixels.
-- `right: integer` — Right edge (exclusive) in pixels.
-- `bottom: integer` — Bottom edge (exclusive) in pixels.
+- `left` — Left edge (inclusive) in pixels.
+- `top` — Top edge (inclusive) in pixels.
+- `right` — Right edge (exclusive) in pixels.
+- `bottom` — Bottom edge (exclusive) in pixels.
+
+**Raises**
+
+- `ValueError` — The box is empty after clamping.
 
 ---
 
-<a id="images.rotate" />
+<a id="Image.rotate" />
 ```gust
-def rotate(src: string, dst: string, degrees: float, expand: bool) -> Image
+def Image.rotate(degrees: float, expand: bool) -> Image
 ```
 
-Rotate `src` by degrees and write `dst`.
+Rotate counter-clockwise with bilinear resampling.
 
 **Parameters**
 
-- `src: string` — Source image path.
-- `dst: string` — Destination path to write.
-- `degrees: float` — Rotation angle in degrees.
-- `expand: bool` — When true, grow the canvas enough to hold the rotated image.
+- `degrees` — Rotation angle in degrees.
+- `expand` — When true, grow the canvas enough to hold the rotated image; when false, keep the original dimensions and clip the corners.
 
 ---
 
-<a id="images.convert" />
+<a id="Image.convert" />
 ```gust
-def convert(src: string, dst: string, mode: string) -> Image
+def Image.convert(to_mode: string) -> Image
 ```
 
-Convert `src` to a different image mode and write `dst`.
+Convert to a different pixel mode. Converting to a mode the image is
+already in returns it unchanged.
 
 **Parameters**
 
-- `src: string` — Source image path.
-- `dst: string` — Destination path to write.
-- `mode: string` — Target mode (`"L"`, `"LA"`, `"RGB"`, or `"RGBA"`).
+- `to_mode` — Target mode — `L`, `LA`, `RGB`, or `RGBA`.
+
+**Raises**
+
+- `ValueError` — `to_mode` is not a known mode name.
 
 ---
 
-<a id="images.grayscale" />
+<a id="Image.grayscale" />
 ```gust
-def grayscale(src: string, dst: string) -> Image
+def Image.grayscale() -> Image
 ```
 
-Convert `src` to grayscale (`L`) and write `dst`.
-
-**Parameters**
-
-- `src: string` — Source image path.
-- `dst: string` — Destination path to write.
+Convert to single-channel luma (mode `L`).
 
 ---
 
-<a id="images.blur" />
+<a id="Image.blur" />
 ```gust
-def blur(src: string, dst: string, radius: float) -> Image
+def Image.blur(radius: float) -> Image
 ```
 
-Apply a Gaussian blur and write `dst`.
+Apply a Gaussian blur. A radius of zero or less returns the image
+unchanged.
 
 **Parameters**
 
-- `src: string` — Source image path.
-- `dst: string` — Destination path to write.
-- `radius: float` — Blur radius.
+- `radius` — Blur radius in pixels.
+
+---
+
+<a id="Image.save" />
+```gust
+def Image.save(dst: string, format: string) -> string
+```
+
+Encode the pixels to `dst` and return the canonical format written.
+
+Saving to a format with no alpha channel drops the alpha automatically:
+`LA` becomes `L` and `RGBA` becomes `RGB`.
+
+**Parameters**
+
+- `dst` — Destination path to write.
+- `format` — Output format — `PNG`, `JPEG`, `BMP`, or `TGA`. Empty infers it from the `dst` extension.
+
+**Raises**
+
+- `IOError` — The format is unknown, cannot be inferred, or the write fails.
+
+## `ImageInfo`
+
+<a id="ImageInfo" />
+What a file's header says about the image in it, read without decoding
+the pixels. Obtain one from `info`.
+
+```gust
+def ImageInfo
+
+    path: string
+    width: integer
+    height: integer
+    mode: string
+    format: string
+
+end
+```
+
+**Fields**
+
+- `path: string` — Filesystem path the metadata was read from.
+- `width: integer` — Image width in pixels.
+- `height: integer` — Image height in pixels.
+- `mode: string` — Pixel mode the file stores (`L`, `LA`, `RGB`, or `RGBA`).
+- `format: string` — Image format inferred from the path extension (e.g. `PNG`).
+
+**Methods**
+
+<a id="ImageInfo.aspect_ratio" />
+```gust
+def ImageInfo.aspect_ratio() -> float
+```
+
+Return `width / height`, or `0.0` for an empty image.
+
+---
+
+<a id="ImageInfo.is_landscape" />
+```gust
+def ImageInfo.is_landscape() -> bool
+```
+
+True when the image is wider than it is tall.
+
+---
+
+<a id="ImageInfo.is_portrait" />
+```gust
+def ImageInfo.is_portrait() -> bool
+```
+
+True when the image is taller than it is wide.
+
+---
+
+<a id="ImageInfo.is_square" />
+```gust
+def ImageInfo.is_square() -> bool
+```
+
+True when width and height are equal.
+
+## Functions
+
+<a id="images.open" />
+```gust
+def open(path: string) -> Image
+```
+
+Decode an image file into an `Image` holding its pixels.
+
+**Parameters**
+
+- `path: string` — Filesystem path to the image to open.
+
+**Raises**
+
+- `IOError` — The file is missing or not a supported image.
+
+---
+
+<a id="images.info" />
+```gust
+def info(path: string) -> ImageInfo
+```
+
+Read an image file's dimensions, mode, and format without decoding its
+pixels — the cheap way to ask how big a file is.
+
+**Parameters**
+
+- `path: string` — Filesystem path to inspect.
+
+**Raises**
+
+- `IOError` — The file is missing or not a supported image.
+
+---
+
+<a id="images.new_image" />
+```gust
+def new_image(
+    width: integer,
+    height: integer,
+    mode: string,
+    color: string,
+) -> Image
+```
+
+Create an image of a single solid colour.
+
+**Parameters**
+
+- `width: integer` — Image width in pixels.
+- `height: integer` — Image height in pixels.
+- `mode: string` — Pixel mode (`L`, `LA`, `RGB`, or `RGBA`).
+- `color: string` — Fill color — a named color (`"white"`, `"red"`, `"transparent"`, …), hex (`"#336699"`, `"#RRGGBBAA"`), or `"rgb(r, g, b)"` / `"rgba(r, g, b, a)"`.
+
+**Raises**
+
+- `ValueError` — The mode is unknown, a dimension is not positive, or the colour cannot be parsed.
+
+---
+
+<a id="images.from_pixels" />
+```gust
+def from_pixels(
+    pixels: bytes,
+    width: integer,
+    height: integer,
+    mode: string,
+) -> Image
+```
+
+Wrap an existing pixel buffer as an `Image` — the entry point for pixels
+produced elsewhere, such as a framebuffer snapshot.
+
+**Parameters**
+
+- `pixels: bytes` — Row-major 8-bit pixel bytes, `width` × `height` × the channel count implied by `mode`.
+- `width: integer` — Image width in pixels.
+- `height: integer` — Image height in pixels.
+- `mode: string` — Pixel mode (`L`, `LA`, `RGB`, or `RGBA`).
+
+**Raises**
+
+- `ValueError` — The mode is unknown, or the buffer length does not match the stated geometry.

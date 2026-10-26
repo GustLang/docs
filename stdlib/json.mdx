@@ -24,13 +24,14 @@ def main() -> none
 end
 ```
 
-**On this page:** [`JsonParser`](#JsonParser) · [`encode`](#json.encode) · [`parse`](#json.parse) · [`decode`](#json.decode)
+**On this page:** [`JsonParser`](#JsonParser) · [`encode`](#json.encode) · [`parse`](#json.parse) · [`decode`](#json.decode) · [`apply_patch`](#json.apply_patch) · [`apply_op`](#json.apply_op) · [`pointer`](#json.pointer)
 
 ## Constants
 
 | Name | Type | Value |
 |------|------|-------|
 | `JSON_MAX_DEPTH` | `integer` | `1000` |
+| `APPEND_TOKEN` | `string` | `"-"` |
 
 ## `JsonParser`
 
@@ -229,3 +230,63 @@ Parse `s` as JSON into native Gust values. The encode-inverse name for
 **Raises**
 
 - `ValueError` — On malformed input, naming the byte offset of the mismatch.
+
+---
+
+<a id="json.apply_patch" />
+```gust
+def apply_patch(doc: Any, patch: Any) -> Any
+```
+
+Apply every operation in `patch` to `doc`, in order, and return the
+resulting document.
+
+The return value is the new root: every operation but one mutates `doc` in
+place and hands the same root back, while an operation whose path is `""`
+replaces the root outright and hands back what replaced it. Assign the
+result rather than relying on the mutation.
+
+**Parameters**
+
+- `doc: Any` — The document to patch, as parsed values.
+- `patch: Any` — A JSON Patch document — a list of operation objects.
+
+**Raises**
+
+- `ValueError` — If `patch` is not a list of operation objects, an operation names an unknown `op` or lacks the members that `op` requires, a path does not resolve, or a `test` operation fails.
+
+---
+
+<a id="json.apply_op" />
+```gust
+def apply_op(doc: Any, op: dict[string, Any]) -> Any
+```
+
+Apply one patch operation to `doc` and return the resulting document.
+
+**Parameters**
+
+- `doc: Any` — The document to patch.
+- `op: dict[string, Any]` — One operation object, with `op` and `path` members plus whatever that operation requires (`value` for add/replace/test, `from` for move/copy).
+
+**Raises**
+
+- `ValueError` — If the operation is malformed, its path does not resolve, or it is a `test` that fails.
+
+---
+
+<a id="json.pointer" />
+```gust
+def pointer(doc: Any, path: string) -> Any
+```
+
+The value `path` points at, as an RFC 6901 JSON Pointer.
+
+**Parameters**
+
+- `doc: Any` — The document to read from.
+- `path: string` — A JSON Pointer, e.g. `"/liveData/plays/allPlays/0"`. `""` is the document itself.
+
+**Raises**
+
+- `ValueError` — If `path` is not a well-formed pointer, or names a member or element that isn't there.

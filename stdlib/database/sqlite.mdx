@@ -39,6 +39,10 @@ def main() -> none
 end
 ```
 
+<Note>
+Only available on native builds.
+</Note>
+
 **On this page:** [`SqliteConnection`](#SqliteConnection) · [`SqliteCursor`](#SqliteCursor) · [`connect`](#database.sqlite.connect)
 
 ## Constants
@@ -56,10 +60,10 @@ end
 <a id="SqliteConnection" />
 An open SQLite database session. Obtain one from `connect(...)`.
 
-**Implements:** [`Connection`](#Connection)
+**Implements:** [`database.Connection`](#database.Connection)
 
 ```gust
-def SqliteConnection implements Connection
+def SqliteConnection implements database.Connection
 
     _db: integer
     _open: bool
@@ -76,7 +80,10 @@ end
 
 <a id="SqliteConnection.execute" />
 ```gust
-def SqliteConnection.execute(sql: string, params: list[Value]) -> ExecResult
+def SqliteConnection.execute(
+    sql: string,
+    params: list[database.Value],
+) -> database.ExecResult
 ```
 
 Run a non-`SELECT` statement (INSERT/UPDATE/DELETE/DDL) and report rows
@@ -95,7 +102,10 @@ affected plus the new `rowid`. Bind `?` placeholders from `params`.
 
 <a id="SqliteConnection.query" />
 ```gust
-def SqliteConnection.query(sql: string, params: list[Value]) -> Cursor
+def SqliteConnection.query(
+    sql: string,
+    params: list[database.Value],
+) -> database.Cursor
 ```
 
 Run a `SELECT` and return a `database.Cursor` streaming the rows. Bind
@@ -161,10 +171,10 @@ True while the connection has not been closed.
 <a id="SqliteCursor" />
 A forward-only stream of rows from a SQLite query.
 
-**Implements:** [`Cursor`](#Cursor)
+**Implements:** [`database.Cursor`](#database.Cursor)
 
 ```gust
-def SqliteCursor implements Cursor
+def SqliteCursor implements database.Cursor
 
     _db: integer
     _stmt: integer
@@ -195,7 +205,7 @@ end of the result set.
 
 <a id="SqliteCursor.row" />
 ```gust
-def SqliteCursor.row() -> Row
+def SqliteCursor.row() -> database.Row
 ```
 
 The current row — call only after `next()` returned true. Each column is

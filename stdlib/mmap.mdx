@@ -10,11 +10,12 @@ use mmap
 Memory-mapped regions through the POSIX `mmap` call. A successful `map`
 returns the base address of the mapping as an `integer`, ready to hand to the
 `unsafe` load/store primitives; `unmap` releases it. Protection and flag
-values come from the `prot_*` / `map_*` accessors so the numeric constants
-stay on the C side where they are correct per platform.
+values are the `PROT_*` / `MAP_*` foreign constants, whose values the C library
+of the target being built defines.
 
-Available on Linux and macOS. On Windows every call fails gracefully (`map`
-returns -1) rather than failing to link.
+Available on native builds for Linux, macOS and the BSDs. Windows, the
+microcontroller targets and the browser have no `mmap` package: an import there
+resolves to nothing and every reference is a compile error.
 
 **Examples**
 
@@ -25,8 +26,8 @@ use unsafe
 def main() -> none
     # A 4 KiB anonymous, writable, private scratch region.
     size := 4096
-    addr := mmap.map(-1, size, mmap.prot_read() | mmap.prot_write(),
-                     mmap.map_private() | mmap.map_anonymous(), 0)
+    addr := mmap.map(-1, size, mmap.PROT_READ | mmap.PROT_WRITE,
+                     mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS, 0)
     if addr < 0
         return
     end
@@ -35,7 +36,23 @@ def main() -> none
 end
 ```
 
-**On this page:** [`map`](#mmap.map) · [`unmap`](#mmap.unmap) · [`sync`](#mmap.sync) · [`prot_read`](#mmap.prot_read) · [`prot_write`](#mmap.prot_write) · [`prot_exec`](#mmap.prot_exec) · [`prot_none`](#mmap.prot_none) · [`map_shared`](#mmap.map_shared) · [`map_private`](#mmap.map_private) · [`map_anonymous`](#mmap.map_anonymous)
+<Note>
+Only available on native builds, and not on Windows.
+</Note>
+
+**On this page:** [`map`](#mmap.map) · [`unmap`](#mmap.unmap) · [`sync`](#mmap.sync)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `PROT_READ` | `integer` | defined in C |
+| `PROT_WRITE` | `integer` | defined in C |
+| `PROT_EXEC` | `integer` | defined in C |
+| `PROT_NONE` | `integer` | defined in C |
+| `MAP_SHARED` | `integer` | defined in C |
+| `MAP_PRIVATE` | `integer` | defined in C |
+| `MAP_ANONYMOUS` | `integer` | defined in C |
 
 ## Functions
 
@@ -52,15 +69,15 @@ def foreign map(
 
 Map `length` bytes of the object referred to by `fd` into memory and
 return the base address, or -1 on error. For an anonymous mapping (backed
-by zero-filled pages rather than a file), set `map_anonymous()` in `flags`;
+by zero-filled pages rather than a file), set `MAP_ANONYMOUS` in `flags`;
 `fd` is then ignored and conventionally passed as -1.
 
 **Parameters**
 
 - `fd: integer` — File descriptor to map, or -1 for an anonymous mapping.
 - `length: integer` — Number of bytes to map.
-- `prot: integer` — Bitwise OR of the `prot_*` accessors (page protection).
-- `flags: integer` — Bitwise OR of the `map_*` accessors (visibility and backing).
+- `prot: integer` — Bitwise OR of the `PROT_*` constants (page protection).
+- `flags: integer` — Bitwise OR of the `MAP_*` constants (visibility and backing).
 - `offset: integer` — Byte offset into the object; must be a multiple of the page size.
 
 ---
@@ -91,67 +108,3 @@ object. Returns 0 on success, -1 on error.
 
 - `addr: integer` — Base address returned by `map`.
 - `length: integer` — Number of bytes to flush.
-
----
-
-<a id="mmap.prot_read" />
-```gust
-def foreign prot_read() -> integer
-```
-
-Page protection bit: the mapped region may be read.
-
----
-
-<a id="mmap.prot_write" />
-```gust
-def foreign prot_write() -> integer
-```
-
-Page protection bit: the mapped region may be written.
-
----
-
-<a id="mmap.prot_exec" />
-```gust
-def foreign prot_exec() -> integer
-```
-
-Page protection bit: the mapped region may be executed.
-
----
-
-<a id="mmap.prot_none" />
-```gust
-def foreign prot_none() -> integer
-```
-
-Page protection value: the mapped region may not be accessed.
-
----
-
-<a id="mmap.map_shared" />
-```gust
-def foreign map_shared() -> integer
-```
-
-Mapping flag: writes are carried through to the underlying object and
-are visible to other processes mapping the same region.
-
----
-
-<a id="mmap.map_private" />
-```gust
-def foreign map_private() -> integer
-```
-
-Mapping flag: writes are copy-on-write and private to this process.
-
----
-
-<a id="mmap.map_anonymous" />
-```gust
-def foreign map_anonymous() -> integer
-```
-
-Mapping flag: the region is backed by zero-filled pages, not a file.

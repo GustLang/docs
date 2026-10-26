@@ -79,9 +79,11 @@ writes it.
 <a id="project.version" />
 **`field version: string`**
 
-Semantic version string, e.g. `"0.1.0"`. Currently informational only —
-future versions of the compiler will use this for packaging and release
-metadata.
+Semantic version string, e.g. `"0.1.0"`.
+
+Two places read it: the [`{version}` placeholder](#build.output) in
+`[build] output`, and the [`__VERSION__`](/lang/constants#predefined-values)
+predefine, which makes the version readable from the program itself.
 
 <a id="project.entry" />
 **`field entry: string`**
@@ -112,11 +114,22 @@ Whether the project builds into an executable or is consumed via `use`.
 
 `gust init --lib` sets this to `"library"`.
 
+Declaring `"binary"` also tells `gust check` that the project is the whole
+program, which lets [`W0305` unused-function](/rules/warnings) report a public
+function no source under the project root ever names. Under any other setting a
+public function could be called by code outside the project, so only `private`
+ones are reported.
+
 <a id="project.description" />
 **`field description: string (optional)`**
 
 A one-line project description. Informational; `gust init` writes it when you
 provide one.
+
+<a id="project.authors" />
+**`field authors: list[string] (optional)`**
+
+List of authors, e.g. `["Your Name <you@example.com>"]`. Informational.
 
 ### `[build]`
 
@@ -130,6 +143,27 @@ passed, the binary goes to `./<source-stem>`.
 ```toml
 [build]
 output = "build/myapp"
+```
+
+The path may reference `[project]` fields as `{name}` and `{version}`
+placeholders, so a binary can carry its version in its filename:
+
+```toml
+[project]
+name    = "myapp"
+version = "1.2.0"
+
+[build]
+output = "build/{name}-{version}"   # → build/myapp-1.2.0
+```
+
+Placeholders are the only substitution TOML gets here — an unrecognized name,
+an unterminated `{`, or a placeholder whose `[project]` field is unset is a
+configuration error, so a mistyped template never produces a
+half-substituted path:
+
+```
+gust.toml: 'build.output' has unknown placeholder '{author}'; supported: {name}, {version}
 ```
 
 <a id="build.optimize" />
@@ -153,6 +187,20 @@ entries are *also* appended, in order.
 ```toml
 [build]
 cflags = ["-Wall", "-Wextra"]
+```
+
+<a id="build.ldflags" />
+**`field ldflags: list[string] (default: [])`**
+
+Extra linker flags, placed at the end of the link line after every object —
+where a `-l` for a C library bound through `@c_shim` or `def foreign` has to
+sit to resolve. CLI `--ldflag` entries are appended after these. The flags
+apply to the project being built, so a program that uses a package binding a
+system library lists that library here.
+
+```toml
+[build]
+ldflags = ["-lglfw", "-lGL"]
 ```
 
 <a id="build.cc" />
@@ -182,25 +230,66 @@ Overridable via [`--target`](/start/cli#build.target).
 target = "x86_64-linux-musl"
 ```
 
-<a id="build.link_mode" />
-**`field link_mode: string (default: "auto")`**
+<a id="build.static" />
+**`field static: bool (default: false)`**
 
-Selects linking: `"auto"` defers to the target ABI (`linux-musl` links static,
-everything else dynamic), `"dynamic"` and `"static"` force it either way.
-Static linking is ignored on macOS targets (Apple doesn't ship static system
-libraries).
+Force static linking. When unset, linking is inferred from the target ABI
+(`linux-musl` links static, everything else dynamic). Set `static = true` to
+force a static binary or `static = false` to force dynamic. Static linking is
+ignored on macOS targets (Apple doesn't ship static system libraries).
 
 Overridable via [`--static`/`--no-static`](/start/cli#build.static).
 
-<a id="build.auto_vendor" />
-**`field auto_vendor: bool (default: true)`**
+```toml
+[build]
+static = true
+```
 
-When `true`, the compiler auto-builds the libcurl+mbedTLS vendor bundle that
-`use requests` links against. Disable to have the build fail loudly when a
-bundle is missing — useful for CI where you'd rather pre-build the bundle
-than rebuild it implicitly.
+<a id="build.heap" />
+**`field heap: string`**
 
-Overridable via [`--no-auto-vendor`](/start/cli#build.no-auto-vendor).
+Size of the heap the image carries, written as a count and a unit
+(`"64KiB"`). Only for a target whose platform places no heap of its own: a
+hosted image is given one by its C library and an SDK-built one by its SDK, and
+sizing it here would collide with theirs. A target that *does* need one — a
+device built with no vendor SDK — reports an error naming this key when it is
+unset, because an image with no heap cannot allocate at all.
+
+The heap is an array in the image's zeroed data, so a size larger than the
+chip's RAM is refused at build time rather than at load time.
+
+```toml
+[build]
+target = "nrf52840dk"
+heap   = "64KiB"
+```
+
+<a id="build.panic" />
+**`field panic: string`**
+
+What the image does when it hits a fault it cannot continue past — an
+allocation that failed, an uncaught raise. `"exit"` and `"abort"` end the
+process and are hosted choices; `"halt"` masks interrupts and stops the core,
+leaving the state a debugger wants; `"reset"` restarts the chip. Unset takes
+the profile's default: `"exit"` hosted, `"halt"` bare-metal.
+
+```toml
+[build]
+panic = "reset"
+```
+
+<a id="build.assertions" />
+**`field assertions: bool (default: true)`**
+
+Keep the runtime's internal consistency checks, such as the refcount underflow
+that reports a double free. Turning them off trades the report for the flash it
+costs, and an image that would have tripped one runs on into undefined
+behaviour instead.
+
+```toml
+[build]
+assertions = false
+```
 
 ### `[format]`
 
@@ -243,23 +332,6 @@ ignore = ["F018", "W0101"]   # don't warn on long lines or non-snake-case names
 Run [`gust explain <CODE>`](/start/cli) to see what a code means before
 silencing it.
 
-### `[markup]`
-
-<a id="markup.renderer" />
-**`field renderer: string (default: "gml")`**
-
-The package that inline `<markup>` desugars against — the target of the
-generated `<renderer>.h(...)`, `.attr(...)`, etc. Defaults to the reference
-renderer `gml`. Point it at an alternative renderer that
-exports the same constructor surface
-(`h`/`t`/`attr`/`on`/`cls`/`cn`/`flat`/`fragment`/`build`/`with_attrs` plus
-`Node`/`Attr`/`Component`).
-
-```toml
-[markup]
-renderer = "gml"
-```
-
 ### `[dependencies]`
 
 Packages your project depends on. Each key is the name you `use`; the value
@@ -289,15 +361,15 @@ parser = { github = "acme/tools", branch = "main", subdir = "packages/parser" }
 pinned = { github = "acme/tools", rev = "9f3c1ab" }
 ```
 
-**Local path table** — `{ path = "../gml" }`. Names a directory on disk instead
+**Local path table** — `{ path = "../mylib" }`. Names a directory on disk instead
 of a remote source; the path is resolved relative to the manifest that declares
 it (or may be absolute), and no network fetch happens. This is how a sibling
-package checked out next to your project — a `gml` renderer, say — is referenced
-without publishing it. A `path` entry is mutually exclusive with `github`.
+package checked out next to your project is referenced without publishing it.
+A `path` entry is mutually exclusive with `github`.
 
 ```toml
 [dependencies]
-gml = { path = "../gml" }
+mylib = { path = "../mylib" }
 ```
 
 `gust build` / `run` / `test` auto-install remote dependencies before compiling,
@@ -323,10 +395,13 @@ entry   = "src/main.g"    # default source for `gustc build` / `gustc run`
 output      = "build/myapp"                 # default -o
 optimize    = "release"                     # "debug" | "release"  (--release/--debug)
 cflags      = []                            # extra C flags         (--cflag=FLAG)
+ldflags     = []                            # extra linker flags    (--ldflag=FLAG)
 # cc          = "zig cc"                    # override driver       (--cc); unset => auto
 # target      = "x86_64-linux-gnu"          # default target triple (--target); unset => native
-# link_mode   = "auto"                       # "auto" | "dynamic" | "static"  (--static/--no-static)
-auto_vendor = true                          # build curl+mbedTLS on demand for `use requests` (--no-auto-vendor)
+# static      = false                       # force static link     (--static/--no-static)
+# heap        = "64KiB"                     # image's own heap; devices with no SDK only
+# panic       = "halt"                      # exit | abort | halt | reset
+# assertions  = true                        # keep the runtime's internal checks
 
 [format]
 indent     = 4                              # spaces per indent      (--indent)
@@ -343,10 +418,13 @@ a library is imported with `use` rather than built into a binary.
 ## Validation
 
 Unknown sections and keys produce **warnings**; malformed TOML, wrong value
-types (e.g. a non-integer `format.indent`), and out-of-range values (e.g. an
-`optimize` outside `"debug"`/`"release"`) are **fatal** — the command prints
-the error and exits `2`. The [language server](/tooling/lsp) validates and
-completes `gust.toml` against the same schema as you edit it.
+types (e.g. a non-integer `format.indent`), out-of-range values (e.g. an
+`optimize` outside `"debug"`/`"release"`), and unresolvable
+[`output` placeholders](#build.output) are **fatal** — the command prints
+the error and exits `2`. The [language server](/tooling/lsp)
+reads the same schema as you edit: it validates the manifest, completes
+sections, keys and their accepted values, and documents on hover whatever the
+cursor rests on.
 
 ## Discovery
 

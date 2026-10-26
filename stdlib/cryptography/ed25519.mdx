@@ -1,17 +1,17 @@
 ---
 title: cryptography.ed25519
-description: "Ed25519 digital signatures, backed by the system OpenSSL (`libcrypto`)"
+description: "Ed25519 digital signatures"
 ---
 
 ```gust
 use cryptography.ed25519
 ```
 
-Ed25519 digital signatures, backed by the system OpenSSL (`libcrypto`).
-Signatures prove *authenticity* and *integrity*: only the holder of the private
-key can produce a signature that verifies against the matching public key, and
-any change to the message makes verification fail. Use them to sign software
-releases, API tokens, or any message whose origin a third party must check.
+Ed25519 digital signatures. Signatures prove *authenticity* and *integrity*:
+only the holder of the private key can produce a signature that verifies
+against the matching public key, and any change to the message makes
+verification fail. Use them to sign software releases, API tokens, or any
+message whose origin a third party must check.
 
 Ed25519 is the modern default — fast, with small fixed-size keys (32 bytes
 each) and signatures (64 bytes), and no per-signature randomness to get wrong.
@@ -21,6 +21,15 @@ Key handling: `generate()` makes a fresh `Ed25519KeyPair`; `public_key` derives
 the public half from a private key; `sign` produces a 64-byte signature; and
 `verify` returns whether a signature is valid (a bad signature is `false`, not
 an error). Keep the private key secret — anyone holding it can sign as you.
+
+The package builds for every target. A host build drives the system OpenSSL
+(`libcrypto`); a microcontroller or WebAssembly build, which has no such
+library, uses the pure-Gust implementation in `portable.g` instead. Both follow
+RFC 8032, so keys and signatures cross between them unchanged — a key generated
+on a host verifies on a device. The portable path is the slower of the two —
+signing on a microcontroller takes on the order of a second, against
+microseconds on a host — so sign on a device when the key must never leave it,
+not for throughput.
 
 **Examples**
 

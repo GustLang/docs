@@ -39,7 +39,7 @@ Re-indents every line using the configured indent string (default 4 spaces).
 
 **Severity:** fix · **Autofix:** yes (`gust format`)
 
-Exactly two blank lines before every top-level definition; `use` lines stay tight.
+Exactly two blank lines before every top-level definition; `use` lines stay tight, and consecutive constants sit one blank line apart.
 
 ### F006 — struct-blank-lines
 
@@ -108,6 +108,12 @@ Moves the closing `"""` of a multi-line docstring onto its own line, aligned wit
 **Severity:** fix · **Autofix:** yes (`gust format`)
 
 Splits a line longer than `line_width` at a bracketed group (def signatures, call arguments, collection literals), one item per line with a trailing comma.
+
+### F023 — compound-assign
+
+**Severity:** fix · **Autofix:** yes (`gust format`)
+
+Rewrites `x = x OP y` to `x OP= y` for `+ - * / %` when `y` already groups as one operand; a right side holding an operator as loose as `OP` (`a = a - b - 1`) stays as written.
 
 ## imports
 

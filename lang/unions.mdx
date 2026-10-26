@@ -65,6 +65,25 @@ end
 items: list[string | integer] = ["a", 1, "b"]  # container element type
 ```
 
+### Naming a union
+
+A union that appears in several signatures is worth a name. `type Name = ...`
+declares a transparent alias — a second spelling for the same type, not a new
+one:
+
+```gust
+type Number = integer | float
+
+
+def show(n: Number) -> string
+    return f"{n}"
+end
+```
+
+`Number` and `integer | float` stay interchangeable everywhere, and narrowing
+works through the alias exactly as it does on the spelled-out union. See
+[type aliases](/lang/types#type-aliases-type-name) for the full rules.
+
 ## Optionals (`T | none`)
 
 A union whose arms include `none` is Gust's **optional** — the value is either a
@@ -109,10 +128,12 @@ live. Two operators recover a concrete type:
 
 - `is` / `is not` test which arm the value currently holds and yield a `bool`.
   The forms `is none` and `is not none` test the absence arm specifically.
-- `as` recovers the concrete value once you know the arm.
+- `as` recovers the concrete value once you know the arm. Casting to a
+  `string`, `integer`, `bool`, or `bytes` arm the value does not
+  currently hold raises `ValueError`.
 
-An `is` (or `is not none`) test **narrows** the value inside the guarded branch,
-so within that branch it already has the concrete type:
+An `is` test **narrows** the value inside the guarded branch, so within that
+branch it already has the concrete type:
 
 ```gust
 def main() -> none
@@ -126,19 +147,52 @@ def main() -> none
 end
 ```
 
-Because the branch after `is not none` already sees the plain type, an `as`
-cast there is redundant and warns (`W0506`). Reach for `as` when you narrowed
-with an `is` test that the compiler cannot use to retype the binding — most
-often after branching on a non-`none` arm:
+Naming an arm narrows to that arm the same way, in whichever branch the test
+holds — the `then` branch of `is T`, the `else` branch of `is not T`:
 
 ```gust
 def describe(v: string | integer) -> string
     if v is string
-        return v as string        # recover the concrete string
+        return v                  # a plain string here
+    else if v is integer
+        return f"{v + 1}"         # a plain integer here
     end
-    return f"{v as integer}"
+    return "?"
 end
 ```
+
+Narrowing works on a plain variable — a local, a parameter, or one of the
+receiver's own fields inside a method. A branch that *reassigns* the field it
+tested keeps the union form, since the write has to reach the field itself.
+
+An assignment narrows a local the same way a test does: storing one arm into a
+union-typed local is itself proof of which arm it holds, so the statements after
+the write read the plain type.
+
+```gust
+def Config
+
+    retries: integer
+
+end
+
+
+def load() -> Config
+    c: Config | none = none
+    c = Config(retries: 3)
+    print(c.retries)              # a plain Config from the write on
+    return c
+end
+```
+
+The binding keeps its declared union, so writing another arm back (`c = none`)
+stays legal. A local that a *later* statement writes again is not narrowed at
+all — the fact would stop holding at that write — and, like a test, the
+narrowing reaches only to the end of the block the write is in.
+
+Because the guarded branch already sees the plain type, an `as` cast there is
+redundant and warns (`W0506`). Reach for `as` when there is no test to narrow
+from — recovering an arm out of a value you did not branch on.
 
 ## Matching a union
 
@@ -151,17 +205,23 @@ def render(v: string | integer | none) -> string
         case none
             return "-"
         case string
-            return v as string
+            return v              # narrowed to string for this arm
         case integer
-            return f"{v as integer}"
+            return f"{v + 1}"     # narrowed to integer for this arm
     end
     return "?"
 end
 ```
 
-This is the idiom to fully unpack a union whose arms need different handling.
-The same type patterns drive an `if`/`is` chain; `match` reads cleaner once you
-have more than two arms.
+Each arm narrows the scrutinee to the type it matched, exactly as an `is` test
+does, so the body reads the concrete value without a cast. This is the idiom to
+fully unpack a union whose arms need different handling; `match` reads cleaner
+than an `if`/`is` chain once you have more than two arms.
+
+An arm naming a struct in an [`extends` hierarchy](/lang/structs#narrowing-with-is-and-as)
+tests the value's runtime class, so it matches that class or any of its
+descendants. Order those arms most-specific first — a subclass matches its
+ancestor's arm too, and the first matching arm wins.
 
 ## What you cannot do to a union directly
 
@@ -342,6 +402,46 @@ end
 Reading a variant's fields **requires** a `match` — there's no `s.radius`
 accessor on a tagged-union value, because the active variant isn't known until
 you branch on it.
+
+#### Testing one variant with `is`
+
+When you care about a single variant, `match` is a heavy way to say it. `is`
+tests the tag directly, and the binding form opens that variant's payload for
+the branch it guards:
+
+```gust
+if s is Circle(r)
+    return 3.14159 * r * r
+end
+return 0.0
+```
+
+The binds follow the same rules as a `case`: positional, in field-declaration
+order, `_` to skip one, and binding fewer names than the variant has fields
+ignores the trailing ones. Drop the parentheses to test the tag without reading
+anything — `if s is Circle`, or `if s is not Empty`. The variant name may be
+written bare, package-qualified (`e is ast.Ident`), or qualified by its own enum
+(`s is Shape.Circle`); all three mean the same tag.
+
+Three rules bound where a binding form may appear, all for the same reason —
+the binds exist only where the match is known to have happened:
+
+- Only in an `if` or `elseif` condition, reached from the condition through
+  `and`. Under `or` the test may never have run.
+- Never under `is not`: the branch it guards is the one where the variant did
+  **not** match, so there is no payload to read.
+- The tested expression must be a name, field, or index path (`e`,
+  `node.left`, `parts[i]`) — not a call. It is read a second time to open the
+  binds, so it has to be free of side effects.
+
+The binds are scoped to the branch body. The rest of the condition cannot see
+them, so test them inside:
+
+```gust
+if e is Ident(name)
+    return handle(name) if name.starts_with("_") else name
+end
+```
 
 ### Recursive unions
 

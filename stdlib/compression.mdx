@@ -1,14 +1,15 @@
 ---
 title: compression
-description: "DEFLATE-family compression backed by the system zlib"
+description: "Compression, as compress/decompress pairs operating on raw `bytes`"
 ---
 
 ```gust
 use compression
 ```
 
-DEFLATE-family compression backed by the system zlib. Three container formats
-are exposed, each as a compress/decompress pair operating on raw `bytes`:
+Compression, as compress/decompress pairs operating on raw `bytes`. Four
+container formats are exposed — three from the DEFLATE family, backed by the
+system zlib, and `.xz`, backed by the system liblzma:
 
 - gzip   (RFC 1952) — `gzip_compress` / `gzip_decompress`, the `.gz` wrapper
           with a header and CRC32; what HTTP `Content-Encoding: gzip` uses.
@@ -16,11 +17,20 @@ are exposed, each as a compress/decompress pair operating on raw `bytes`:
           with an Adler-32 check; what `Content-Encoding: deflate` should be.
 - raw    (RFC 1951) — `deflate_compress` / `deflate_decompress`, headerless
           DEFLATE with no checksum.
+- xz     — `xz_compress` / `xz_decompress`, LZMA2 in the `.xz` container with
+          an integrity check. Slower to compress and far heavier on memory
+          than the DEFLATE family, and markedly smaller in return; the usual
+          choice for a software release or a disk image.
 
 The compress functions take a `level` from 0 (store) to 9 (smallest); pass
-`DEFAULT` for zlib's default, or the `BEST_SPEED` / `BEST_SIZE` constants. The
-default-level convenience wrappers `gzip` / `zlib` / `deflate` cover the common
-case. Decompression raises `RuntimeError` on malformed or truncated input.
+`DEFAULT` for the codec's own default, or the `BEST_SPEED` / `BEST_SIZE`
+constants. The default-level convenience wrappers `gzip` / `zlib` / `deflate` /
+`xz` cover the common case. Decompression raises `RuntimeError` on malformed or
+truncated input.
+
+Native builds only: the codecs are the system zlib and liblzma, which the
+microcontroller targets and the browser sandbox do not ship. An import there is
+a compile error.
 
 **Examples**
 
@@ -34,7 +44,11 @@ def main() -> none
 end
 ```
 
-**On this page:** [`gzip_compress`](#compression.gzip_compress) · [`gzip_decompress`](#compression.gzip_decompress) · [`zlib_compress`](#compression.zlib_compress) · [`zlib_decompress`](#compression.zlib_decompress) · [`deflate_compress`](#compression.deflate_compress) · [`deflate_decompress`](#compression.deflate_decompress) · [`gzip`](#compression.gzip) · [`zlib`](#compression.zlib) · [`deflate`](#compression.deflate)
+<Note>
+Only available on native builds.
+</Note>
+
+**On this page:** [`gzip_compress`](#compression.gzip_compress) · [`gzip_decompress`](#compression.gzip_decompress) · [`zlib_compress`](#compression.zlib_compress) · [`zlib_decompress`](#compression.zlib_decompress) · [`deflate_compress`](#compression.deflate_compress) · [`deflate_decompress`](#compression.deflate_decompress) · [`xz_compress`](#compression.xz_compress) · [`xz_decompress`](#compression.xz_decompress) · [`gzip`](#compression.gzip) · [`zlib`](#compression.zlib) · [`deflate`](#compression.deflate) · [`xz`](#compression.xz)
 
 ## Constants
 
@@ -142,6 +156,42 @@ Decompress a raw DEFLATE stream.
 
 ---
 
+<a id="compression.xz_compress" />
+```gust
+def xz_compress(data: bytes, level: integer) -> bytes
+```
+
+Compress `data` to the `.xz` format at the given level.
+
+Levels above 6 raise the memory the *decompressor* needs as well as the
+compressor — level 9 asks for a 64 MB dictionary — so a stream meant for a
+small device is worth keeping at or below the default.
+
+**Parameters**
+
+- `data: bytes` — The bytes to compress.
+- `level: integer` — 0-9 (0 = fastest, 9 = smallest), or `DEFAULT` for the codec's own default of 6.
+
+---
+
+<a id="compression.xz_decompress" />
+```gust
+def xz_decompress(data: bytes) -> bytes
+```
+
+Decompress `.xz`-framed `data`, verifying the container's integrity
+check. Concatenated streams are decoded as one, matching the `xz` tool.
+
+**Parameters**
+
+- `data: bytes` — The `.xz` stream to decompress.
+
+**Raises**
+
+- `RuntimeError` — If `data` is not a well-formed `.xz` stream, is truncated, or fails its integrity check.
+
+---
+
 <a id="compression.gzip" />
 ```gust
 def gzip(data: bytes) -> bytes
@@ -177,6 +227,20 @@ def deflate(data: bytes) -> bytes
 
 Compress `data` to a raw DEFLATE stream at the default level. Shorthand
 for `deflate_compress(data, DEFAULT)`.
+
+**Parameters**
+
+- `data: bytes` — The bytes to compress.
+
+---
+
+<a id="compression.xz" />
+```gust
+def xz(data: bytes) -> bytes
+```
+
+Compress `data` to `.xz` at the default level. Shorthand for
+`xz_compress(data, DEFAULT)`.
 
 **Parameters**
 

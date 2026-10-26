@@ -1,26 +1,42 @@
 ---
 title: cli.ui
-description: "Terminal key decoder: the byte-to-keycode state machine behind `read_key()` and `read_key_timeout()`"
+description: "Building blocks for a full-screen terminal UI"
 ---
 
 ```gust
 use cli.ui
 ```
 
-Terminal key decoder: the byte-to-keycode state machine behind `read_key()`
-and `read_key_timeout()`.
+Building blocks for a full-screen terminal UI.
 
-The reader pulls one byte at a time from stdin through `_read_byte`, a small
-timed-read primitive backed by the terminal syscalls in ui.c. A printable or
-control byte maps straight to its own code. An ESC byte opens an escape
-sequence, and the decoder pulls continuation bytes (each with a short timeout,
-so a lone ESC key does not stall) to resolve CSI (`ESC [ ...`) and SS3
-(`ESC O ...`) forms into the tagged codes in keys.g.
+`CLIUIApp` is the program shell for a TUI: it holds the terminal-setup
+choices (alt-screen, cursor visibility) and provides `setup()` / `teardown()`
+helpers. The render → read-key → update loop is written by the caller using
+the primitives in this file plus `read_key()` from keys.g.
 
-`_read_byte` returns a byte value in `0..255`, or one of three sentinels that
-double as the keycode the reader should yield when no byte is available:
-`KEY_NONE` (-1) on EOF or read error, `KEY_TIMEOUT` (-2) when the wait elapses,
-and `KEY_RESIZE` (266) when the terminal was resized.
+**Examples**
+
+```gust
+def main() -> none
+    app := cli.ui_app("My App")
+    cli.setup(app)
+    try
+        state := initial_state
+        while true
+            cli.clear_screen()
+            print(render(state))
+            key := cli.read_key()
+            if key == cli.KEY_CTRL_C or key == cli.KEY_NONE
+                break
+            end
+            state = update(state, key)
+        end
+    catch RuntimeError
+        # ensure the terminal is restored even on a panic path
+    end
+    cli.teardown(app)
+end
+```
 
 **On this page:** [`Border`](#Border) · [`Align`](#Align) · [`ListItem`](#ListItem) · [`BulletList`](#BulletList) · [`TextQuestion`](#TextQuestion) · [`ConfirmQuestion`](#ConfirmQuestion) · [`SelectQuestion`](#SelectQuestion) · [`CheckboxQuestion`](#CheckboxQuestion) · [`PressAnyKeyQuestion`](#PressAnyKeyQuestion) · [`RunConfig`](#RunConfig) · [`FrameRenderer`](#FrameRenderer) · [`Table`](#Table) · [`CLIUIApp`](#CLIUIApp) · [`View`](#View) · [`Range`](#Range) · [`BorderChars`](#BorderChars) · [`App`](#App) · [`read_key`](#cli.ui.read_key) · [`read_key_timeout`](#cli.ui.read_key_timeout) · [`terminal_size`](#cli.ui.terminal_size) · [`is_printable`](#cli.ui.is_printable) · [`to_string`](#cli.ui.to_string) · [`join_horizontal`](#cli.ui.join_horizontal) · [`join_horizontal_divided`](#cli.ui.join_horizontal_divided) · [`join_vertical`](#cli.ui.join_vertical) · [`place`](#cli.ui.place) · [`overlay`](#cli.ui.overlay) · [`style_runes`](#cli.ui.style_runes) · [`style_ranges`](#cli.ui.style_ranges) · [`bullet_list`](#cli.ui.bullet_list) · [`numbered_list`](#cli.ui.numbered_list) · [`alpha_list`](#cli.ui.alpha_list) · [`text`](#cli.ui.text) · [`path`](#cli.ui.path) · [`password`](#cli.ui.password) · [`confirm`](#cli.ui.confirm) · [`select`](#cli.ui.select) · [`autocomplete`](#cli.ui.autocomplete) · [`rawselect`](#cli.ui.rawselect) · [`checkbox`](#cli.ui.checkbox) · [`press_any_key_to_continue`](#cli.ui.press_any_key_to_continue) · [`run_config`](#cli.ui.run_config) · [`run`](#cli.ui.run) · [`styled`](#cli.ui.styled) · [`print_formatted_text`](#cli.ui.print_formatted_text) · [`table`](#cli.ui.table) · [`ui_app`](#cli.ui.ui_app) · [`setup`](#cli.ui.setup) · [`teardown`](#cli.ui.teardown) · [`clear_screen`](#cli.ui.clear_screen) · [`move_cursor`](#cli.ui.move_cursor) · [`hide_cursor`](#cli.ui.hide_cursor) · [`show_cursor`](#cli.ui.show_cursor) · [`enter_alt_screen`](#cli.ui.enter_alt_screen) · [`leave_alt_screen`](#cli.ui.leave_alt_screen) · [`raw_mode_enter`](#cli.ui.raw_mode_enter) · [`raw_mode_leave`](#cli.ui.raw_mode_leave) · [`write_frame`](#cli.ui.write_frame) · [`make_range`](#cli.ui.make_range) · [`view`](#cli.ui.view) · [`border_chars`](#cli.ui.border_chars) · [`word_wrap_text`](#cli.ui.word_wrap_text) · [`hard_wrap_segment`](#cli.ui.hard_wrap_segment) · [`wrap_line`](#cli.ui.wrap_line) · [`skip_escape_at`](#cli.ui.skip_escape_at) · [`utf8_decode_at`](#cli.ui.utf8_decode_at) · [`cp_display_width`](#cli.ui.cp_display_width) · [`visible_width`](#cli.ui.visible_width) · [`truncate_visible`](#cli.ui.truncate_visible) · [`pad_to_width`](#cli.ui.pad_to_width) · [`fg_code`](#cli.ui.fg_code) · [`is_color_index`](#cli.ui.is_color_index) · [`fg_params`](#cli.ui.fg_params) · [`bg_params`](#cli.ui.bg_params) · [`hex_to_rgb`](#cli.ui.hex_to_rgb)
 
@@ -2412,7 +2428,7 @@ Return the byte index just past the terminal escape sequence starting
 at `i`. When `s[i]` is not the start of a complete escape sequence, `i` is
 returned unchanged so the caller can process the byte as normal content.
 
-Recognizes CSI (ESC [ … final byte 0x40–0x7E) and OSC (ESC ] … BEL or
+Recognizes CSI (ESC [ … final byte 0x40-0x7E) and OSC (ESC ] … BEL or
 ESC \) sequences; any other two-byte ESC pair is skipped whole.
 
 **Parameters**

@@ -41,6 +41,14 @@ print(d["n"] as integer + 1)      # 2
 type pattern, and recover the value with `as`. See
 [Runtime type tests](#runtime-type-tests) below for the full set of forms.
 
+An operation that needs a static shape has to be told what to expect first. A
+bare `Any` cannot be indexed (`G0113`), read through (`G0110`), destructured
+(`G0901`), or used as an operand of arithmetic, ordering or `in` (`G0115`) —
+cast it to the concrete type, or prove the type with a runtime test, and operate
+on that. What does work unchanged is the boxed value itself: interpolating it,
+testing it with `is`, matching a type pattern against it, and iterating an `Any`
+that holds a list.
+
 ### `bytes`
 
 A mutable, growable sequence of raw octets (0-255). Unlike `string`, it can hold
@@ -54,6 +62,18 @@ print(data.length)            # 6
 print(data[0])                # 137  (index → integer 0-255)
 text := b"hello" as string    # decode bytes → string
 raw := "hi" as bytes          # encode string → bytes
+```
+
+`==` and `!=` compare octets, not object identity, so two buffers built
+separately are equal when they hold the same payload. The comparison is
+length-aware, so an embedded NUL takes part in it like any other octet.
+
+```gust
+built := b""
+built.append(0xFF)
+built.extend(b"\x5a")
+print(built == b"\xff\x5a")   # true
+print(b"a\x00b" == b"a\x00c") # false — the octets past the NUL differ
 ```
 
 Full reference → [bytes](/builtins/bytes).
@@ -101,15 +121,15 @@ end
 
 Operators don't apply to a union directly (`v + 1` on a `string | integer` is
 a compile error) — branch on the held type with a `match` type pattern or an
-`is` test, then recover the concrete value with `as`:
+`is` test, which narrows the value to that arm for the branch:
 
 ```gust
 def describe(v: string | integer) -> string
     match v
         case string
-            return "str:" + (v as string)
+            return "str:" + v
         case integer
-            return f"int:{(v as integer) + 1}"
+            return f"int:{v + 1}"
     end
     return "?"
 end
@@ -128,6 +148,12 @@ if v is not none
     print(v + 1)          # v is a plain integer here
 end
 ```
+
+Bare `none` is the return type of a function that yields nothing, and the empty
+arm of an optional — never a type a value is held in. A parameter or field
+declared `none` has no representation at all, so it is a compile error
+(`G0117`): drop it, give it the type it actually carries, or write `T | none` to
+mean "a value or nothing".
 
 A `A | B` union holds one of several *existing* types as-is. When you want each
 alternative to carry its own named fields, declare a **tagged union** — a
@@ -148,6 +174,12 @@ end
 ```
 
 Full treatment → [Tagged unions](/lang/unions).
+
+## Variadic parameter annotations
+
+Use `varargs[T]` on a final function or method parameter to collect trailing arguments. The parameter has type `list[T]` inside the body. Use `...items` to forward a list into another variadic tail.
+
+Callable types can include the final annotation, such as `Function(varargs[integer])[integer]`. It preserves variadic argument binding and differs from `Function(list[integer])[integer]`. You cannot use `varargs[T]` as a variable, field, alias, nested element, or return type. See [Variadic parameters](/lang/functions#variadic-parameters).
 
 ## Function types `Function(ArgT, ...)[ReturnT]`
 
@@ -255,24 +287,97 @@ cell.value = 42
 print(cell.value)         # 42
 ```
 
-## Type conversions
+## Type aliases (`type Name = ...`)
 
-Gust does almost no implicit conversion. The one exception is numeric widening;
-everything else uses the explicit `as` operator.
-
-### Numeric widening (implicit)
-
-An `integer` flows into a `float` slot with no cast — assignment, a parameter,
-a return, or a field all accept the promotion:
+A `type` declaration gives an existing type a second name. It is most useful for
+a union or a nested container that would otherwise be spelled out at every
+signature:
 
 ```gust
-ratio: float = 3          # widened to 3.0
+type Number = integer | float
+
+
+def show(n: Number) -> string
+    return f"{n}"
+end
 ```
 
-Widening is symmetric only for the type checker's purposes: mixed arithmetic
-(`2 + 1.5`) promotes the integer side and yields a `float`. There is no implicit
-narrowing in the other direction — a `float` in an `integer` slot is a compile
-error until you cast it.
+The right-hand side is any type annotation, so an alias can name any form on
+this page:
+
+```gust
+type Label = string
+type Row = list[Number]
+type Registry = dict[Label, Row]
+type Renderer = Function(Number)[Label]
+type Entry = (Label, Number)
+```
+
+An alias is **transparent**: it introduces a spelling, not a type. `Number` and
+`integer | float` are the same type everywhere, so a value declared with one is
+accepted wherever the other is, and diagnostics report the underlying type
+rather than the alias:
+
+```gust
+def take_union(v: integer | float) -> none
+    print(v)
+end
+
+
+def main() -> none
+    n: Number = 3
+    take_union(n)                 # the alias *is* the union
+end
+```
+
+An alias may be declared `private`, may carry a docstring on the following line,
+and may be named before the type it refers to:
+
+```gust
+type Timestamp = integer
+"""Milliseconds since the Unix epoch."""
+
+
+type private Internal = list[Timestamp]
+```
+
+Aliases are top-level declarations like any other, so a public one is reachable
+from another package qualified (`scalars.Scalar`) or by name
+(`use Scalar from scalars`). A bare type name inside the target resolves in the
+package that declared the alias, not in the file that references it.
+
+An alias may name another alias, and the chain collapses to the type at the end
+of it. What it may **not** do is reach itself — an alias is substituted for its
+target, so a cycle has no expansion and is rejected with `G0208`:
+
+```gust
+type Tree = integer | Tree     # G0208: 'Tree' expands to itself
+```
+
+Use an `enum` sum type for a recursive shape; a variant field may name its own
+enum and the compiler boxes it for you. See
+[Recursive unions](/lang/unions#recursive-unions).
+
+## Type conversions
+
+Gust does almost no implicit conversion. The one exception is conversion
+between the two numeric types, `integer` and `float`; everything else uses the
+explicit `as` operator.
+
+### Numeric conversion (implicit)
+
+`integer` and `float` convert into each other's slots with no cast —
+assignment, a parameter, a return, or a field all accept the conversion:
+
+```gust
+ratio: float   = 3        # widened to 3.0
+count: integer = 3.9      # narrowed to 3 (truncates toward zero)
+```
+
+Widening (`integer` → `float`) is exact. Narrowing (`float` → `integer`)
+truncates toward zero, exactly as a `float as integer` cast would, so a
+fractional part is dropped rather than rounded. Mixed arithmetic (`2 + 1.5`)
+promotes the `integer` side and yields a `float`.
 
 ### The `as` operator
 
@@ -422,6 +527,15 @@ same-kind re-typing such as `[] as list[string]` or
 target — a collection to a number, a scalar to a collection, or anything
 `as none` — is a compile error (`G0403`).
 
+Three sources have no conversion at all, and are rejected with the same code:
+
+- An **interface value**, whose concrete type is only known at runtime. Narrow
+  it with `value is Impl` first, then cast the narrowed value.
+- A **sum-type enum**, whose variants carry different payloads and so share no
+  one scalar or textual form. `match` on the variants, or interpolate the value
+  into an f-string for its text.
+- A **package name**, which is a namespace rather than a value.
+
 ## Runtime type tests
 
 Test what an `Any` or union value holds at runtime with `is` (and its negation
@@ -442,6 +556,22 @@ if v is not none
 end
 ```
 
+A test that names one arm of a union narrows the same way: `if x is integer`
+gives the branch a plain `integer`, and `if x is not integer` gives its `else`
+branch one.
+
+`Any` narrows too, against any concrete type — it is the universal box, so a
+test that holds proves the branch's type outright:
+
+```gust
+def shout(v: Any) -> string
+    if v is string
+        return v.uppercase()      # v is a plain string here
+    end
+    return "?"
+end
+```
+
 The right-hand side may be a primitive (`x is integer`, `x is string`) or a full
 container type. Container tests match the element type exactly — there is no
 covariance, and `Any` anywhere in the tested type is rejected:
@@ -451,19 +581,22 @@ x is list[string]
 x is dict[string, integer]
 ```
 
-A bare `x is list` (no element type) is a compile error — spell the element type
-as `list[T]`.
+A bare `x is list` (also `dict`, `tuple`) tests the container kind and ignores
+the element type — the one form that answers "is this an array?" about a value
+whose elements are `Any`, such as parsed JSON. It proves no element type, so it
+narrows nothing; spell `list[T]` to get a narrowed binding.
 
 ### Type patterns in `match`
 
-A `match` arm can be a type instead of a literal. Each `case` narrows the
-scrutinee to that type within the arm:
+A `match` arm can be a type instead of a literal, selecting the arm by the
+value's runtime type. The arm narrows the scrutinee to that type, for an `Any`
+as for a union:
 
 ```gust
 def describe(v: Any) -> string
     match v
         case integer
-            return f"int:{(v as integer) + 1}"
+            return f"int:{v + 1}"
         case list[string]
             return "list of strings"
         case dict[string, integer]

@@ -28,7 +28,24 @@ def main() -> none
 end
 ```
 
-Signal numbers are the Linux/x86-64 ABI values.
+Signal numbers are the Linux/x86-64 ABI values. `SIGKILL` is listed because a
+program may need to send one; it cannot be taken delivery of. `on` and
+`ignore` report no error for it, but the kernel refuses the change and the
+process still dies.
+
+A handler is not the only way to take delivery. On Linux, `posix.signalfd`
+turns a set of blocked signals into a descriptor that becomes readable, which
+a program already waiting on descriptors can fold into that wait instead of
+being interrupted out of it.
+
+The TI calculators deliver no signals and their C library has no
+`<signal.h>`, so the package does not exist on that family: `use signal`
+there is a compile error naming the target rather than a handler that never
+runs.
+
+<Note>
+Only available where `family != "ti"`.
+</Note>
 
 **On this page:** [`on`](#signal.on) · [`ignore`](#signal.ignore) · [`reset`](#signal.reset) · [`send`](#signal.send)
 
@@ -40,6 +57,8 @@ Signal numbers are the Linux/x86-64 ABI values.
 | `SIGINT` | `integer` | `2` |
 | `SIGQUIT` | `integer` | `3` |
 | `SIGTERM` | `integer` | `15` |
+| `SIGCHLD` | `integer` | `17` |
+| `SIGKILL` | `integer` | `9` |
 | `SIGUSR1` | `integer` | `10` |
 | `SIGUSR2` | `integer` | `12` |
 

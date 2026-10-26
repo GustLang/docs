@@ -1,22 +1,29 @@
 ---
 title: i2c
-description: "Cross-platform I2C bus access through one neutral, handle-based API with a backend per platform:"
+description: "Cross-platform I2C bus access through one neutral API with a backend per platform:"
 ---
 
 ```gust
 use i2c
 ```
 
-Cross-platform I2C bus access through one neutral, handle-based API with a
-backend per platform:
+Cross-platform I2C bus access through one neutral API with a backend per
+platform:
 
 - Linux: the `/dev/i2c-<bus>` character devices via I2C_RDWR ioctls.
 - Raspberry Pi Pico (freestanding / Pico SDK): the `hardware_i2c` block.
-- macOS / Windows: no user-space I2C bus exists, so every call fails
-  gracefully (`open` returns -1, transfers return non-zero / an empty list)
-  rather than failing to link.
+- ESP32 (ESP-IDF): the `driver/i2c.h` master driver.
+
+Targets with no user-space I2C bus — macOS, Windows, the browser — have no `i2c`
+package: an import there resolves to nothing and every reference is a compile
+error.
 
 Addresses are 7-bit. Byte values are plain `integer`s truncated to a byte.
+
+A driver for a device on the bus — a sensor, an EEPROM, a display controller —
+takes a `Bus` rather than a bus index, so the same driver runs against a real
+controller on one board and against whatever else implements the interface on
+the next.
 
 **Examples**
 
@@ -24,17 +31,154 @@ Addresses are 7-bit. Byte values are plain `integer`s truncated to a byte.
 use i2c
 
 def main() -> none
-    h := i2c.open(1)
-    if h < 0
+    bus := i2c.controller(1)
+    if not bus.ok()
         return
     end
     # Select register 0x00 on the device at address 0x40, then read 2 bytes.
-    data := i2c.write_read(h, 0x40, [0x00], 2)
-    i2c.close(h)
+    data := bus.write_read(0x40, [0x00], 2)
+    print(f"read {data.length} bytes")
+    bus.close()
 end
 ```
 
-**On this page:** [`configure`](#i2c.configure) · [`open`](#i2c.open) · [`close`](#i2c.close) · [`write`](#i2c.write) · [`read`](#i2c.read) · [`write_read`](#i2c.write_read)
+<Note>
+Only available where `os == "linux" or has("i2c")`.
+</Note>
+
+**On this page:** [`Controller`](#Controller) · [`Bus`](#Bus) · [`configure`](#i2c.configure) · [`controller`](#i2c.controller)
+
+## `Controller`
+
+<a id="Controller" />
+An I2C bus held open for transfers.
+
+**Implements:** [`Bus`](#Bus)
+
+```gust
+def Controller implements Bus
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The backend's bus handle, or -1 if the bus could not be opened.
+
+**Methods**
+
+<a id="Controller.ok" />
+```gust
+def Controller.ok() -> bool
+```
+
+Whether the bus was opened successfully.
+
+---
+
+<a id="Controller.write" />
+```gust
+def Controller.write(addr: integer, data: list[integer]) -> integer
+```
+
+Write the bytes in `data` to 7-bit address `addr`. Returns 0 on
+success, non-zero on NACK/error.
+
+**Parameters**
+
+- `addr` — 7-bit target device address.
+- `data` — Bytes to write (each truncated to a byte).
+
+---
+
+<a id="Controller.read" />
+```gust
+def Controller.read(addr: integer, count: integer) -> list[integer]
+```
+
+Read `count` bytes from 7-bit address `addr`. Returns the bytes as a
+list (empty on error).
+
+**Parameters**
+
+- `addr` — 7-bit target device address.
+- `count` — Number of bytes to read.
+
+---
+
+<a id="Controller.write_read" />
+```gust
+def Controller.write_read(
+    addr: integer,
+    data: list[integer],
+    count: integer,
+) -> list[integer]
+```
+
+Write `data` then read `count` bytes from `addr` in one transaction
+(repeated START, no STOP in between) — the usual "select register, read
+it back" pattern. Returns the bytes read (empty on error).
+
+**Parameters**
+
+- `addr` — 7-bit target device address.
+- `data` — Bytes to write before the read.
+- `count` — Number of bytes to read back.
+
+---
+
+<a id="Controller.close" />
+```gust
+def Controller.close() -> none
+```
+
+Release the bus. Transferring on it afterwards is an error, not a
+crash.
+
+## `Bus`
+
+<a id="Bus" />
+A byte-addressed I2C bus a device can be talked to over.
+
+A driver names this as the type of the bus its device sits on instead of
+naming a controller index, so it binds to the contract rather than to a
+chip. `Controller` is the implementation backed by real hardware.
+
+**Implemented by:** [`Controller`](#Controller)
+
+**Methods**
+
+<a id="Bus.write" />
+```gust
+def Bus.write(addr: integer, data: list[integer]) -> integer
+```
+
+---
+
+<a id="Bus.read" />
+```gust
+def Bus.read(addr: integer, count: integer) -> list[integer]
+```
+
+---
+
+<a id="Bus.write_read" />
+```gust
+def Bus.write_read(
+    addr: integer,
+    data: list[integer],
+    count: integer,
+) -> list[integer]
+```
+
+---
+
+<a id="Bus.close" />
+```gust
+def Bus.close() -> none
+```
 
 ## Functions
 
@@ -49,10 +193,10 @@ def foreign configure(
 ```
 
 Embedded only: pin-mux `sda`/`scl` and set the bus speed for `bus`
-before calling `open`. On hosted platforms the bus pins and clock are
-owned by the OS/kernel (device tree), so this is a no-op — `open` picks
-them up from the system. Call this once, before `open`, on the Pico when
-the device is wired to non-default GPIOs (e.g. I2C1 on GP6/GP7).
+before calling `controller`. On hosted platforms the bus pins and clock are
+owned by the OS/kernel (device tree), so this is a no-op — `controller`
+picks them up from the system. Call this once, before `controller`, on the
+Pico when the device is wired to non-default GPIOs (e.g. I2C1 on GP6/GP7).
 
 **Parameters**
 
@@ -63,93 +207,18 @@ the device is wired to non-default GPIOs (e.g. I2C1 on GP6/GP7).
 
 ---
 
-<a id="i2c.open" />
+<a id="i2c.controller" />
 ```gust
-def foreign open(bus: integer) -> integer
+def controller(index: integer) -> Controller
 ```
 
-Open I2C `bus` (Linux: `/dev/i2c-<bus>`; Pico: controller 0 or 1).
-On the Pico the bus is brought up using the pins/speed from a prior
+Open I2C controller `index` (Linux: `/dev/i2c-<index>`; Pico: controller
+0 or 1). On the Pico the bus is brought up using the pins/speed from a prior
 `configure`, falling back to the board default SDA/SCL at 400 kHz.
-Returns a non-negative handle to pass to the transfer calls, or -1 on
-error.
+
+Check `ok` before transferring on it: a bus that could not be opened is
+returned closed rather than raising, so a program can fall back.
 
 **Parameters**
 
-- `bus: integer` — I2C bus / controller index.
-
----
-
-<a id="i2c.close" />
-```gust
-def foreign close(handle: integer) -> none
-```
-
-Release a handle returned by `open`.
-
-**Parameters**
-
-- `handle: integer` — The bus handle to release.
-
----
-
-<a id="i2c.write" />
-```gust
-def foreign write(
-    handle: integer,
-    addr: integer,
-    data: list[integer],
-) -> integer
-```
-
-Write the bytes in `data` to 7-bit address `addr`. Returns 0 on
-success, non-zero on NACK/error.
-
-**Parameters**
-
-- `handle: integer` — The bus handle from `open`.
-- `addr: integer` — 7-bit target device address.
-- `data: list[integer]` — Bytes to write (each truncated to a byte).
-
----
-
-<a id="i2c.read" />
-```gust
-def foreign read(
-    handle: integer,
-    addr: integer,
-    count: integer,
-) -> list[integer]
-```
-
-Read `count` bytes from 7-bit address `addr`. Returns the bytes as a
-list (empty on error).
-
-**Parameters**
-
-- `handle: integer` — The bus handle from `open`.
-- `addr: integer` — 7-bit target device address.
-- `count: integer` — Number of bytes to read.
-
----
-
-<a id="i2c.write_read" />
-```gust
-def foreign write_read(
-    handle: integer,
-    addr: integer,
-    data: list[integer],
-    count: integer,
-) -> list[integer]
-```
-
-Write `data` then read `count` bytes from `addr` in one transaction
-(repeated START, no STOP in between) — the usual "select register, read
-it back" pattern. Returns the bytes read (empty on error).
-
-**Parameters**
-
-- `handle: integer` — The bus handle from `open`.
-- `addr: integer` — 7-bit target device address.
-- `data: list[integer]` — Bytes to write before the read.
-- `count: integer` — Number of bytes to read back.
+- `index: integer` — I2C bus / controller index.

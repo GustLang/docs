@@ -1,24 +1,43 @@
 ---
 title: regex
-description: "Backtracking regular-expression engine backing the `regex` package"
+description: "Regular expression matching using a backtracking engine"
 ---
 
 ```gust
 use regex
 ```
 
-Backtracking regular-expression engine backing the `regex` package. A pattern
-is compiled to a flat list of `GrxInst` instructions and matched by a
-recursive backtracking virtual machine.
+Regular expression matching using a backtracking engine. Provides full and
+partial matching, finding the first or all matches, replacement, and
+splitting.
 
-The instruction set supports literals, `.`, character classes, the `\d \w
-\s` shorthands, anchors with multiline semantics, greedy and lazy
-quantifiers, alternation, capturing and non-capturing groups, positive and
-negative lookahead, backreferences, word boundaries, and case-insensitive
-matching.
+Patterns use the following syntax:
 
-All declarations here are engine internals; the public surface lives in the
-`Regex`/`Match` types and the free functions of the package.
+```gust
+.       any character except newline
+*+?     quantifiers (greedy, or lazy with a trailing `?`)
+[abc]   character class
+(a|b)   alternation / grouping
+^$      anchors (multiline: `^` also matches after a newline)
+{n,m}   repetition
+```
+
+For captures, lookahead, backreferences, and reuse of a compiled pattern, use
+the `Regex`/`Match` types (`compile`, then `exec`) documented below.
+
+**Examples**
+
+```gust
+use regex
+
+def main() -> none
+    print(regex.match("[0-9]+", "42"))               # true
+    print(regex.find("[a-z]+", "  hello world  "))   # "hello"
+    for word in regex.find_all("[A-Za-z]+", "one two three")
+        print(word)                                  # one, then two, then three
+    end
+end
+```
 
 **On this page:** [`Op`](#Op) · [`GrxInst`](#GrxInst) · [`GrxParse`](#GrxParse) · [`Match`](#Match) · [`Regex`](#Regex) · [`compile_pattern`](#regex.compile_pattern) · [`exec_match`](#regex.exec_match) · [`match`](#regex.match) · [`contains`](#regex.contains) · [`find`](#regex.find) · [`find_all`](#regex.find_all) · [`replace`](#regex.replace) · [`split`](#regex.split) · [`compile`](#regex.compile) · [`compile_ignore_case`](#regex.compile_ignore_case)
 

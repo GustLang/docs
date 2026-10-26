@@ -1,37 +1,52 @@
 ---
 title: wifi
-description: "Full coverage of the Raspberry Pi Pico 2 W's CYW43 WiFi via the Pico SDK"
+description: "The on-board radio: power, station and access-point modes, connect (blocking / async / explicit auth), link status, scanning, signal / MAC, and power-save"
 ---
 
 ```gust
 use wifi
 ```
 
-Full coverage of the Raspberry Pi Pico 2 W's CYW43 WiFi via the Pico SDK
-(pico_cyw43_arch + cyw43_ctrl): radio power, station + access-point modes,
-connect (blocking / async / explicit auth), link status, scanning, signal /
-MAC, power-save, and the on-chip LED.
+The on-board radio: power, station and access-point modes, connect (blocking /
+async / explicit auth), link status, scanning, signal / MAC, and power-save.
+One neutral API over a backend per platform:
 
-**Embedded-only.** A regular machine has no station-mode connect API, so
-building this package for a host target is a compile-time error rather than a
-misleading no-op. `connect`/`scan`/etc. lazily power the radio up, so the
-common path is just `wifi.connect(...)`; the lifecycle calls below are for
-finer control (AP mode, power management, turning the radio off).
+- Raspberry Pi Pico W / 2 W: the CYW43 chip through the Pico SDK
+  (pico_cyw43_arch + cyw43_ctrl).
+- ESP32 (ESP-IDF): the chip's own radio through esp_wifi + esp_netif.
+
+Targets with no radio this package drives have no `wifi` package: an import
+there resolves to nothing and every reference is a compile error, rather than a
+misleading no-op. On the Pico that means the wireless boards only — the plain
+`pico` and `pico2` have no CYW43.
+
+`connect`/`scan`/etc. lazily power the radio up, so the common path is just
+`wifi.connect(...)`; the lifecycle calls below are for finer control (AP mode,
+power management, turning the radio off).
+
+A radio that can also receive frames not addressed to it — the ESP32 family —
+carries a third mode alongside these, entered with `enable_monitor` and read
+with `capture`.
+
+**Examples**
+
+```gust
+use wifi
+
+def main() -> none
+    if wifi.connect("my-ssid", "my-passphrase", 30000)
+        print(wifi.ip())    # e.g. 192.168.1.42
+    end
+end
+```
+
+<Note>
+Only available where `has("wifi")`.
+</Note>
+
+**On this page:** [`FrameKind`](#FrameKind) · [`SecondaryChannel`](#SecondaryChannel) · [`FrameFilter`](#FrameFilter) · [`ControlFilter`](#ControlFilter) · [`AuthMode`](#AuthMode) · [`PowerMode`](#PowerMode) · [`CsiReading`](#CsiReading) · [`Frame`](#Frame) · [`Network`](#Network) · [`disable_csi`](#wifi.disable_csi) · [`capturing_csi`](#wifi.capturing_csi) · [`csi_dropped`](#wifi.csi_dropped) · [`disable_monitor`](#wifi.disable_monitor) · [`monitoring`](#wifi.monitoring) · [`dropped`](#wifi.dropped) · [`capture_filter`](#wifi.capture_filter) · [`control_filter`](#wifi.control_filter) · [`channel`](#wifi.channel) · [`init`](#wifi.init) · [`init_country`](#wifi.init_country) · [`deinit`](#wifi.deinit) · [`enable_sta`](#wifi.enable_sta) · [`disable_sta`](#wifi.disable_sta) · [`connect`](#wifi.connect) · [`connect_with`](#wifi.connect_with) · [`connect_async`](#wifi.connect_async) · [`disconnect`](#wifi.disconnect) · [`link_status`](#wifi.link_status) · [`connected`](#wifi.connected) · [`ip`](#wifi.ip) · [`enable_ap`](#wifi.enable_ap) · [`disable_ap`](#wifi.disable_ap) · [`enable_ap_dhcp`](#wifi.enable_ap_dhcp) · [`disable_ap_dhcp`](#wifi.disable_ap_dhcp) · [`ap_clients`](#wifi.ap_clients) · [`ap_leases`](#wifi.ap_leases) · [`mac`](#wifi.mac) · [`rssi`](#wifi.rssi) · [`power_save`](#wifi.power_save) · [`enable_csi`](#wifi.enable_csi) · [`capture_csi`](#wifi.capture_csi) · [`inject`](#wifi.inject) · [`enable_monitor`](#wifi.enable_monitor) · [`capture`](#wifi.capture) · [`set_channel`](#wifi.set_channel) · [`scan`](#wifi.scan)
 
 ## Constants
-
-### Auth modes (pass to `connect_with` / `enable_ap`)
-
-| Name | Type | Value |
-|------|------|-------|
-| `AUTH_OPEN` | `integer` | `0` |
-| `AUTH_WPA_TKIP` | `integer` | `1` |
-| `AUTH_WPA2` | `integer` | `2` |
-| `AUTH_WPA2_MIXED` | `integer` | `3` |
-| `AUTH_WPA3` | `integer` | `4` |
-| `AUTH_WPA3_WPA2` | `integer` | `5` |
-
-### Link status (returned by `link_status`)
 
 | Name | Type | Value |
 |------|------|-------|
@@ -43,162 +58,850 @@ finer control (AP mode, power management, turning the radio off).
 | `LINK_NONET` | `integer` | `0 - 2` |
 | `LINK_BADAUTH` | `integer` | `0 - 3` |
 
-### Power-save modes (pass to `power_save`)
+## `FrameKind`
 
-| Name | Type | Value |
-|------|------|-------|
-| `PM_DEFAULT` | `integer` | `0` |
-| `PM_AGGRESSIVE` | `integer` | `1` |
-| `PM_PERFORMANCE` | `integer` | `2` |
-| `PM_NONE` | `integer` | `3` |
+<a id="FrameKind" />
+```gust
+enum FrameKind: integer
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+The class of a captured frame, as the receiver classified it.
+
+**Variants**
+
+- `management = 0` — Beacons, probes, authentication, association — the frames that run the network rather than carry traffic.
+- `control = 1` — Medium-access frames: RTS/CTS, acknowledgements, block-ack, PS-Poll.
+- `data = 2` — Frames carrying a payload, encrypted or not.
+- `misc = 3` — Anything the receiver decoded but does not classify. The frame body is empty, and only the radio metadata is meaningful.
+
+## `SecondaryChannel`
+
+<a id="SecondaryChannel" />
+```gust
+enum SecondaryChannel: integer
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+Where the second 20 MHz channel of a 40 MHz-wide channel sits relative
+to the primary one, passed to `set_channel`.
+
+**Variants**
+
+- `off = 0` — A single 20 MHz channel. The usual choice, and the one that sees every frame sent to a 20 MHz station.
+- `above = 1` — The secondary channel is the one above the primary.
+- `below = 2` — The secondary channel is the one below the primary.
+
+## `FrameFilter`
+
+<a id="FrameFilter" />
+```gust
+enum FrameFilter: integer
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+Which classes of frame reach the capture queue, passed to
+`capture_filter`. Combine classes with `|`, e.g.
+`FrameFilter.management | FrameFilter.data`.
+
+The receiver applies this before a frame reaches the queue, so filtering
+narrowly is what keeps a busy channel from overrunning it.
+
+**Variants**
+
+- `management = 1` — Beacons, probes, authentication, association.
+- `control = 2` — RTS/CTS, acknowledgements, block-ack, PS-Poll. Narrow these further with `control_filter`.
+- `data = 4` — Frames carrying a payload.
+- `misc = 8` — Frames the receiver decoded but does not classify.
+- `data_mpdu = 16` — Data frames sent on their own.
+- `data_ampdu = 32` — Data frames sent aggregated with others.
+- `fcs_fail = 64` — Frames whose checksum did not verify. Left out of `all` because a failed check means the bytes are wrong somewhere and nothing says where.
+- `all = 63` — Every class whose contents can be trusted — everything but `fcs_fail`. What a fresh `enable_monitor` installs.
+
+## `ControlFilter`
+
+<a id="ControlFilter" />
+```gust
+enum ControlFilter: integer
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+Which control subtypes reach the queue once `FrameFilter.control` has
+admitted the class at all, passed to `control_filter`. Combine subtypes
+with `|`, e.g. `ControlFilter.rts | ControlFilter.cts`.
+
+Acknowledgements alone can outnumber every other frame on a busy channel,
+which is the usual reason to narrow this.
+
+**Variants**
+
+- `wrapper = 8388608` — Control Wrapper, which carries another control frame.
+- `block_ack_request = 16777216` — A request to acknowledge a block of frames.
+- `block_ack = 33554432` — The acknowledgement of such a block.
+- `ps_poll = 67108864` — A sleeping station asking its access point for buffered traffic.
+- `rts = 134217728` — Request To Send, which reserves the medium.
+- `cts = 268435456` — Clear To Send, the reply that grants it.
+- `ack = 536870912` — The acknowledgement of a single frame.
+- `cf_end = 1073741824` — The end of a contention-free period.
+- `cf_end_ack = 2147483648` — The end of a contention-free period, acknowledging with it.
+- `all = 4286578688` — Every control subtype. What a fresh `enable_monitor` installs.
+
+## `AuthMode`
+
+<a id="AuthMode" />
+```gust
+auto_enum AuthMode: integer
+```
+
+WiFi authentication / security mode, passed to `connect_with` / `enable_ap`.
+
+**Variants**
+
+- `open = 1` — No authentication (open network).
+- `wpa = 2` — WPA (TKIP).
+- `wpa2 = 3` — WPA2 (AES).
+- `wpa2_mixed = 4` — WPA2 mixed-mode (WPA + WPA2).
+- `wpa3 = 5` — WPA3 (SAE).
+- `wpa3_wpa2 = 6` — WPA3/WPA2 transition mode.
+
+## `PowerMode`
+
+<a id="PowerMode" />
+```gust
+auto_enum PowerMode: integer
+```
+
+WiFi power-management mode, passed to `power_save`.
+
+**Variants**
+
+- `default = 1` — Balanced power save (favors power).
+- `aggressive = 2` — Aggressive power save (maximum power saving).
+- `performance = 3` — Favors throughput/latency over power.
+- `disabled = 4` — Power save turned off entirely.
+
+## `CsiReading`
+
+<a id="CsiReading" />
+<Note>
+Only available where `has("wifi-csi")`.
+</Note>
+
+One CSI report: the raw channel measurement for a received frame, and
+what the radio measured while receiving it.
+
+```gust
+def CsiReading
+
+    data: bytes
+    source: string
+    rssi: integer
+    channel: integer
+    rate: integer
+    noise_floor: integer
+    timestamp_us: integer
+
+end
+```
+
+**Fields**
+
+- `data: bytes` — The CSI itself — signed 8-bit (imaginary, real) pairs, one pair per subcarrier. The length varies with the frame's bandwidth.
+- `source: string` — The address the measured frame was sent from, as `"aa:bb:cc:dd:ee:ff"`.
+- `rssi: integer` — Received signal strength in dBm; negative, closer to zero for a stronger signal.
+- `channel: integer` — The primary channel the frame arrived on.
+- `rate: integer` — The PHY rate the frame was sent at, in the radio's own encoding.
+- `noise_floor: integer` — The measured noise floor in dBm. `rssi` minus this is the signal-to-noise ratio.
+- `timestamp_us: integer` — The receiver's local clock in microseconds when the frame arrived.
+
+## `Frame`
+
+<a id="Frame" />
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+One frame received in monitor mode, with what the radio measured while
+receiving it.
+
+```gust
+def Frame
+
+    data: bytes
+    kind: FrameKind
+    rssi: integer
+    channel: integer
+    rate: integer
+    noise_floor: integer
+    timestamp_us: integer
+
+end
+```
+
+**Fields**
+
+- `data: bytes` — The frame as it was transmitted, from the frame-control field onward, with the trailing checksum removed. Truncated to the per-frame limit given to `enable_monitor`, so a long frame is reported short rather than dropped — compare `data.length` against that limit to tell whether a body was cut off.
+- `kind: FrameKind` — Which class of frame this is.
+- `rssi: integer` — Received signal strength in dBm; negative, and closer to zero for a stronger signal.
+- `channel: integer` — The primary channel the frame arrived on.
+- `rate: integer` — The PHY rate the frame was sent at, in the radio's own encoding. Meaningful only for legacy (802.11b/g) frames.
+- `noise_floor: integer` — The measured noise floor in dBm. `rssi` minus this is the signal-to-noise ratio.
+- `timestamp_us: integer` — The receiver's local clock in microseconds when the frame arrived. Precise only while neither modem sleep nor light sleep is enabled.
+
+**Methods**
+
+<a id="Frame.subtype" />
+```gust
+def Frame.subtype() -> integer
+```
+
+The four-bit subtype from the frame-control field, which says what the
+frame is within its class — for management frames 8 is a beacon, 4 a probe
+request, 5 a probe response; for control frames 11 is RTS and 13 an
+acknowledgement. Zero when the frame is too short to carry one.
+
+---
+
+<a id="Frame.destination" />
+```gust
+def Frame.destination() -> string
+```
+
+The address the frame is addressed to, as `"aa:bb:cc:dd:ee:ff"`, or ""
+when the frame does not carry one. `"ff:ff:ff:ff:ff:ff"` is the broadcast
+address.
+
+---
+
+<a id="Frame.source" />
+```gust
+def Frame.source() -> string
+```
+
+The address the frame was sent from, as `"aa:bb:cc:dd:ee:ff"`, or ""
+when the frame does not carry one — a bare acknowledgement names only its
+receiver, for instance.
+
+---
+
+<a id="Frame.bssid" />
+```gust
+def Frame.bssid() -> string
+```
+
+The address of the network the frame belongs to, as
+`"aa:bb:cc:dd:ee:ff"` — the access point's own address on an infrastructure
+network. "" when the frame names no network, which is the case for a frame
+bridged between two access points and for most control frames.
+
+## `Network`
+
+<a id="Network" />
+One network a scan found.
+
+```gust
+def Network
+
+    ssid: string
+    rssi: integer
+    channel: integer
+    auth: integer
+
+end
+```
+
+**Fields**
+
+- `ssid: string` — Network name, empty for a hidden network.
+- `rssi: integer` — Signal strength in dBm; closer to zero is stronger.
+- `channel: integer` — The channel it is broadcasting on.
+- `auth: integer` — Security mode as the radio's own driver reports it, where 0 is an open network. The non-zero values are driver-specific, so read this through `is_open` rather than comparing it against a literal.
+
+**Methods**
+
+<a id="Network.is_open" />
+```gust
+def Network.is_open() -> bool
+```
+
+Whether the network takes no passphrase.
+
+---
+
+<a id="Network.is_hidden" />
+```gust
+def Network.is_hidden() -> bool
+```
+
+Whether the network withholds its name in beacons.
 
 ## Functions
 
-### Radio power / lifecycle
+<a id="wifi.disable_csi" />
+```gust
+def foreign disable_csi() -> none
+```
+
+<Note>
+Only available where `has("wifi-csi")`.
+</Note>
+
+Turn CSI reporting off, release the queue and discard whatever it holds.
+The radio stays powered and any connection or monitor mode is unaffected.
+
+---
+
+<a id="wifi.capturing_csi" />
+```gust
+def foreign capturing_csi() -> bool
+```
+
+<Note>
+Only available where `has("wifi-csi")`.
+</Note>
+
+True while CSI reporting is on.
+
+---
+
+<a id="wifi.csi_dropped" />
+```gust
+def foreign csi_dropped() -> integer
+```
+
+<Note>
+Only available where `has("wifi-csi")`.
+</Note>
+
+How many reports have been discarded because the queue was full since
+`enable_csi` was called. A rising count means the program is reading more
+slowly than frames are arriving — enlarge the queue or read more often.
+
+---
+
+<a id="wifi.disable_monitor" />
+```gust
+def foreign disable_monitor() -> none
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+Leave monitor mode, release the frame queue and discard whatever it
+holds. The radio stays powered; `disconnect`/`deinit` are unaffected, and a
+station connection can be made again afterwards.
+
+---
+
+<a id="wifi.monitoring" />
+```gust
+def foreign monitoring() -> bool
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+True while the radio is in monitor mode.
+
+---
+
+<a id="wifi.dropped" />
+```gust
+def foreign dropped() -> integer
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+How many frames have been discarded because the queue was full since
+`enable_monitor` was called. A rising count means the program is reading
+more slowly than the channel is talking — narrow `capture_filter`, enlarge
+the queue, or keep less of each frame.
+
+---
+
+<a id="wifi.capture_filter" />
+```gust
+def foreign capture_filter(frames: integer) -> none
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+Admit only the frame classes named in `frames`. `enable_monitor` starts
+from `FrameFilter.all`.
+
+**Parameters**
+
+- `frames: integer` — A `FrameFilter` value, or several combined with `|`.
+
+---
+
+<a id="wifi.control_filter" />
+```gust
+def foreign control_filter(subtypes: integer) -> none
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+Admit only the control subtypes named in `subtypes`, once
+`FrameFilter.control` has admitted the class at all. `enable_monitor`
+starts from `ControlFilter.all`.
+
+**Parameters**
+
+- `subtypes: integer` — A `ControlFilter` value, or several combined with `|`.
+
+---
+
+<a id="wifi.channel" />
+```gust
+def foreign channel() -> integer
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+The primary channel the radio is currently receiving on, or 0 if the
+radio is not running.
+
+---
 
 <a id="wifi.init" />
-**`init() → bool`**
+```gust
+def foreign init() -> bool
+```
 
 Power up the CYW43 radio. Idempotent; returns true on success. Called
 automatically by `connect`/`scan`/etc., so you rarely need it directly.
 
+---
+
 <a id="wifi.init_country" />
-**`init_country(country: string) → bool`**
+```gust
+def foreign init_country(country: string) -> bool
+```
 
 Like `init`, but set the regulatory domain from a 2-letter country code
 (e.g. "US", "GB"); "" means worldwide. Affects channels/power.
 
+**Parameters**
+
+- `country: string` — Two-letter country code, or "" for worldwide.
+
+---
+
 <a id="wifi.deinit" />
-**`deinit() → none`**
+```gust
+def foreign deinit() -> none
+```
 
 Power the radio down and release it.
 
-### Station mode
+---
 
 <a id="wifi.enable_sta" />
-**`enable_sta() → none`**
+```gust
+def foreign enable_sta() -> none
+```
 
 Switch the radio into station (client) mode.
 
+---
+
 <a id="wifi.disable_sta" />
-**`disable_sta() → none`**
+```gust
+def foreign disable_sta() -> none
+```
 
 Leave the network and disable station mode.
 
+---
+
 <a id="wifi.connect" />
-**`connect(ssid: string, password: string, timeout_ms: integer) → bool`**
+```gust
+def foreign connect(ssid: string, password: string, timeout_ms: integer) -> bool
+```
 
 Associate with `ssid` (WPA2-mixed) and wait up to `timeout_ms` for a
 DHCP lease. Returns true on success. The convenient common case.
 
-<a id="wifi.connect_with" />
-**`connect_with(ssid: string, password: string, auth: integer, timeout_ms: integer) → bool`**
+**Parameters**
 
-Like `connect` but with an explicit `auth` (one of the `AUTH_*`
-constants), for open / WPA3 / etc. networks.
+- `ssid: string` — Network name to join.
+- `password: string` — Network passphrase.
+- `timeout_ms: integer` — Milliseconds to wait for association and a DHCP lease.
+
+---
+
+<a id="wifi.connect_with" />
+```gust
+def foreign connect_with(
+    ssid: string,
+    password: string,
+    auth: AuthMode,
+    timeout_ms: integer,
+) -> bool
+```
+
+Like `connect` but with an explicit `auth` (an `AuthMode`), for
+open / WPA3 / etc. networks.
+
+**Parameters**
+
+- `ssid: string` — Network name to join.
+- `password: string` — Network passphrase.
+- `auth: AuthMode` — Authentication mode to use.
+- `timeout_ms: integer` — Milliseconds to wait for association and a DHCP lease.
+
+---
 
 <a id="wifi.connect_async" />
-**`connect_async(ssid: string, password: string, auth: integer) → bool`**
+```gust
+def foreign connect_async(
+    ssid: string,
+    password: string,
+    auth: AuthMode,
+) -> bool
+```
 
 Start associating and return immediately (true if the request was
 issued). Poll `link_status` / `connected` for progress.
 
+**Parameters**
+
+- `ssid: string` — Network name to join.
+- `password: string` — Network passphrase.
+- `auth: AuthMode` — Authentication mode to use.
+
+---
+
 <a id="wifi.disconnect" />
-**`disconnect() → none`**
+```gust
+def foreign disconnect() -> none
+```
 
 Disconnect from the current network.
 
+---
+
 <a id="wifi.link_status" />
-**`link_status() → integer`**
+```gust
+def foreign link_status() -> integer
+```
 
 Current station link state — one of the `LINK_*` constants. Negative
 values (FAIL/NONET/BADAUTH) indicate failure.
 
+---
+
 <a id="wifi.connected" />
-**`connected() → bool`**
+```gust
+def foreign connected() -> bool
+```
 
 True when the link is up with an IP address.
 
+---
+
 <a id="wifi.ip" />
-**`ip() → string`**
+```gust
+def foreign ip() -> string
+```
 
 The device's IPv4 address as a string, or "" when not connected.
 
-### Access-point mode
+---
 
 <a id="wifi.enable_ap" />
-**`enable_ap(ssid: string, password: string, auth: integer, channel: integer) → none`**
+```gust
+def foreign enable_ap(
+    ssid: string,
+    password: string,
+    auth: AuthMode,
+    channel: integer,
+) -> none
+```
 
-Run as an access point broadcasting `ssid` with `auth` (use `AUTH_OPEN`
-and "" for an open network). `channel` &lt;= 0 keeps the default. Note: serving
-IPs to clients still needs a DHCP server in your app.
+Run as an access point broadcasting `ssid` with `auth` (use `AuthMode.open`
+and "" for an open network). `channel` &lt;= 0 keeps the default.
+
+**Parameters**
+
+- `ssid: string` — Network name to broadcast.
+- `password: string` — Network passphrase, or "" for an open network.
+- `auth: AuthMode` — Authentication mode clients must use.
+- `channel: integer` — WiFi channel to use; &lt;= 0 keeps the default.
+
+<Note>
+Clients need addresses from somewhere. `enable_ap_dhcp` is what hands
+them out; without it a station associates with the access point and
+then has no address to reach it from.
+</Note>
+
+---
 
 <a id="wifi.disable_ap" />
-**`disable_ap() → none`**
+```gust
+def foreign disable_ap() -> none
+```
 
 Stop the access point.
 
+---
+
+<a id="wifi.enable_ap_dhcp" />
+```gust
+def foreign enable_ap_dhcp() -> bool
+```
+
+Start handing out addresses on the access point, and report whether the
+server is now running. Idempotent.
+
+A station that associates has no address of its own and no way to reach the
+board until it is given one, so an access point serving anything needs this
+as well as `enable_ap`. Addresses come from the access-point interface's own
+subnet — 192.168.4.0/24, the board itself being 192.168.4.1 — and are handed
+out with the board as both the route off the network and the name server on
+it, which is what points a station at the board for everything.
+
+A station keeps the address it was given across a reconnect, and a board
+serving more stations than it has room for gives the longest-idle address
+away rather than refusing the newest station.
+
+On the ESP32 the chip's own network layer already runs this server and
+`enable_ap` starts it, so there this call does nothing and answers true.
+
+**Returns** `bool`
+
+Whether addresses are now being served. False when the access point is
+not up, or the address server could not take its port.
+
+---
+
+<a id="wifi.disable_ap_dhcp" />
+```gust
+def foreign disable_ap_dhcp() -> none
+```
+
+Stop handing out addresses and forget every lease. A station keeps using
+the address it holds until that lease runs out; it is a new one that finds
+nothing to ask.
+
+---
+
 <a id="wifi.ap_clients" />
-**`ap_clients() → integer`**
+```gust
+def foreign ap_clients() -> integer
+```
 
 Number of stations currently associated to the access point.
 
-### Info / tuning
+---
+
+<a id="wifi.ap_leases" />
+```gust
+def foreign ap_leases() -> integer
+```
+
+Number of addresses currently leased to stations.
+
+This counts stations that asked for an address and were given one, which is
+fewer than `ap_clients` for as long as a station that has just associated
+has yet to ask.
+
+---
 
 <a id="wifi.mac" />
-**`mac() → string`**
+```gust
+def foreign mac() -> string
+```
 
 The station interface MAC address as "aa:bb:cc:dd:ee:ff".
 
+---
+
 <a id="wifi.rssi" />
-**`rssi() → integer`**
+```gust
+def foreign rssi() -> integer
+```
 
 Signal strength of the current connection, in dBm (0 if unknown).
 
+---
+
 <a id="wifi.power_save" />
-**`power_save(mode: integer) → none`**
+```gust
+def foreign power_save(mode: PowerMode) -> none
+```
 
-Set the WiFi power-management mode (one of the `PM_*` constants).
-`PM_NONE` favors latency/throughput; the default favors power.
+Set the WiFi power-management mode (one of the PowerMode enums).
+`disabled` favors latency/throughput; the default favors power.
 
-### On-chip LED (Pico W / 2 W LED is wired to the CYW43, not a GPIO)
+**Parameters**
 
-<a id="wifi.led" />
-**`led(on: bool) → none`**
+- `mode: PowerMode` — Power-management mode to apply.
 
-Drive the on-board LED (which hangs off the CYW43 chip, so plain `pin`
-can't reach it). Requires the radio to be initialized.
+---
 
-<a id="wifi.led_get" />
-**`led_get() → bool`**
+<a id="wifi.enable_csi" />
+```gust
+def enable_csi(queue: integer) -> bool
+```
 
-Read the on-board LED state.
+<Note>
+Only available where `has("wifi-csi")`.
+</Note>
 
-### Scanning
+Turn CSI reporting on, allocating a queue of `queue` reports. Returns true
+once reporting is running; false if the radio could not be started or the
+queue could not be allocated.
+
+Brings the radio up if it is not up already. CSI is measured on received
+frames only, so pair this with a connection or with `enable_monitor` for the
+queue to fill.
+
+**Parameters**
+
+- `queue: integer` — How many reports may wait to be read. A report arriving with the queue full is dropped and counted by `csi_dropped`.
+
+---
+
+<a id="wifi.capture_csi" />
+```gust
+def capture_csi(timeout_ms: integer) -> CsiReading | none
+```
+
+<Note>
+Only available where `has("wifi-csi")`.
+</Note>
+
+Take the oldest report waiting in the queue, or `none` if none arrives
+within `timeout_ms`. A timeout of 0 returns immediately; a positive timeout
+sleeps until a report lands.
+
+**Parameters**
+
+- `timeout_ms: integer` — How long to wait for a report; 0 to only take one already waiting.
+
+---
+
+<a id="wifi.inject" />
+```gust
+def inject(frame: bytes, system_seq: bool) -> bool
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+Transmit `frame` on the radio's current channel, returning true if the
+hardware accepted it for transmission. False if the frame is shorter than a
+frame-control-plus-address header or longer than the transmit path takes, or
+if the radio is not running.
+
+The frame is sent as written, without the trailing checksum — the hardware
+adds that. Success means the radio queued the frame, not that anything
+received it.
+
+**Parameters**
+
+- `frame: bytes` — The 802.11 frame from the frame-control field onward, without a checksum.
+- `system_seq: bool` — Whether the hardware fills in the sequence-control field. Leave true to have the system own sequence numbers; false to send the field exactly as `frame` carries it.
+
+---
+
+<a id="wifi.enable_monitor" />
+```gust
+def enable_monitor(channel: integer, queue: integer, max_frame: integer) -> bool
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+Put the radio in monitor mode on `channel` and start capturing. Returns
+true once the receiver is running; false if the radio could not be started
+or the queue could not be allocated.
+
+Powers the radio up if it is not up already, and turns power saving off so
+the receiver stays awake between frames.
+
+**Parameters**
+
+- `channel: integer` — The channel to park on, 1 to 14. Values outside that range leave the radio on the channel it is already using.
+- `queue: integer` — How many frames may wait to be read. A frame arriving with the queue full is dropped, so a queue has to cover the longest gap between `capture` calls.
+- `max_frame: integer` — How many bytes to keep from each frame. Frames longer than this are truncated; 256 keeps every header and the start of the body, and the full 2346 keeps whatever arrives.
+
+---
+
+<a id="wifi.capture" />
+```gust
+def capture(timeout_ms: integer) -> Frame | none
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+Take the oldest frame waiting in the queue, or `none` if no frame
+arrives within `timeout_ms`. A timeout of 0 returns immediately, which is
+what a loop with other work to do wants; a positive timeout sleeps until a
+frame lands, which is what a loop that only captures wants.
+
+**Parameters**
+
+- `timeout_ms: integer` — How long to wait for a frame; 0 to only take one already waiting.
+
+---
+
+<a id="wifi.set_channel" />
+```gust
+def set_channel(channel: integer, secondary: SecondaryChannel) -> bool
+```
+
+<Note>
+Only available where `has("wifi-monitor")`.
+</Note>
+
+Move the receiver to `channel`, returning true on success. Frames
+already in the queue arrived on the previous channel and still report it in
+their own `channel` field.
+
+Channels 1 to 13 are 2.4 GHz; which of them may be used is a matter of the
+regulatory domain set by `init_country`, and the radio refuses a channel
+outside it.
+
+**Parameters**
+
+- `channel: integer` — The primary channel to receive on.
+- `secondary: SecondaryChannel` — Where the second half of a 40 MHz channel sits, or `SecondaryChannel.off` for a 20 MHz channel.
+
+---
 
 <a id="wifi.scan" />
-**`scan() → integer`**
+```gust
+def scan() -> list[Network]
+```
 
-Perform a blocking scan for nearby networks and return how many were
-found. Read the results with `scan_ssid`/`scan_rssi`/`scan_channel`/
-`scan_auth` for indices `0 .. count-1`.
-
-<a id="wifi.scan_ssid" />
-**`scan_ssid(index: integer) → string`**
-
-SSID of scan result `index` ("" if out of range).
-
-<a id="wifi.scan_rssi" />
-**`scan_rssi(index: integer) → integer`**
-
-Signal strength (dBm) of scan result `index`.
-
-<a id="wifi.scan_channel" />
-**`scan_channel(index: integer) → integer`**
-
-Channel of scan result `index`.
-
-<a id="wifi.scan_auth" />
-**`scan_auth(index: integer) → integer`**
-
-Raw CYW43 auth/security mode of scan result `index` (0 = open).
+Perform a blocking scan and return every nearby network found, in the
+order the radio reported them.

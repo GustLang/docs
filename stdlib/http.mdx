@@ -1,47 +1,106 @@
 ---
 title: http
-description: "The `Headers` view over a request's header set: a small read-only wrapper around the parsed `name -> value` map (keys lowercased) that does case-insensitive lookups and treats `_` as `-`, so `req.headers['content_type']` and `req.headers['Content-Type']` resolve to the same header"
+description: "HTTP/1.1 for Gust, built entirely on the `socket` package (plaintext) and `cryptography.ssl` (TLS) — no libcurl, no C protocol code"
 ---
 
 ```gust
 use http
 ```
 
-The `Headers` view over a request's header set: a small read-only wrapper
-around the parsed `name -> value` map (keys lowercased) that does
-case-insensitive lookups and treats `_` as `-`, so `req.headers["content_type"]`
-and `req.headers["Content-Type"]` resolve to the same header. Part of the
-`http` package.
+HTTP/1.1 for Gust, built entirely on the `socket` package (plaintext) and
+`cryptography.ssl` (TLS) — no libcurl, no C protocol code. The package is split
+by role:
 
-**On this page:** [`Headers`](#Headers) · [`reason`](#http.reason) · [`read_header_block`](#http.read_header_block) · [`read_body`](#http.read_body) · [`read_chunk`](#http.read_chunk) · [`read_chunked_body`](#http.read_chunked_body)
+* `http.server` — a routed HTTP/1.1 server: `Request`/`Response` objects,
+  path-parameter routing (`/users/{id}`), onion middleware, route groups,
+  static files, and WebSocket upgrades.
+* `http.client` — an HTTP/1.1 client: `get`/`post`/`put`/`delete`/`patch`/
+  `head`, a general `request`, streaming responses, and a concurrent
+  `get_all`.
+
+Whatever both roles share lives here at the top level: the `Headers` view, the
+field-line semantics both roles parse and write headers by (`parse_fields`,
+`combine_field`, `set_field`, `add_field`, `render_fields`), and the buffered
+`Reader` that frames an HTTP/1.1 message — header block, fixed-length body,
+chunked body — over a byte stream. A `Reader` works over the `socket.Stream`
+interface, so the same framing serves a plaintext socket and a TLS one.
+
+Example — a client call and a server, both over the shared framing. Each
+`use http.<role>` binds the leaf name, so the members are reached as
+`client.get` / `server.Server`:
+```gust
+use http.client
+use http.server
+
+def home(_req: server.Request) -> server.Response
+    return server.html("<h1>Hello!</h1>")
+end
+
+def main() -> none
+    resp := client.get("https://api.example.com/status")
+    print(resp.status_code)
+
+    app := server.Server(port: 8080)
+    app.get(home, "/")
+    app.run()
+end
+```
+
+<Note>
+Only available where `target == "native" or has("sockets")`.
+</Note>
+
+**On this page:** [`Version`](#Version) · [`Headers`](#Headers) · [`Reader`](#Reader) · [`parse_fields`](#http.parse_fields) · [`parse_field_lines`](#http.parse_field_lines) · [`combine_field`](#http.combine_field) · [`set_field`](#http.set_field) · [`add_field`](#http.add_field) · [`render_fields`](#http.render_fields) · [`reason`](#http.reason) · [`reader`](#http.reader)
 
 ## Constants
 
 | Name | Type | Value |
 |------|------|-------|
+| `WIRE_NAMES` | `dict[string, string]` | `{"accept": "Accept", "accept-encoding": "Accept-Encoding", "…}` |
 | `HTTP_MAX_BODY_SIZE` | `integer` | `33554432` |
+| `HTTP_MAX_HEADER_SIZE` | `integer` | `65536` |
+| `HTTP_READ_CHUNK` | `integer` | `65536` |
 | `HTTP_REASONS` | `dict[integer, string]` | `{200: "OK", 201: "Created", 204: "No Content", 301: "Moved P…}` |
+
+## `Version`
+
+<a id="Version" />
+```gust
+enum Version: integer
+```
+
+A wire protocol version selector.
+
+**Variants**
+
+- `auto = 0` — Negotiate: ALPN on the client (`h2` + `http/1.1`), preface detection on the server. Falls through to HTTP/1.1 when the peer does not accept HTTP/2.
+- `http1_1 = 1` — Force HTTP/1.1 on both sides.
+- `http2 = 2` — Force HTTP/2: ALPN-required `h2` on TLS and prior-knowledge `h2c` on cleartext for the client, preface-required on the server.
 
 ## `Headers`
 
 <a id="Headers" />
-A read-only view of an HTTP request's headers. Names are matched
+A read-only view of a message's headers. Names are matched
 case-insensitively, with `_` treated as `-`. Look up a value with
 `get(name)` or `headers[name]` (both return "" when the header is
-absent), test presence with `name in headers`, and count with
-`headers.length`.
+absent), test presence with `name in headers`, and count the distinct
+names held with `headers.length`.
+
+A header sent on several lines reads back as one comma-joined value, as
+RFC 9110 §5.3 defines. `Set-Cookie` is the exception: its lines are never
+joined, so read cookies with `get_all("set-cookie")`.
 
 ```gust
 def Headers
 
-    _store: dict[string, string]
+    _store: dict[string, list[string]]
 
 end
 ```
 
 **Fields**
 
-- `_store: dict[string, string]` — Backing `name -> value` map, with lowercased keys.
+- `_store: dict[string, list[string]]` — Backing `name -> lines` field set, with lowercased keys.
 
 **Methods**
 
@@ -50,13 +109,249 @@ end
 def Headers.get(name: string) -> string
 ```
 
-The value of header `name` (case-insensitive), or "" if absent.
+The value of header `name` (case-insensitive), or "" if absent. A header
+received on several lines is joined with commas in the order received.
 
 **Parameters**
 
 - `name` — Header name; `_` is treated as `-`.
 
+---
+
+<a id="Headers.get_all" />
+```gust
+def Headers.get_all(name: string) -> list[string]
+```
+
+Every line received for header `name` (case-insensitive), in order, or
+an empty list if absent. This is how `Set-Cookie` is read, since its lines
+must not be joined.
+
+**Parameters**
+
+- `name` — Header name; `_` is treated as `-`.
+
+## `Reader`
+
+<a id="Reader" />
+A buffered view of one byte stream, framing it into HTTP messages.
+
+Build one per connection with `reader(stream)` and read every message of
+that connection through it. Each read is served from the buffer first and
+refills from the stream only when the buffer runs short, so framing costs
+one `recv` per burst of data rather than one per octet, and octets that
+arrive ahead of time are kept for the read that wants them.
+
+A reader may be passed to a helper and read there: everything it consumes
+is consumed from the buffer object itself, which a copy of the reader
+shares, so the connection's position advances the same either way.
+
+```gust
+def Reader
+
+    _sock: socket.Stream
+    _buf: bytes
+
+end
+```
+
+**Fields**
+
+- `_sock: socket.Stream` — The underlying byte stream.
+- `_buf: bytes` — Octets read from the stream and not yet consumed. Reads take from the front of it, so it holds exactly what the connection has left.
+
+**Methods**
+
+<a id="Reader.read_header_block" />
+```gust
+def Reader.read_header_block() -> string
+```
+
+Read the start line plus field lines up to and including the blank-line
+terminator (CRLFCRLF). Body octets that arrived in the same packet stay
+buffered for `read_body`. Returns "" when the peer closes before any of the
+block arrives, which is how a caller tells a closed connection from an
+empty one.
+
+---
+
+<a id="Reader.read_body" />
+```gust
+def Reader.read_body(n: integer) -> bytes
+```
+
+Read exactly `n` body octets, tolerating an early peer close (returns
+whatever arrived).
+
+**Parameters**
+
+- `n` — Number of body octets announced by `Content-Length`.
+
+---
+
+<a id="Reader.read_chunk" />
+```gust
+def Reader.read_chunk() -> bytes
+```
+
+Read and decode one `Transfer-Encoding: chunked` chunk: a hex size line
+followed by that many payload octets and a trailing CRLF. Returns empty
+bytes at the terminating zero-length chunk (consuming the trailers) or on an
+early peer close — the caller's signal that the body is complete.
+
+---
+
+<a id="Reader.read_chunked_body" />
+```gust
+def Reader.read_chunked_body() -> bytes
+```
+
+Read and decode a whole `Transfer-Encoding: chunked` body by reading
+chunks until the terminating zero-length one. Tolerates an early peer close,
+returning whatever was decoded.
+
+---
+
+<a id="Reader.read_line" />
+```gust
+def Reader.read_line() -> string
+```
+
+Read one LF-terminated line, with the terminator (and a preceding CR)
+stripped. Returns "" on an immediate peer close.
+
+---
+
+<a id="Reader.recv" />
+```gust
+def Reader.recv(max: integer) -> bytes
+```
+
+Read up to `max` octets, serving buffered octets first and otherwise
+reading once from the stream. Empty bytes mean the peer closed.
+
+**Parameters**
+
+- `max` — Maximum number of octets to return.
+
 ## Functions
+
+<a id="http.parse_fields" />
+```gust
+def parse_fields(block: string) -> dict[string, list[string]]
+```
+
+Parse a message head into a field set: lowercased name → that field's
+lines, in the order received. The start line is skipped, so a block may be
+passed exactly as `Reader.read_header_block` returned it.
+
+**Parameters**
+
+- `block: string` — The raw start line plus field lines, CRLF-delimited.
+
+---
+
+<a id="http.parse_field_lines" />
+```gust
+def parse_field_lines(lines: list[string]) -> dict[string, list[string]]
+```
+
+Parse an already-split message head into a field set: lowercased name →
+that field's lines, in the order received. `lines[0]` is the start line and
+is skipped, so a caller that has split the head for its own use passes it
+here rather than paying for a second split.
+
+A line continued across an obsolete line fold (one beginning with a space or
+tab) is joined onto the preceding value with a single space rather than read
+as a field of its own. A line with no `:`, an empty name, or whitespace
+between the name and the `:` is dropped: such a line has no agreed meaning,
+and honoring it lets two parties disagree about where a message ends.
+
+**Parameters**
+
+- `lines: list[string]` — The message head split on CRLF, start line first.
+
+---
+
+<a id="http.combine_field" />
+```gust
+def combine_field(name: string, values: list[string]) -> string
+```
+
+Combine a field's lines into the single value a recipient acts on:
+the lines joined with `", "` in the order received. Returns "" when the
+field carried no lines.
+
+`Set-Cookie` is never joined — each cookie stands alone, so its first line
+is returned and the rest are reached with `Headers.get_all`.
+
+**Parameters**
+
+- `name: string` — The field name the values were received under.
+- `values: list[string]` — That field's lines, in order.
+
+---
+
+<a id="http.set_field" />
+```gust
+def set_field(
+    fields: dict[string, list[string]],
+    name: string,
+    value: string,
+) -> none
+```
+
+Set `name` to a single `value`, replacing any lines already held under
+it (matched case-insensitively).
+
+**Parameters**
+
+- `fields: dict[string, list[string]]` — The field set to modify.
+- `name: string` — The field name to set.
+- `value: string` — The value to set it to.
+
+---
+
+<a id="http.add_field" />
+```gust
+def add_field(
+    fields: dict[string, list[string]],
+    name: string,
+    value: string,
+) -> none
+```
+
+Append a line to `name`, keeping any already held under it (matched
+case-insensitively). Repeating a field this way is only meaningful for one
+whose value is a comma-separated list, or for `Set-Cookie`; `render_fields`
+collapses every other repeat into one line.
+
+**Parameters**
+
+- `fields: dict[string, list[string]]` — The field set to modify.
+- `name: string` — The field name to append under.
+- `value: string` — The value to append.
+
+---
+
+<a id="http.render_fields" />
+```gust
+def render_fields(fields: dict[string, list[string]]) -> string
+```
+
+Render a field set as HTTP/1.1 field lines, each terminated by CRLF and
+named in conventional `Content-Type` capitalization. The blank line that
+ends a message head is not written; the caller appends it.
+
+A field holding several lines is written as one comma-joined line, which a
+recipient reads identically. `Set-Cookie` is written as one line per cookie
+instead, since comma-joining cookies would corrupt them.
+
+**Parameters**
+
+- `fields: dict[string, list[string]]` — The field set to render.
+
+---
 
 <a id="http.reason" />
 ```gust
@@ -71,61 +366,15 @@ The reason phrase for a status code, defaulting to "OK".
 
 ---
 
-<a id="http.read_header_block" />
+<a id="http.reader" />
 ```gust
-def read_header_block(sock: Stream) -> string
+def reader(sock: socket.Stream) -> Reader
 ```
 
-Read the start line plus header lines up to and including the blank-line
-terminator (CRLFCRLF), one byte at a time so none of the body is consumed.
-Returns "" if the peer closes before any data arrives.
+A buffered reader over `sock`. Use one per connection: it holds octets
+read ahead of the current message, so a second reader over the same stream
+would miss them.
 
 **Parameters**
 
-- `sock: Stream` — The byte stream to read from.
-
----
-
-<a id="http.read_body" />
-```gust
-def read_body(sock: Stream, n: integer) -> bytes
-```
-
-Read up to `n` body bytes, tolerating an early peer close (returns
-whatever arrived).
-
-**Parameters**
-
-- `sock: Stream` — The byte stream to read from.
-- `n: integer` — Number of body bytes announced by `Content-Length`.
-
----
-
-<a id="http.read_chunk" />
-```gust
-def read_chunk(sock: Stream) -> bytes
-```
-
-Read and decode one `Transfer-Encoding: chunked` chunk: a hex size line
-followed by that many payload bytes and a trailing CRLF. Returns empty bytes
-at the terminating zero-length chunk (consuming the trailers) or on an early
-peer close — the caller's signal that the body is complete.
-
-**Parameters**
-
-- `sock: Stream` — The byte stream positioned at a chunk-size line.
-
----
-
-<a id="http.read_chunked_body" />
-```gust
-def read_chunked_body(sock: Stream) -> bytes
-```
-
-Read and decode a whole `Transfer-Encoding: chunked` body by reading
-chunks until the terminating zero-length one. Tolerates an early peer close,
-returning whatever was decoded.
-
-**Parameters**
-
-- `sock: Stream` — The byte stream positioned at the first chunk-size line.
+- `sock: socket.Stream` — The byte stream to frame.

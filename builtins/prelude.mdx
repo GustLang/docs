@@ -61,3 +61,27 @@ Terminate the process immediately with the given exit code.
 **Parameters**
 
 - `code: integer` — Process exit status to return to the parent.
+
+---
+
+<a id="kill" />
+```gust
+def kill(pid: integer, sig: integer) -> integer
+```
+
+Send signal `sig` to a process, or to a process group. Returns 0, or -1
+with `errno` set.
+
+A positive `pid` signals that one process. A negative one signals every
+process in the group `-pid`, which reaches a child's own children as well
+— `posix.setsid` is what gives a process a group of its own to be signalled
+this way. A `sig` of 0 sends nothing and only reports whether the process
+is still there.
+
+The numbers are in the `signal` package: `signal.SIGTERM` asks a process
+to stop and can be caught or ignored, `signal.SIGKILL` cannot.
+
+**Parameters**
+
+- `pid: integer` — Process to signal, or the negated ID of a process group.
+- `sig: integer` — Signal number to send, or 0 to test for the process.

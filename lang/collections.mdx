@@ -252,11 +252,11 @@ print(scores.get("eve") is none) # true
 
 ### `dict[K, V]` methods
 
-The full `dict[K, V]` API — `get`, `delete`, `contains`, `clear`, `copy`,
-`merge`, and the `length` field — is documented in the
-[Builtins reference](/builtins/dict). `delete(key)` returns a `bool` reporting
-whether the key was present; `merge(other)` overwrites matching keys and adds
-new ones.
+The full `dict[K, V]` API — `get`, `delete`, `clear`, `copy`, `merge`, and the
+`length` field — is documented in the
+[Builtins reference](/builtins/dict). Test key presence with `in` rather than a
+method. `delete(key)` returns a `bool` reporting whether the key was present;
+`merge(other)` overwrites matching keys and adds new ones.
 
 ### Dict comprehensions
 

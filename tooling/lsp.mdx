@@ -21,7 +21,7 @@ It speaks JSON-RPC over stdio, which is what every mainstream LSP client expects
 gust lsp --stdio
 ```
 
-You rarely run this by hand — your editor launches it for you (see [Editor setup](#editor-setup)). Running it manually in a terminal is useful mainly for debugging, since the server logs to stderr.
+You rarely run this by hand — your editor launches it for you (see [Editor setup](#editor-setup)). The server communicates only over stdio; it reports its own status to the client as `window/logMessage` notifications, which your editor surfaces in its language-server output channel.
 
 ## Capabilities
 
@@ -42,7 +42,7 @@ The server advertises these features in its `initialize` response:
 | Semantic highlighting | `textDocument/semanticTokens/full` | ✓ |
 | Code actions (quick fixes) | `textDocument/codeAction` | ✓ |
 | Formatting (whole document) | `textDocument/formatting` | ✓ |
-| `gust.toml` validation + completion | (over completion + diagnostics) | ✓ |
+| `gust.toml` validation, completion + hover | (over completion, hover + diagnostics) | ✓ |
 | Rename | `textDocument/rename` | *planned* |
 
 Document sync is full-document: the client sends the whole buffer on every keystroke, and the server reads that live buffer — unsaved edits are honored, not just what's on disk.
@@ -153,7 +153,9 @@ Packages map to `namespace`, error types to `type`, constants to `variable`, and
 
 ## Completion
 
-Completion (`textDocument/completion`) offers keywords, in-scope identifiers, and — after a `.` — the members of the receiver's type. Completion triggers automatically on `.`, space, `>`, `/`, and `"`, in addition to being invokable on demand.
+Completion (`textDocument/completion`) offers keywords, in-scope identifiers, and — after a `.` — the members of the receiver's type. That covers every type: a struct's fields and methods, a built-in type's methods and the operators it answers to, a `ref[T]` cell's `value`, and the reflection properties (`__NAME__`, `__DOC__`, `__FILE__`, `__LINE__`) readable off a function or type name. Completion triggers automatically on `.`, space, `>`, `/`, and `"`, in addition to being invokable on demand.
+
+Inside a string literal or a triple-quoted docstring, completion stays silent — the text there is prose, not code, so a typed quote does not pull up a list.
 
 Completion needs the buffer to parse far enough to locate the cursor's context, and it reads your live unsaved buffer. If completion comes back empty, the surrounding code usually has a syntax error the analyzer can't see past.
 
@@ -166,24 +168,53 @@ Signature help (`textDocument/signatureHelp`) pops the parameter list of the cal
 When the cursor is on a diagnostic, the server offers quick fixes (`textDocument/codeAction`, kind `quickfix`):
 
 - **Apply the suggested edit** — for any warning the analyzer attached an autofix to. This is the same fix `gust check --fix` applies, and it's offered first so it's the preferred action. Both single-line and multi-line range fixes are supported.
+- **Remove the unused import** — for an unreferenced `use` statement (`W0302`), deletes the whole statement, including the continuation lines of the wrapped `use (a, b) from pkg` form.
 - **Add the missing import** — for an unimported-symbol error (`G0701`), inserts the suggested `use X from Y` line pulled from the diagnostic message.
 - **Add `#gust-ignore <code>`** — appends the directive to the offending line, or extends an existing `#gust-ignore` list already on that line, silencing that one rule.
 
 ## Formatting
 
-Whole-document formatting (`textDocument/formatting`) runs the same formatter as `gust format`. A `gust.toml` manifest is never reformatted — formatting it returns no edits — so only your `.g` source is touched.
+Whole-document formatting (`textDocument/formatting`) runs the same layout passes as `gust format`. A `gust.toml` manifest is never reformatted — formatting it returns no edits — so only your `.g` source is touched.
+
+Formatting in the editor does not remove unused imports, though `gust format` on the command line does. Half-written code is unreferenced code, so a format-on-save that deleted imports would take away the `use` line you added moments before writing the call that needs it. Remove one deliberately with the `W0302` quick fix, or on the whole tree with `gust format`.
 
 ## `gust.toml` support
 
-The server also understands `gust.toml` manifests. It validates them against the same schema the manifest loader uses: it warns on unknown sections and keys, checks the `build.optimize` enum and boolean-valued keys, and completes section headers, keys, and enum values as you type.
+The server also understands `gust.toml` manifests, holding them to the same schema the manifest loader reads — one schema, so the editor never accepts a manifest the build rejects.
+
+**Diagnostics** warn on an unknown section or key and flag a value outside what its key accepts: a key restricted to a set of values (`project.kind`, `build.optimize`) must carry one of them, and a boolean key must be `true` or `false`. A `[dependencies.<name>]` sub-table is validated against the source keys a dependency accepts.
+
+**Completion** offers section headers inside a `[`, leaving out the sections the manifest already has; the keys the enclosing section still lacks, annotated with their type and default; the values an enumerated or boolean key accepts, quoted to match; and the source keys of a dependency's inline table (`mylib = { path = "../mylib" }`). Each section and key item carries its documentation in the popup.
+
+**Hover** documents whatever the cursor rests on. A section header states what it configures and lists the keys it accepts; a key states its type, its default, what it does, and the values it is restricted to; a dependency and the keys of its table are documented under the dependency's own name.
+
+```
+[build].optimize — string, default "release"
+
+Optimization mode. "release" compiles with -O2 and strips unused
+symbols; "debug" compiles with -O0 -g and keeps them, so stack
+traces stay readable. Overridden by --release / --debug.
+
+Allowed: "debug", "release"
+```
 
 ## How analysis runs
 
-Each request runs the compiler in-process under a per-request arena, so analysis for one file never leaks state into the next. Derive macros (comptime `@derive` expansions) are only expanded on `didOpen` and `didSave`, not on every keystroke, because expansion compiles the handler — the result is cached so derived symbols still resolve while you type. Same-package sibling files are merged into the analysis so cross-file references resolve even for files you haven't opened.
+Each request runs the compiler in-process under a per-request arena, so analysis for one file never leaks state into the next. Derive macros (comptime `@derive` expansions) are only expanded on `didOpen` and `didSave`, not on every keystroke, because expansion compiles the handler — the result is cached so derived symbols still resolve while you type. Same-package sibling files are merged into the analysis so cross-file references resolve even for files you haven't opened. Test files (`test_*.g` / `*_test.g`) are excluded from that merge in both directions — each one is a program of its own, so it is analyzed alone, exactly as `gust test` compiles it.
+
+Imported packages are read and parsed once and then reused, keyed by each file's exact contents, so editing a file in a large project does not re-parse its whole import closure. The memo is invalidated by the text itself, which means a package edited on disk or in another tab is picked up without any explicit refresh. The resident cost is the parsed closure: a file importing a hundred packages holds a few hundred megabytes for the session, in exchange for a keystroke that does not re-read them.
+
+A keystroke coalesces: after an edit arrives the server waits briefly for a newer one on the same file and analyzes only the last of a run, so holding a key down costs one analysis rather than one per character. Requests you have moved past are dropped — a `$/cancelRequest` that reaches the server before the request it names starts is answered without computing anything.
+
+## Recovering from bad input
+
+The server answers malformed traffic instead of exiting. A frame it cannot read — a missing or unparseable `Content-Length`, a body shorter than its header claims, a body that is not valid JSON — is answered with a JSON-RPC `parse_error` and the session continues with the next message. A request handler that raises is answered with `internal_error` rather than leaving your editor waiting on that request forever, and a notification handler that raises reports to the output channel.
+
+The lifecycle is enforced: any request before `initialize` fails with `server_not_initialized`, and any request after `shutdown` fails with `invalid_request`. `gust lsp` exits `0` when the client sent `shutdown` before leaving and `1` when it did not, so a supervising client can tell an orderly stop from a lost connection.
 
 ## Troubleshooting
 
-- **The server seems dead** — run `gust lsp` from a terminal, then edit; errors and per-request timing lines print to stderr.
+- **The server seems dead** — check your editor's language-server output channel. The server reports status and errors there through `window/logMessage` notifications rather than to a terminal.
 - **Completion is empty** — the buffer has to parse far enough for the analyzer to locate the cursor; a syntax error earlier in the file blocks it. Unsaved edits are read live, so you don't need to save first.
-- **Hover shows nothing** — the cursor must be on an identifier, not whitespace, punctuation, or a comment.
+- **Hover shows nothing** — the cursor must be on an identifier, not whitespace, punctuation, or a comment. In a `gust.toml`, it must be on a section header, a key, or a key inside a dependency's table.
 - **Semantic colors look stale after a big edit** — the server refreshes tokens on save; if your client ignores `workspace/semanticTokens/refresh`, saving forces a re-fetch.

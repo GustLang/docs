@@ -92,7 +92,7 @@ BANNER: constant[string]  = APP + " v1"
 
 Constants initialize in declaration order, and heap constants are filled by the same startup pass. A constant may only refer to another constant declared **above** it. A forward reference to a later constant reads an uninitialized value (zero for scalars, empty for strings and collections) rather than the intended one, so keep dependent constants in order.
 
-Scalar constants (`integer`, `float`, `bool`, `none`) must reduce to a compile-time constant. Their value becomes a `const` C value, so a non-constant right-hand side such as a function call will not compile. Heap and aggregate constants, by contrast, are initialized by a runtime pass and may use any expression — including a function call:
+Scalar constants (`integer`, `float`, `bool`, `none`) must reduce to a compile-time constant. Their value becomes a `const` C value, so a non-constant right-hand side such as a function call will not compile. The one exception is a scalar that reads a [foreign constant](#constants-defined-in-c): its value is only known once the program is linked, so the scalar is filled by the startup pass like a heap constant. Heap and aggregate constants, by contrast, are initialized by a runtime pass and may use any expression — including a function call:
 
 ```gust
 def load_defaults() -> list[string]
@@ -101,6 +101,51 @@ end
 
 DEFAULTS: constant[list[string]] = load_defaults()
 ```
+
+## Constants defined in C
+
+Some values belong to the platform rather than to your program: the `open` flags, error numbers, and `mmap` protections are C macros whose values differ between Linux, macOS, and the BSDs. Declare such a constant with `foreign` and no value, and define it in the package's C source:
+
+```gust
+# stdlib/os/constants.g
+foreign O_WRONLY: constant[integer]
+foreign O_CREAT:  constant[integer]
+```
+
+```c
+/* stdlib/os/os.c */
+#include <fcntl.h>
+
+const int64_t os_O_WRONLY = O_WRONLY;
+const int64_t os_O_CREAT = O_CREAT;
+```
+
+The C global is named `<package>_<NAME>`, with the dots of a nested package path written as underscores. A constant of a program with no package is `gu_<NAME>`. Gust never reads the C source, so the definition is yours to write, and it can be any C expression, including ones only C can express: `sizeof(void*)`, a value chosen by `#if`, or a macro under a different name.
+
+A foreign constant is used like any other:
+
+```gust
+use os
+
+def create(path: string) -> integer
+    return os.open_fd(path, os.O_WRONLY | os.O_CREAT, 0o644)
+end
+```
+
+A foreign constant has type `integer`, `float`, or `bool`. Declare it with `int64_t`, `double`, or `bool` in C respectively. The C compiler cannot check that the two sides agree, so a mismatched C type reads the wrong bytes. A foreign constant of any other type is rejected with `G0118`. Writing `= value` after one is a parse error, since its value is in C.
+
+A constant built from a foreign one, such as `FLAGS: constant[integer] = O_WRONLY | O_CREAT`, is set by the startup pass before `main` runs rather than inlined.
+
+## Gating a constant to a target
+
+A trailing [`#gust:cfg`](/lang/conditional-compilation) pragma keeps a constant only on the targets its predicate holds for. Two spellings of one constant may coexist when their predicates are mutually exclusive:
+
+```gust
+PAGE: constant[integer] = 256     #gust:cfg target == "pico"
+PAGE: constant[integer] = 4096    #gust:cfg target != "pico"
+```
+
+The pragma goes on the line that names the constant.
 
 ## Immutability and mutable containers
 
@@ -164,9 +209,95 @@ end
 
 A package's public (non-`private`) constants are also reachable from another package by qualified name once you `use` the package, as `pkg.NAME`.
 
+## Predefined values
+
+Six values are provided by the compiler and need no declaration. Each is resolved at compile time and inlined, so reading one costs nothing at runtime:
+
+| Name | Type | Value |
+|---|---|---|
+| `__FILE__` | `string` | Absolute path of the source file |
+| `__NAME__` | `string` | Stem of the source filename |
+| `__LINE__` | `integer` | 1-based number of the line the reference is written on |
+| `__DOC__` | `string` | The file's module docstring, or `""` when it has none |
+| `__VERSION__` | `string \| none` | [`[project].version`](/tooling/project-config#project.version) from `gust.toml` |
+| `__TRACING__` | `bool` | Whether this build was compiled with [`--trace`](/tooling/tracing) |
+
+```gust
+def main() -> none
+    print(__NAME__)
+    v := __VERSION__
+    if v is none
+        print("dev build")
+    else
+        print("v" + v)
+    end
+end
+```
+
+`__VERSION__` is `none` when the file is built outside a project, or when the project declares no `version`. Because it is a union, narrow it before use — bind it to a name first, since `is none` narrows a binding rather than an arbitrary expression.
+
+`__LINE__` reports where it is written, not where the enclosing function was declared, so two reads on different lines give different answers.
+
+`__TRACING__` is a literal `true` or `false`, so a branch on it is settled before the program runs and the unused side costs nothing. Use it to carry tracing-only code that disappears from an ordinary build:
+
+```gust
+def main() -> none
+    if __TRACING__
+        trace.set_hook(log_event)
+    end
+    serve()
+end
+```
+
+It answers which build this is, not whether a hook is registered right now — that is [`trace.enabled()`](/tooling/tracing), an ordinary runtime call. Unlike the names below, `__TRACING__` reads nothing about a declaration: instrumentation is a property of the build.
+
+## Reflection properties
+
+The same names read a *declaration* when written after one. `__NAME__`, `__FILE__`, and `__LINE__` apply to every kind of declaration — a function, a method, a struct field, an enum variant, a struct, an enum, an interface, an error type, a constant, or an import alias. `__DOC__` applies to all of those except a field or a variant, which have no docstring of their own:
+
+```gust
+def area(r: float) -> float
+    """Area of a circle of radius `r`."""
+    return 3.14159 * r * r
+end
+
+
+def main() -> none
+    print(area.__DOC__)   # Area of a circle of radius `r`.
+    print(area.__NAME__)  # area
+    print(area.__FILE__)  # /path/to/this/file.g
+    print(area.__LINE__)  # 1
+end
+```
+
+A method is named through its receiver, and reports its own bare name:
+
+```gust
+print(Widget.render.__DOC__)
+print(Widget.render.__NAME__)  # render
+```
+
+A field, an interface property, an enum member, and a sum-type `case` are named the same way, and report the line they are written on rather than their type's:
+
+```gust
+print(Widget.label.__NAME__)  # label
+print(Widget.label.__LINE__)  # the line `label: string` sits on
+print(Shape.Circle.__LINE__)  # the line `case Circle(...)` sits on
+```
+
+An import alias describes the imported package: `pkg.__DOC__` is the package's module docstring, `pkg.__NAME__` its name, `pkg.__FILE__` its directory, and `pkg.__VERSION__` the version its `gust.toml` declares. `__VERSION__` is package-scoped — no other kind of declaration answers to it, and a package has no `__LINE__` because it is a directory rather than a single declaration.
+
+Every one of these is resolved at compile time, so the receiver is never evaluated. That also means the receiver must *name* a declaration: applying one to a value (`widget.__DOC__`), or to a kind that does not provide it (`Widget.__VERSION__`, `Widget.label.__DOC__`), is a compile error.
+
+`dir(<declaration>)` lists the members a declaration provides, ending with the reflection properties it answers to — so what `dir` reports is exactly what resolves.
+
+A constant and a field name a value rather than a type, so `dir` describes what that value holds: `dir(LIMIT)` on a `constant[integer]` reports the [dunders](/lang/structs#dunders) an integer answers to, then the constant's own reflection properties. `dir(<value>)` does the same for an expression — no type comes back empty, including the scalars and tuples, whose members are entirely operators.
+
 ## Under the hood
 
-Scalar constants (`integer`, `float`, `bool`, `none`) lower to a `const` C value and inline at each use site, so reading one is free.
+Every constant is a C global named after its package, `<package>_<NAME>`, or `gu_<NAME>` in a program with no package. The prefix keeps a Gust constant from colliding with a same-named constant of another package, or with a C macro of the same name: a constant called `EOF` does not clash with `<stdio.h>`.
+
+Scalar constants (`integer`, `float`, `bool`, `none`) lower to a `const` C value and inline at each use site, so reading one is free. A foreign constant is an `extern const` that the package's C source defines, and reading one is a load from that global.
 
 A `string`, `bytes`, `list`, `dict`, struct, or `Any`-slot constant is a real value whose initializer is a runtime call. It is declared empty and filled once by a startup routine that `main` calls before any user code. Such a constant carries the same cost as the value it holds, and an empty `[]` or `{}` initializer allocates with the correct element size for its declared type.
 

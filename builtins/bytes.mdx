@@ -61,6 +61,39 @@ silently masked into a byte.
 
 ---
 
+<a id="bytes.extend" />
+```gust
+def bytes.extend(other: bytes) -> none
+```
+
+Append every octet of `other` in a single block copy, growing the buffer once
+rather than once per octet. Length-aware, so embedded NUL octets are appended
+like any other. Extending by empty `bytes` does nothing.
+
+**Parameters**
+
+- `other: bytes` — The payload to append.
+
+---
+
+<a id="bytes.drop_front" />
+```gust
+def bytes.drop_front(n: integer) -> none
+```
+
+Discard the first `n` octets in place, shifting what remains down to the
+front. A non-positive `n` discards nothing; an `n` at or past the length empties
+the buffer without freeing it, so it can be refilled.
+
+This is the consuming half of a read buffer: `extend` adds arriving octets at
+the back, `drop_front` removes the ones already used.
+
+**Parameters**
+
+- `n: integer` — How many octets to discard from the front.
+
+---
+
 <a id="bytes.slice" />
 ```gust
 def bytes.slice(start: integer, stop: integer) -> bytes
@@ -74,6 +107,26 @@ length, and an empty range yields empty `bytes`. Equivalent to `data[start:stop]
 
 - `start: integer` — Index of the first byte to include (clamped to 0).
 - `stop: integer` — Index one past the last byte to include (clamped to length).
+
+---
+
+<a id="bytes.index_of" />
+```gust
+def bytes.index_of(needle: bytes, start: integer) -> integer
+```
+
+Return the position of the first occurrence of `needle` at or after `start`,
+or -1 when it does not occur. A `start` below 0 is clamped to the beginning, and
+an empty `needle` matches at `start`.
+
+Length-aware in both operands, so a NUL octet is searched for and matched like
+any other rather than ending either payload. This is how a framed protocol finds
+its delimiter in a read buffer without inspecting octets one at a time.
+
+**Parameters**
+
+- `needle: bytes` — The octets to search for.
+- `start: integer` — The position to begin searching from.
 
 ---
 
@@ -100,3 +153,83 @@ Length-aware: every octet (including `0x00`) is encoded. The inverse is
 **Raises**
 
 - `ValueError` — When `format` is not `"base64"` or `"hex"`.
+
+## Dunders
+
+<a id="bytes.__string" />
+```gust
+def bytes.__string() -> string
+```
+
+Triggered by `b as string` and f-string interpolation. Decodes the raw
+octets verbatim, length-preserving, so an embedded NUL survives rather than
+ending the string.
+
+---
+
+<a id="bytes.__bool" />
+```gust
+def bytes.__bool() -> bool
+```
+
+Triggered by `b as bool`. True for a non-empty buffer.
+
+---
+
+<a id="bytes.__eq" />
+```gust
+def bytes.__eq(other: bytes) -> bool
+```
+
+Triggered by `==` and `!=` (auto-negated). Compares octet by octet, not by
+pointer, so two separately built buffers holding the same payload are equal.
+Length-aware, so an embedded NUL compares like any other octet.
+
+**Parameters**
+
+- `other: bytes` — The bytes to compare against.
+
+---
+
+<a id="bytes.__length" />
+```gust
+def bytes.__length() -> integer
+```
+
+Triggered by `b.length`. Number of octets currently held.
+
+---
+
+<a id="bytes.__get" />
+```gust
+def bytes.__get(index: integer) -> integer
+```
+
+Triggered by `b[i]`. Returns the octet (0-255) at the given index.
+
+**Parameters**
+
+- `index: integer` — Zero-based byte position.
+
+**Raises**
+
+- `IndexError` — When `index` is outside `0..length`.
+
+---
+
+<a id="bytes.__set" />
+```gust
+def bytes.__set(index: integer, value: integer) -> none
+```
+
+Triggered by `b[i] = value`. Stores the low 8 bits of `value` (`value & 0xFF`)
+at the given index.
+
+**Parameters**
+
+- `index: integer` — Zero-based byte position to overwrite.
+- `value: integer` — The byte to store; reduced modulo 256.
+
+**Raises**
+
+- `IndexError` — When `index` is outside `0..length`.

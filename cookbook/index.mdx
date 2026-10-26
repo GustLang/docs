@@ -22,7 +22,7 @@ use os
 def main() -> none
     args := os.args()
     if args.length < 2
-        os.stderr_write("usage: greet <name>\n")
+        eprint("usage: greet <name>")
         exit(2)
     end
     print(f"hi, {args[1]}")
@@ -136,11 +136,11 @@ def do_thing(i: integer) -> integer
 end
 
 def bench(label: string, iters: integer) -> none
-    start := time.now_ms()
+    start := time.now()
     for i in range(iters)
         do_thing(i)
     end
-    print(f"{label}: {time.now_ms() - start} ms")
+    print(f"{label}: {start.elapsed().ms} ms")
 end
 
 def main() -> none
