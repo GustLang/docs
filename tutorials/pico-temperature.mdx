@@ -1,0 +1,106 @@
+---
+title: "Pico: Read the temperature"
+description: Sample the RP2350's on-die temperature sensor and stream readings over USB
+---
+
+The RP2350 has a temperature sensor wired to one of its analog-to-digital
+converter channels. No parts to buy, nothing to wire — this tutorial reads the
+chip's own die temperature and prints a reading a second to your terminal over
+the USB serial console.
+
+## What you need
+
+- A Raspberry Pi Pico 2 W and a USB cable. That's all.
+
+## The program
+
+Create a project:
+
+```bash
+$ gust init thermo
+$ cd thermo
+```
+
+Replace `src/main.g` with:
+
+```gust title="src/main.g"
+use machine.adc
+use time
+
+def main() -> none
+    while true
+        celsius := adc.temperature_celsius()
+        fahrenheit := celsius * 9.0 / 5.0 + 32.0
+        print(f"{celsius} C  ({fahrenheit} F)")
+        time.sleep(1000)
+    end
+end
+```
+
+`adc.temperature_celsius()` powers up the internal sensor, reads its ADC
+channel, and converts the raw count to degrees Celsius using the RP2350's
+calibration formula — one call, a `float` back. The loop prints a reading and
+waits a second.
+
+## Build and flash
+
+Plug the board in and, from the project folder:
+
+```bash
+$ gust build --target rp2350 --flash
+```
+
+## Read the output
+
+The board prints to the USB serial console. Open it:
+
+```bash
+$ sudo cat /dev/ttyACM0
+27.3 C  (81.14 F)
+27.8 C  (82.04 F)
+27.3 C  (81.14 F)
+```
+
+Pinch the chip between two fingers and watch the number climb — the sensor sits
+on the die itself, so your body heat shows up within a couple of seconds.
+
+<Note>
+If the reader hangs on a board that just booted, cap it with a timeout:
+`sudo timeout --signal=KILL 12 cat /dev/ttyACM0`.
+</Note>
+
+## Read a raw channel
+
+The temperature helper is a convenience wrapper around the general ADC surface.
+To read any ADC-capable pin yourself — **GP26**, **GP27**, or **GP28** — open it
+and take a raw sample:
+
+```gust title="src/main.g"
+use machine.adc
+use time
+
+def main() -> none
+    knob := adc.input(26)            # GP26 → ADC channel 0
+
+    while true
+        raw := knob.read_raw()           # 0 .. 4095 (12-bit)
+        volts := knob.read_voltage(3.3)  # scaled against a 3.3 V ref
+        print(f"raw={raw}  volts={volts}")
+        time.sleep(500)
+    end
+end
+```
+
+- `adc.input(gpio)` claims an ADC-capable GPIO and returns it as an `Input`.
+  A pin with no ADC behind it comes back closed — check `ok()`.
+- `Input.read_raw()` returns the 12-bit conversion, `0` to `4095`.
+- `Input.read_voltage(vref)` scales that count into volts against the
+  reference you pass — handy for a potentiometer or an analog sensor.
+
+## Where to next?
+
+- [Join a WiFi network](/tutorials/pico-wifi) — then POST these readings to a
+  server.
+- [Blink an LED](/tutorials/pico-blink) — light an alert when a threshold is
+  crossed.
+- [`pin` reference](/stdlib/pin) — digital I/O alongside the analog reads here.

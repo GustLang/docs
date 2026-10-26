@@ -1,0 +1,681 @@
+---
+title: usb.device
+description: "Acting as a USB device: the board presents itself to a host computer as a peripheral instead of driving peripherals of its own"
+---
+
+```gust
+use usb.device
+```
+
+Acting as a USB device: the board presents itself to a host computer as a
+peripheral instead of driving peripherals of its own. A program declares who the
+device claims to be and which functions it offers, brings the stack up, and from
+then on serves the host.
+
+`Device` is the device itself, and everything a program does to it is a method
+on it. A plain `Device` offers a serial port (CDC-ACM), which the host opens as
+an ordinary tty. `HID` extends it with reports the host reads, and `Keyboard`
+and `Mouse` extend that with the two layouts the host already has drivers for.
+`Drive` extends `Device` in the other direction, publishing an SD card as
+removable storage the host mounts as a drive.
+
+`start` publishes the descriptors and attaches to the bus. Nothing is served
+until `poll` runs, and the host has to be answered continuously: **`poll` must
+be called regularly for the lifetime of the program**, or enumeration never
+finishes and an attached host drops the device. A program that sleeps between
+transfers polls inside the wait rather than around it.
+
+`is_mounted` reports whether the host has finished configuring the device;
+until it does, reads return nothing and writes are discarded.
+
+The chip has one USB controller, so a program in device mode cannot also drive
+the bus as a host, and the console the board would otherwise offer over that
+same port is gone — a device-mode program reports through the serial port it
+publishes, or over a UART.
+
+Example — a serial port that echoes back whatever the host sends:
+```gust
+use usb.device
+
+def main() -> none
+    d := device.Device()
+    d.start(
+        device.Identity(vendor_id: 0x303A, product_id: 0x4001, product: "Gust echo"),
+        serial: true,
+    )
+    port := d.serial_port()
+    while true
+        d.poll()
+        data := port.read(64)
+        if data.length > 0
+            port.write(data)
+        end
+    end
+end
+```
+
+<Note>
+Only available where `has("usb-device")`.
+</Note>
+
+**On this page:** [`Key`](#Key) · [`Modifier`](#Modifier) · [`MouseButton`](#MouseButton) · [`Identity`](#Identity) · [`Device`](#Device) · [`Drive`](#Drive) · [`HID`](#HID) · [`LedState`](#LedState) · [`Keyboard`](#Keyboard) · [`Mouse`](#Mouse) · [`SerialPort`](#SerialPort)
+
+## `Key`
+
+<a id="Key" />
+```gust
+enum Key: integer
+```
+
+The usage codes a keyboard report names keys by, from the keyboard usage
+page.
+
+A letter is the key, not the character: `Key.a` is the key that produces 'a'
+on its own and 'A' with Shift held. The digit and punctuation keys are
+likewise named for the character they produce unshifted.
+
+The eight modifier keys have usage codes here as well as bits in `Modifier`.
+Pressing one sets its bit rather than filling one of a report's six key
+slots.
+
+Every key on the usage page can be pressed — the methods that take a key
+take its code — so a key not named here is named by its number.
+
+**Variants**
+
+- `a = 4`
+- `b = 5`
+- `c = 6`
+- `d = 7`
+- `e = 8`
+- `f = 9`
+- `g = 10`
+- `h = 11`
+- `i = 12`
+- `j = 13`
+- `k = 14`
+- `l = 15`
+- `m = 16`
+- `n = 17`
+- `o = 18`
+- `p = 19`
+- `q = 20`
+- `r = 21`
+- `s = 22`
+- `t = 23`
+- `u = 24`
+- `v = 25`
+- `w = 26`
+- `x = 27`
+- `y = 28`
+- `z = 29`
+- `one = 30`
+- `two = 31`
+- `three = 32`
+- `four = 33`
+- `five = 34`
+- `six = 35`
+- `seven = 36`
+- `eight = 37`
+- `nine = 38`
+- `zero = 39`
+- `enter = 40`
+- `escape = 41`
+- `backspace = 42`
+- `tab = 43`
+- `space = 44`
+- `minus = 45`
+- `equal = 46`
+- `left_bracket = 47`
+- `right_bracket = 48`
+- `backslash = 49`
+- `semicolon = 51`
+- `apostrophe = 52`
+- `grave = 53`
+- `comma = 54`
+- `period = 55`
+- `slash = 56`
+- `caps_lock = 57`
+- `f1 = 58`
+- `f2 = 59`
+- `f3 = 60`
+- `f4 = 61`
+- `f5 = 62`
+- `f6 = 63`
+- `f7 = 64`
+- `f8 = 65`
+- `f9 = 66`
+- `f10 = 67`
+- `f11 = 68`
+- `f12 = 69`
+- `left_control = 224`
+- `left_shift = 225`
+- `left_alt = 226`
+- `left_gui = 227`
+- `right_control = 228`
+- `right_shift = 229`
+- `right_alt = 230`
+- `right_gui = 231`
+
+## `Modifier`
+
+<a id="Modifier" />
+```gust
+enum Modifier: integer
+```
+
+The modifier keys a keyboard report's first byte carries, one bit each.
+Combine them with `|`.
+
+**Variants**
+
+- `left_control = 1` — Left Control.
+- `left_shift = 2` — Left Shift.
+- `left_alt = 4` — Left Alt.
+- `left_gui = 8` — Left GUI — the Windows or Command key.
+- `right_control = 16` — Right Control.
+- `right_shift = 32` — Right Shift.
+- `right_alt = 64` — Right Alt, also labelled AltGr.
+- `right_gui = 128` — Right GUI.
+
+## `MouseButton`
+
+<a id="MouseButton" />
+```gust
+enum MouseButton: integer
+```
+
+The buttons a mouse report's first byte carries, one bit each. Combine
+them with `|`.
+
+**Variants**
+
+- `left = 1` — The primary button.
+- `right = 2` — The secondary button.
+- `middle = 4` — The wheel button.
+
+## `Identity`
+
+<a id="Identity" />
+Who the device claims to be. The host reads these before any function is
+used: the identifier pair is what a driver matches on, and the three text
+fields are what a user sees.
+
+A vendor identifier belongs to whoever registered it with the USB-IF. Use
+one you own; the pair also decides which driver the host binds, so reusing
+another vendor's is how a device ends up claimed by a driver written for
+different hardware.
+
+```gust
+def Identity
+
+    vendor_id: integer
+    product_id: integer
+    version: integer
+    manufacturer: string
+    product: string
+    serial_number: string
+    max_power_ma: integer
+    self_powered: bool
+
+end
+```
+
+**Fields**
+
+- `vendor_id: integer` — The 16-bit USB-IF vendor identifier.
+- `product_id: integer` — The 16-bit product identifier, assigned by the vendor.
+- `version: integer` — The device release number, as binary-coded decimal — 0x0100 is version 1.00.
+- `manufacturer: string` — Manufacturer name, or "" to publish none.
+- `product: string` — Product name, or "" to publish none.
+- `serial_number: string` — Serial number, or "" to publish none. A host uses it to tell two otherwise identical devices apart, so give each board its own.
+- `max_power_ma: integer` — Bus current the device draws at most, in milliamps. A host may refuse a configuration that asks for more than the port offers.
+- `self_powered: bool` — Whether the device runs from its own supply rather than from the bus.
+
+## `Device`
+
+<a id="Device" />
+The USB device the program publishes. A plain one offers a serial port
+and nothing else.
+
+Subclass it to offer more. `HID` is the subclass that sends reports, and a
+device with a report format of its own goes under that; `Drive` is the
+subclass that publishes storage.
+
+**Methods**
+
+<a id="Device.start" />
+```gust
+def Device.start(identity: Identity, serial: bool) -> none
+```
+
+Publish the device's descriptors and attach to the bus.
+
+At least one function has to be asked for — a device that offers none has
+nothing to enumerate, so a plain `Device` needs `serial: true`. The
+functions a device starts with are the ones it keeps: the descriptors are
+fixed at this point, and starting twice is an error.
+
+**Parameters**
+
+- `identity` — Who the device claims to be.
+- `serial` — Whether to publish a serial port (CDC-ACM).
+
+**Raises**
+
+- `ValueError` — If no function was asked for, or the report descriptor is larger than the stack can hold.
+- `RuntimeError` — If the device stack is already running, or the USB controller cannot be brought up.
+
+---
+
+<a id="Device.poll" />
+```gust
+def Device.poll() -> none
+```
+
+Serve the host: answer whatever it has asked for since the last call and
+move data on and off the endpoints.
+
+Call this continuously. The device only responds to the host while it is
+being polled, so a gap long enough to cover a control transfer costs the
+program its enumeration.
+
+---
+
+<a id="Device.is_mounted" />
+```gust
+def Device.is_mounted() -> bool
+```
+
+Whether the host has finished configuring the device and its functions
+are usable. False before enumeration completes, after the host suspends the
+port, and once the cable is unplugged.
+
+---
+
+<a id="Device.serial_port" />
+```gust
+def Device.serial_port() -> SerialPort
+```
+
+The serial port published by `start`.
+
+**Raises**
+
+- `RuntimeError` — If the device is not running, or was started without a serial port.
+
+---
+
+<a id="Device.report_descriptor" />
+```gust
+def Device.report_descriptor() -> bytes
+```
+
+The report descriptor `start` publishes for this device, describing the
+layout of every report it sends — empty for a device that sends none.
+
+A subclass that speaks a report format overrides this with its own; that is
+the whole of what makes it one, which is why `start` needs no argument to
+say so.
+
+## `Drive`
+
+<a id="Drive" />
+<Note>
+Only available where `has("usb-device") and has("sdmmc")`.
+</Note>
+
+A device that publishes a card to the host as a drive.
+
+Mount the card first — a drive is the card plus the descriptors that offer
+it, and `start` publishes both.
+
+```gust
+def Drive
+
+    card: sdcard.Card
+
+end
+```
+
+**Fields**
+
+- `card: sdcard.Card` — The mounted card whose blocks the host reads and writes.
+
+## `HID`
+
+<a id="HID" />
+A device that sends reports: everything `Device` does, plus an interrupt
+endpoint the reports travel on.
+
+Subclass this to publish a report format of its own — override
+`report_descriptor` with the layout the host is told to expect, and send
+reports that match it.
+
+**Methods**
+
+<a id="HID.send" />
+```gust
+def HID.send(report: bytes) -> bool
+```
+
+Send one report to the host, returning false when the endpoint is still
+busy with the previous one and the report was not taken.
+
+The report has to match the layout the report descriptor declared. A host
+that is handed a report of the wrong length discards it.
+
+**Parameters**
+
+- `report` — The packed report.
+
+---
+
+<a id="HID.is_ready" />
+```gust
+def HID.is_ready() -> bool
+```
+
+Whether the endpoint is free to take another report. False while one is
+still in flight, and while the host has not configured the device.
+
+## `LedState`
+
+<a id="LedState" />
+The lock indicators the host asks the keyboard to show. The host owns
+them: it decides when Caps Lock is on and tells the keyboard, which is the
+only way a device learns that its own indicator changed.
+
+```gust
+def LedState
+
+    num_lock: bool
+    caps_lock: bool
+    scroll_lock: bool
+    compose: bool
+    kana: bool
+
+end
+```
+
+**Fields**
+
+- `num_lock: bool` — Whether Num Lock is on.
+- `caps_lock: bool` — Whether Caps Lock is on.
+- `scroll_lock: bool` — Whether Scroll Lock is on.
+- `compose: bool` — Whether the Compose indicator is on.
+- `kana: bool` — Whether the Kana indicator is on.
+
+## `Keyboard`
+
+<a id="Keyboard" />
+A standard keyboard. Construct it, `start` it, and `poll` it.
+
+Text goes out with `type`; a key by usage code goes out with `tap`, or with
+`press` and `release` when it has to stay down across other keys.
+
+```gust
+def Keyboard
+
+    held: list[integer]
+    modifiers: integer
+    on_leds: Function(LedState)[none] | none
+    last_leds: integer
+
+end
+```
+
+**Fields**
+
+- `held: list[integer]` — Usage codes of the keys held down now, most recently pressed last. A report carries six, so a seventh press is refused.
+- `modifiers: integer` — The modifier bits held down now, from `Modifier`.
+- `on_leds: Function(LedState)[none] | none` — Called with the lock indicators whenever the host changes them, or none to ignore them. Delivered from `poll`, not from the host's request, so it never interrupts what the program is doing.
+- `last_leds: integer` — The indicators as of the last `poll`, which is what a change is measured against.
+
+**Methods**
+
+<a id="Keyboard.report_descriptor" />
+```gust
+def Keyboard.report_descriptor() -> bytes
+```
+
+The standard keyboard layout: eight modifier bits, a reserved byte, six
+key slots, and the five lock indicators the host drives back.
+
+---
+
+<a id="Keyboard.type" />
+```gust
+def Keyboard.type(text: string) -> bool
+```
+
+Type `text`, pressing and releasing the key that produces each character
+and holding Shift for the ones that need it.
+
+Each character costs two reports and each report waits for the host to poll
+the endpoint, so this takes a few milliseconds per character and returns
+once the last one is on its way.
+
+Returns false if any character did not reach the host — one no key on a US
+layout produces, or an endpoint that stopped being polled. The rest are
+still typed.
+
+**Parameters**
+
+- `text` — The text to type.
+
+---
+
+<a id="Keyboard.tap" />
+```gust
+def Keyboard.tap(key: integer) -> bool
+```
+
+Press `key` and release it again.
+
+**Parameters**
+
+- `key` — Usage code of the key, from `Key`.
+
+---
+
+<a id="Keyboard.press" />
+```gust
+def Keyboard.press(key: integer) -> bool
+```
+
+Hold `key` down and tell the host, leaving it down until `release` or
+`release_all` lets go of it.
+
+A modifier key sets its bit in every report that follows. Any other key
+takes one of the six slots a report carries, so a seventh is refused and
+returns false without disturbing the six already down.
+
+**Parameters**
+
+- `key` — Usage code of the key, from `Key`.
+
+---
+
+<a id="Keyboard.release" />
+```gust
+def Keyboard.release(key: integer) -> bool
+```
+
+Let go of `key` and tell the host. A key that was not down is no error —
+the host is told the current state either way.
+
+**Parameters**
+
+- `key` — Usage code of the key, from `Key`.
+
+---
+
+<a id="Keyboard.release_all" />
+```gust
+def Keyboard.release_all() -> bool
+```
+
+Let go of every key and modifier at once — the report that stops a stuck
+key repeating.
+
+---
+
+<a id="Keyboard.poll" />
+```gust
+def Keyboard.poll() -> none
+```
+
+Serve the host, and hand a change in the lock indicators to `on_leds`.
+
+Everything `Device.poll` does, plus noticing that the host has turned Caps
+Lock or another indicator on or off. The same rule applies — call it
+continuously, or enumeration never finishes.
+
+## `Mouse`
+
+<a id="Mouse" />
+A standard mouse. Construct it, `start` it, and `poll` it.
+
+```gust
+def Mouse
+
+    buttons: integer
+
+end
+```
+
+**Fields**
+
+- `buttons: integer` — The button bits held down now, from `MouseButton`. Every report carries them, so a button pressed during a drag stays down across the moves that follow.
+
+**Methods**
+
+<a id="Mouse.report_descriptor" />
+```gust
+def Mouse.report_descriptor() -> bytes
+```
+
+The standard mouse layout: three button bits and three signed movement
+axes.
+
+---
+
+<a id="Mouse.move" />
+```gust
+def Mouse.move(dx: integer, dy: integer) -> bool
+```
+
+Move the pointer `dx` to the right and `dy` down from wherever it is now.
+
+One report carries at most 127 in either direction; anything further is
+clamped, so a long travel is several calls.
+
+**Parameters**
+
+- `dx` — Horizontal movement, positive to the right.
+- `dy` — Vertical movement, positive downwards.
+
+---
+
+<a id="Mouse.scroll" />
+```gust
+def Mouse.scroll(amount: integer) -> bool
+```
+
+Turn the wheel by `amount`, positive away from the user, clamped to the
+127 one report carries.
+
+**Parameters**
+
+- `amount` — Wheel movement.
+
+---
+
+<a id="Mouse.click" />
+```gust
+def Mouse.click(button: integer) -> bool
+```
+
+Press `button` and release it again without moving the pointer.
+
+**Parameters**
+
+- `button` — The button bit, from `MouseButton`.
+
+---
+
+<a id="Mouse.press" />
+```gust
+def Mouse.press(button: integer) -> bool
+```
+
+Hold `button` down and tell the host, leaving it down — and so dragging
+through any move that follows — until `release` lets go of it.
+
+**Parameters**
+
+- `button` — The button bit, from `MouseButton`.
+
+---
+
+<a id="Mouse.release" />
+```gust
+def Mouse.release(button: integer) -> bool
+```
+
+Let go of `button` and tell the host.
+
+**Parameters**
+
+- `button` — The button bit, from `MouseButton`.
+
+## `SerialPort`
+
+<a id="SerialPort" />
+The device's serial port, obtained from `serial_port`. There is one, so
+every handle addresses the same port.
+
+**Methods**
+
+<a id="SerialPort.read" />
+```gust
+def SerialPort.read(max_bytes: integer) -> bytes
+```
+
+Take up to `max_bytes` of what the host has sent, returning immediately
+with however much had arrived — often nothing.
+
+**Parameters**
+
+- `max_bytes` — Largest number of bytes to take.
+
+---
+
+<a id="SerialPort.write" />
+```gust
+def SerialPort.write(data: bytes) -> integer
+```
+
+Send `data` to the host, returning how many bytes were accepted. A write
+larger than the outgoing buffer's free space is accepted in part, leaving
+the rest for a further call; nothing is accepted while the host has not
+configured the device.
+
+**Parameters**
+
+- `data` — The payload to send.
+
+---
+
+<a id="SerialPort.is_connected" />
+```gust
+def SerialPort.is_connected() -> bool
+```
+
+Whether a program on the host has the port open.
+
+A host configures the device as soon as it is plugged in, but nothing reads
+what the device sends until a program opens the port. Writes made before
+then fill the outgoing buffer and are lost when it is full, so a device with
+something to say waits for this.

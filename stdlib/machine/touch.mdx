@@ -1,0 +1,81 @@
+---
+title: machine.touch
+description: "Capacitive touch sensing on the chip's touch-capable pins"
+---
+
+```gust
+use machine.touch
+```
+
+Capacitive touch sensing on the chip's touch-capable pins.
+
+A touch pad is an ordinary conductor — a pad on the board, or a wire soldered to
+a header pin — wired to one of the fixed touch GPIOs. The controller repeatedly
+charges the pad and counts how long that takes; a finger near the pad adds
+capacitance, which shifts the count. No external hardware is involved.
+
+`open` switches a pin into touch mode and returns the channel to read it by;
+`read` takes the latest count on that channel. The count is a raw number, not a
+boolean: a pad reads some baseline value untouched, and the value moves when
+touched — up on most chips. A program establishes the baseline once at startup,
+then treats a reading past a margin from it as a touch:
+
+```gust
+use machine.touch
+use time
+
+def main() -> none
+    pad := touch.open(4)
+    baseline := touch.read(pad)
+    while true
+        if touch.read(pad) > baseline + 1000
+            print("touched")
+        end
+        time.sleep_ms(100)
+    end
+end
+```
+
+Which GPIOs are touch-capable is fixed by the silicon, and the pads are numbered
+T1 upward — `open` returns -1 for a pin with no touch channel behind it.
+
+This package exists only on a chip whose touch sensor Gust drives; on any other
+target, `use machine.touch` is a compile error.
+
+<Note>
+Only available where `has("touch")`.
+</Note>
+
+**On this page:** [`open`](#machine.touch.open) · [`read`](#machine.touch.read)
+
+## Functions
+
+<a id="machine.touch.open" />
+```gust
+def open(gpio: integer) -> integer
+```
+
+Switch `gpio` into touch-sensing mode and return the channel to read it
+by, or -1 if `gpio` is not a touch-capable pin or the controller could not
+be brought up. The controller is started on the first pad opened, and
+scanning is running by the time this returns.
+
+**Parameters**
+
+- `gpio: integer` — GPIO number of a touch pad.
+
+---
+
+<a id="machine.touch.read" />
+```gust
+def read(channel: integer) -> integer
+```
+
+Take the most recent count measured on `channel`, or -1 if the channel
+was never opened. A larger count means more capacitance on the pad; compare
+it against a baseline captured while the pad was untouched to decide whether
+it is being touched.
+
+**Parameters**
+
+- `channel: integer` — A channel from `open`.

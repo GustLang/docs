@@ -1,0 +1,105 @@
+---
+title: machine.multicore
+description: "The second processor core"
+---
+
+```gust
+use machine.multicore
+```
+
+The second processor core.
+
+`launch` starts a function running on core 1 while the main program continues on
+core 0. The two cores exchange 32-bit words with `push` and `pop`: each core has
+its own inbox, so a word pushed on one core is popped on the other.
+
+Dual-core chips only. On a single-core chip — several of the ESP32 family are —
+`launch` raises.
+
+Warning: the Gust heap and reference counting are single-core on the device. A
+function launched on core 1 must not allocate or touch heap values (lists,
+dicts, strings, class instances) — doing so races the allocator and will corrupt
+memory. Keep core-1 work to integers, the `unsafe` package, and the FIFO.
+
+Example — offload a multiply to core 1:
+```gust
+use machine.multicore
+
+def worker() -> none
+    a := multicore.pop()
+    b := multicore.pop()
+    multicore.push(a * b)
+end
+
+def main() -> none
+    multicore.launch(worker)
+    multicore.push(6)
+    multicore.push(7)
+    print(multicore.pop())      # 42
+end
+```
+
+<Note>
+Only available where `has("multicore")`.
+</Note>
+
+**On this page:** [`launch`](#machine.multicore.launch) · [`reset`](#machine.multicore.reset) · [`push`](#machine.multicore.push) · [`pop`](#machine.multicore.pop) · [`drain`](#machine.multicore.drain)
+
+## Functions
+
+<a id="machine.multicore.launch" />
+```gust
+def foreign launch(entry: Function()[none]) -> none
+```
+
+Start `entry` running on core 1. Only one function runs on core 1 at a
+time; call `reset` before launching another.
+
+**Parameters**
+
+- `entry: Function()[none]` — The function to run on core 1. It must not allocate or use heap values (see the package warning).
+
+**Raises**
+
+- `RuntimeError` — when core 1 is already running, when the chip has a single core, or when the core-1 entry could not be started.
+
+---
+
+<a id="machine.multicore.reset" />
+```gust
+def foreign reset() -> none
+```
+
+Stop and reset core 1, so a new function can be `launch`ed.
+
+---
+
+<a id="machine.multicore.push" />
+```gust
+def foreign push(value: integer) -> none
+```
+
+Send a 32-bit word to the other core's inbox, blocking until there is
+room in it.
+
+**Parameters**
+
+- `value: integer` — The word to send (low 32 bits).
+
+---
+
+<a id="machine.multicore.pop" />
+```gust
+def foreign pop() -> integer
+```
+
+Receive a 32-bit word from the other core, blocking until one arrives.
+
+---
+
+<a id="machine.multicore.drain" />
+```gust
+def foreign drain() -> none
+```
+
+Discard any words waiting in this core's incoming FIFO.

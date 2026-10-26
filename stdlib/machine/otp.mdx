@@ -1,0 +1,60 @@
+---
+title: machine.otp
+description: "One-time-programmable memory"
+---
+
+```gust
+use machine.otp
+```
+
+One-time-programmable memory.
+
+OTP holds factory data — including the unique chip identifier — and any values a
+program has permanently burned. This package reads OTP rows; it does not burn
+them, because burning a fuse is irreversible.
+
+A row is a 16-bit window into the chip's OTP: an ECC-corrected OTP row on the
+RP2350, and a 16-bit slice of an eFuse block on the ESP32 family (16 rows per
+block, block = row / 16). Rows the chip will not let software read report -1.
+
+**Examples**
+
+```gust
+use machine.otp
+
+def main() -> none
+    print(otp.chip_id())
+end
+```
+
+<Note>
+Only available where `has("otp")`.
+</Note>
+
+**On this page:** [`read_row`](#machine.otp.read_row) · [`chip_id`](#machine.otp.chip_id)
+
+## Functions
+
+<a id="machine.otp.read_row" />
+```gust
+def foreign read_row(row: integer) -> integer
+```
+
+Read one 16-bit OTP row (the ECC-corrected value), or -1 if `row` is out
+of range.
+
+**Parameters**
+
+- `row: integer` — OTP row index.
+
+---
+
+<a id="machine.otp.chip_id" />
+```gust
+def foreign chip_id() -> integer
+```
+
+The factory-programmed unique chip identifier as a single integer,
+assembled from the four CHIPID OTP rows on the RP2350 and from the 48-bit
+factory base MAC on the ESP32 family. Returns -1 when the chip does not
+report one.

@@ -1,0 +1,50 @@
+---
+title: function
+description: "A callable declared with `def name(...)`"
+---
+
+A callable declared with `def name(...)`. A function may be called,
+passed and stored as a value, and inspected through the reflection
+properties below. The properties are read off the function's name as a
+property without parentheses (`greet.__NAME__`), and the compiler resolves
+each to a literal at compile time.
+
+## Dunders
+
+<a id="function.__NAME__" />
+```gust
+def function.__NAME__() -> string
+```
+
+The function's own name, e.g. `"greet"`. Read as a property without
+parentheses (`greet.__NAME__`).
+
+---
+
+<a id="function.__DOC__" />
+```gust
+def function.__DOC__() -> string
+```
+
+The function's docstring, or `""` when it has none. Read as a property
+without parentheses (`greet.__DOC__`).
+
+---
+
+<a id="function.__FILE__" />
+```gust
+def function.__FILE__() -> string
+```
+
+Path to the source file the function is declared in. Read as a property
+without parentheses (`greet.__FILE__`).
+
+---
+
+<a id="function.__LINE__" />
+```gust
+def function.__LINE__() -> integer
+```
+
+1-based line of `__FILE__` the function declaration begins on. Read as a
+property without parentheses (`greet.__LINE__`).

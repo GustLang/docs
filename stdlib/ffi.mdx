@@ -1,0 +1,92 @@
+---
+title: ffi
+description: "Call a C function through its address with a signature described at runtime, built on libffi"
+---
+
+```gust
+use ffi
+```
+
+Call a C function through its address with a signature described at runtime,
+built on libffi. This is the call core behind `dl` and behind forwarding a
+list to a C variadic function with `...values`.
+
+A call is described by parallel arrays in raw memory: one type code per
+argument and one 8-byte slot per argument holding its value in host byte
+order, the narrower types occupying the low-addressed bytes of their slot. The
+result is written to an 8-byte buffer: an integer or pointer result widened to
+64 bits by its signedness, a `F32` result as a C `float`, and a `F64` result as
+a C `double`.
+
+A variadic call names how many leading arguments are the function's declared
+parameters. The remaining arguments receive the C default argument promotions
+before the call — `I8`, `U8`, `I16` and `U16` are passed as `I32`, and `F32` as
+`F64` — and the fixed arguments keep their declared types. A variadic function
+must always be called as variadic, even with no trailing arguments, because
+its calling convention can differ from an ordinary function's.
+
+Everything here is unchecked at the ABI boundary: a description that does not
+match the real function, or an address that is not a function, is undefined
+behavior exactly as in `unsafe`.
+
+Available on native builds for Linux, macOS and the BSDs: the package exists on
+no other target, so an import elsewhere is a compile error.
+
+<Note>
+Only available on native builds, and not on Windows.
+</Note>
+
+**On this page:** [`call_address`](#ffi.call_address)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `VOID` | `integer` | `0` |
+| `I8` | `integer` | `1` |
+| `U8` | `integer` | `2` |
+| `I16` | `integer` | `3` |
+| `U16` | `integer` | `4` |
+| `I32` | `integer` | `5` |
+| `U32` | `integer` | `6` |
+| `I64` | `integer` | `7` |
+| `U64` | `integer` | `8` |
+| `F32` | `integer` | `9` |
+| `F64` | `integer` | `10` |
+| `PTR` | `integer` | `11` |
+
+## Functions
+
+<a id="ffi.call_address" />
+```gust
+def foreign call_address(
+    fn: integer,
+    ret_code: integer,
+    nargs: integer,
+    type_codes: integer,
+    slots: integer,
+    out: integer,
+    nfixed: integer,
+    variadic: bool,
+) -> integer
+```
+
+Invoke the function at address `fn`.
+
+**Parameters**
+
+- `fn: integer` — Function address to call.
+- `ret_code: integer` — Return type code.
+- `nargs: integer` — Number of arguments.
+- `type_codes: integer` — Address of an array of `nargs` int64 argument type codes.
+- `slots: integer` — Address of an array of `nargs` 8-byte argument slots.
+- `out: integer` — Address of an 8-byte buffer the result is written to, or 0 to discard it.
+- `nfixed: integer` — Count of declared parameters; equals `nargs` for an ordinary call.
+- `variadic: bool` — Whether the function is declared with a trailing `...`.
+
+**Returns** `integer`
+
+0 on success; 1 when the counts are inconsistent, 2 when memory for
+the call could not be allocated, 3 when a type code is unknown or
+`VOID` is used for an argument, and 4 when libffi rejects the
+signature.

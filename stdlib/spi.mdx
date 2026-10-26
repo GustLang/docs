@@ -1,0 +1,263 @@
+---
+title: spi
+description: "Cross-platform SPI bus access through one neutral API with a backend per platform:"
+---
+
+```gust
+use spi
+```
+
+Cross-platform SPI bus access through one neutral API with a backend per
+platform:
+
+- Raspberry Pi Pico (freestanding / Pico SDK): the `hardware_spi` block,
+  with chip-select driven as a plain GPIO around each transfer.
+- ESP32 (ESP-IDF): the `esp_driver_spi` master driver, which owns
+  chip-select and per-device clock/mode internally.
+- Linux: `/dev/spidev<bus>.<cs>` via the spidev ioctls.
+
+Targets with no user-space SPI bus — macOS, Windows, the browser — have no `spi`
+package: an import there resolves to nothing and every reference is a compile
+error.
+
+A bus carries shared SCK/MOSI/MISO lines; wire those with `configure` once
+per bus, then attach a `device` to it. Multiple devices may share a bus, each
+with its own clock speed and mode. Byte values are plain `integer`s truncated
+to a byte.
+
+Mode selects clock polarity/phase as the number 0-3 (clock idle level and
+which edge samples data), the usual SPI convention.
+
+A driver that talks to a peripheral takes a `Bus` rather than a controller
+index and a chip-select, so the same driver runs against real hardware on one
+board and against whatever else implements the interface — a recorder, a
+simulator, a bus expander — on the next.
+
+**Examples**
+
+```gust
+use spi
+
+def main() -> none
+    spi.configure(0, sck: 18, mosi: 19, miso: 16)
+    dev := spi.device(0, cs: 17, baud_hz: 1000000, mode: 0)
+    if not dev.ok()
+        return
+    end
+    # Select a register, then read 2 bytes back.
+    dev.write([0x00])
+    data := dev.read(2)
+    print(f"read {data.length} bytes")
+    dev.close()
+end
+```
+
+<Note>
+Only available where `os == "linux" or has("spi")`.
+</Note>
+
+**On this page:** [`Device`](#Device) · [`Bus`](#Bus) · [`configure`](#spi.configure) · [`device`](#spi.device)
+
+## `Device`
+
+<a id="Device" />
+A device held open on an SPI bus.
+
+**Implements:** [`Bus`](#Bus)
+
+```gust
+def Device implements Bus
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The backend's device handle, or -1 if the device could not be attached.
+
+**Methods**
+
+<a id="Device.ok" />
+```gust
+def Device.ok() -> bool
+```
+
+Whether the device was attached successfully.
+
+---
+
+<a id="Device.write" />
+```gust
+def Device.write(data: list[integer]) -> integer
+```
+
+Assert chip-select, write the bytes in `data`, then deassert. Returns 0
+on success, non-zero on error.
+
+**Parameters**
+
+- `data` — Bytes to write (each truncated to a byte).
+
+---
+
+<a id="Device.write_address" />
+```gust
+def Device.write_address(address: integer, count: integer) -> integer
+```
+
+Assert chip-select, write the `count` bytes held in memory at `address`,
+then deassert. Returns 0 on success, non-zero on error.
+
+The bytes go to the controller straight from where they already are, so
+this is the transfer for a payload that is both large and already laid out
+in wire order — a display framebuffer being the usual one. `count` has no
+fixed ceiling; the write is split into as many hardware transfers as it
+takes, which means chip-select may be released between them. Devices that
+hold state across a transfer (a display in the middle of a memory write,
+for instance) tolerate that; ones that treat a chip-select edge as the end
+of a message do not.
+
+The caller owns the memory and must keep it valid and unchanged for the
+duration of the call.
+
+**Parameters**
+
+- `address` — Address of the first byte to write.
+- `count` — Number of bytes to write.
+
+---
+
+<a id="Device.read" />
+```gust
+def Device.read(count: integer) -> list[integer]
+```
+
+Assert chip-select, clock out `count` filler bytes while reading the
+bytes shifted back, then deassert. Returns the bytes read (empty on
+error).
+
+**Parameters**
+
+- `count` — Number of bytes to read.
+
+---
+
+<a id="Device.transfer" />
+```gust
+def Device.transfer(data: list[integer]) -> list[integer]
+```
+
+Full-duplex transfer: assert chip-select, simultaneously write `data`
+and read back the same number of bytes, then deassert. Returns the bytes
+read (empty on error).
+
+**Parameters**
+
+- `data` — Bytes to write while reading.
+
+---
+
+<a id="Device.close" />
+```gust
+def Device.close() -> none
+```
+
+Release the device. Transferring on it afterwards is an error, not a
+crash.
+
+## `Bus`
+
+<a id="Bus" />
+The SPI bus as one attached device sees it: transfers already framed by
+that device's own chip-select, clock speed and mode.
+
+A driver names this as the type of the peripheral it talks to instead of
+naming a controller index and a chip-select. `Device` is the
+implementation backed by real hardware.
+
+**Implemented by:** [`Device`](#Device)
+
+**Methods**
+
+<a id="Bus.write" />
+```gust
+def Bus.write(data: list[integer]) -> integer
+```
+
+---
+
+<a id="Bus.write_address" />
+```gust
+def Bus.write_address(address: integer, count: integer) -> integer
+```
+
+---
+
+<a id="Bus.read" />
+```gust
+def Bus.read(count: integer) -> list[integer]
+```
+
+---
+
+<a id="Bus.transfer" />
+```gust
+def Bus.transfer(data: list[integer]) -> list[integer]
+```
+
+---
+
+<a id="Bus.close" />
+```gust
+def Bus.close() -> none
+```
+
+## Functions
+
+<a id="spi.configure" />
+```gust
+def foreign configure(
+    bus: integer,
+    sck: integer,
+    mosi: integer,
+    miso: integer,
+) -> none
+```
+
+Embedded only: pin-mux `sck`/`mosi`/`miso` and bring up `bus` before
+attaching a device. Call this once per bus. On Linux the bus pins are
+owned by the kernel (device tree), so this is a no-op — `device` picks the
+bus up directly.
+
+**Parameters**
+
+- `bus: integer` — SPI bus / controller index.
+- `sck: integer` — GPIO number for the clock line.
+- `mosi: integer` — GPIO number for controller-out/peripheral-in.
+- `miso: integer` — GPIO number for controller-in/peripheral-out.
+
+---
+
+<a id="spi.device" />
+```gust
+def device(bus: integer, cs: integer, baud_hz: integer, mode: integer) -> Device
+```
+
+Attach a device on chip-select `cs` to `bus`, configured with its own
+clock speed and mode. On the Pico/ESP32, `cs` is a GPIO number driven
+directly as a plain output — idle high, pulsed low around each transfer —
+and `bus` must already be `configure`d. On Linux, `cs` selects
+`/dev/spidev<bus>.<cs>`, whose chip-select line is fixed by the device
+tree and driven by the kernel.
+
+Check `ok` before using it: a device that could not be attached is
+returned closed rather than raising, so a program can fall back.
+
+**Parameters**
+
+- `bus: integer` — A bus brought up with `configure` (Pico/ESP32) or an existing `/dev/spidev<bus>.*` (Linux).
+- `cs: integer` — Chip-select — a GPIO number on the Pico/ESP32, a spidev index on Linux.
+- `baud_hz: integer` — Clock speed in hertz.
+- `mode: integer` — SPI mode 0-3 (clock polarity/phase).

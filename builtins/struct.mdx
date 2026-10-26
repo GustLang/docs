@@ -1,0 +1,64 @@
+---
+title: struct
+description: "A record type declared with `def Name`: a fixed set of named, typed"
+---
+
+A record type declared with `def Name`: a fixed set of named, typed
+fields, constructed with keyword arguments (`Point(x: 1, y: 2)`) and carrying
+the methods defined on it. A struct is a value type and is copied on
+assignment unless it holds a `ref[T]` field, which makes it a managed
+reference type.
+
+Beyond its own fields and methods, every struct answers to `__dict` (cast to
+a `dict` of its fields) and to the reflection properties below, which the
+compiler resolves to literals at compile time.
+
+## Dunders
+
+<a id="struct.__dict" />
+```gust
+def struct.__dict() -> dict[string, Any]
+```
+
+Triggered by `s as dict`. Returns a `dict` mapping each field name to its
+current value.
+
+---
+
+<a id="struct.__NAME__" />
+```gust
+def struct.__NAME__() -> string
+```
+
+The struct's own name, e.g. `"Point"`. Read as a property without
+parentheses (`Point.__NAME__`), off either the type or a value of it.
+
+---
+
+<a id="struct.__DOC__" />
+```gust
+def struct.__DOC__() -> string
+```
+
+The struct's docstring, or `""` when it has none. Read as a property without
+parentheses (`Point.__DOC__`).
+
+---
+
+<a id="struct.__FILE__" />
+```gust
+def struct.__FILE__() -> string
+```
+
+Path to the source file the struct is declared in. Read as a property
+without parentheses (`Point.__FILE__`).
+
+---
+
+<a id="struct.__LINE__" />
+```gust
+def struct.__LINE__() -> integer
+```
+
+1-based line of `__FILE__` the struct declaration begins on. Read as a
+property without parentheses (`Point.__LINE__`).

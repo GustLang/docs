@@ -1,0 +1,708 @@
+---
+title: posix
+description: "Direct access to the POSIX process primitives: creating a process (`fork`), replacing its image (`execvp`), reaping a child (`waitpid`), and decoding a wait status"
+---
+
+```gust
+use posix
+```
+
+Direct access to the POSIX process primitives: creating a process (`fork`),
+replacing its image (`execvp`), reaping a child (`waitpid`), and decoding a
+wait status. Leaving the child without running cleanup is `os.exit_process`.
+A freshly forked child shapes itself with `setsid` and `dup2` before it execs:
+one puts it in a session of its own, the other points its standard descriptors
+somewhere the parent chose.
+
+`poll` waits for readiness across several descriptors at once, for a caller
+that already has more than one open and needs to block on whichever is ready
+first rather than picking one to wait on.
+
+`send_fds` and `recv_fds` pass open descriptors between processes over a
+Unix-domain socket, which is how a privileged process hands a device it opened
+to one that could not open it itself. `geteuid` and its kin report whose
+privileges this process holds.
+
+`WNOHANG` and `WUNTRACED` are the `waitpid` options, defined by `<sys/wait.h>`.
+`WNOHANG` makes `waitpid` return a result of 0 rather than blocking when no
+child has exited yet, which is how a caller drains every child that has exited
+without waiting on the ones that have not. `WUNTRACED` also reports a child that
+has stopped rather than exited.
+
+`EINTR`, `EBUSY`, `ESRCH` and `EAGAIN` are the error numbers a caller compares
+`os.errno()` against, defined by `<errno.h>`. `EINTR` means a signal interrupted
+a blocking call before it completed, and the call is worth retrying. `EAGAIN`
+means a non-blocking descriptor had nothing ready rather than failing outright.
+`ESRCH` means no process matches the one a call names: a `kill` of signal 0
+that fails this way is how a caller asks whether anything is still running,
+since the signal itself sends nothing. `EBUSY` means the resource is in use.
+
+These are the raw building blocks that higher-level launchers such as the
+`subprocess` package are assembled from. Each mirrors a single system call;
+the orchestration — deciding what to do with a failed `fork`, retrying an
+interrupted `waitpid`, turning a status word into an exit code — is written in
+Gust by the caller, not hidden in the primitive.
+
+Everything here exists only on POSIX, and only where there is a process model
+to speak of, so the package exists only on hosted POSIX builds. Windows, the
+microcontroller targets and the browser have no `posix` package: an import there
+is a compile error. Cross-platform work belongs in `os` and `fs`, which reach for
+a platform backend of their own when they need one.
+
+<Warning>
+This is a low-level building block for other standard library packages, not
+an everyday API. Reach for `subprocess` to run programs; the primitives here
+are unforgiving — a misused `fork`, `execvp`, or `waitpid` corrupts process
+state with no diagnostic. Use them directly only when assembling a new
+process abstraction that `subprocess` does not already provide.
+</Warning>
+
+<Note>
+Only available on native builds, and not on Windows.
+</Note>
+
+**On this page:** [`How`](#How) · [`SignalFd`](#SignalFd) · [`fork`](#posix.fork) · [`execvp`](#posix.execvp) · [`execv`](#posix.execv) · [`setsid`](#posix.setsid) · [`sync`](#posix.sync) · [`pause`](#posix.pause) · [`dup2`](#posix.dup2) · [`waitpid`](#posix.waitpid) · [`wifexited`](#posix.wifexited) · [`wexitstatus`](#posix.wexitstatus) · [`wifsignaled`](#posix.wifsignaled) · [`wtermsig`](#posix.wtermsig) · [`sigfillset`](#posix.sigfillset) · [`sigprocmask`](#posix.sigprocmask) · [`getuid`](#posix.getuid) · [`geteuid`](#posix.geteuid) · [`getgid`](#posix.getgid) · [`getegid`](#posix.getegid) · [`send_fds`](#posix.send_fds) · [`recv_fds`](#posix.recv_fds) · [`poll`](#posix.poll) · [`mount`](#posix.mount) · [`reboot`](#posix.reboot) · [`exit_code_of`](#posix.exit_code_of) · [`signalfd`](#posix.signalfd)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `SFD_CLOEXEC` | `integer` | `524288` |
+| `SFD_NONBLOCK` | `integer` | `2048` |
+| `MS_RDONLY` | `integer` | `1` |
+| `MS_NOSUID` | `integer` | `2` |
+| `MS_NODEV` | `integer` | `4` |
+| `MS_NOEXEC` | `integer` | `8` |
+| `MS_SYNCHRONOUS` | `integer` | `16` |
+| `MS_REMOUNT` | `integer` | `32` |
+| `MS_NOATIME` | `integer` | `1024` |
+| `MS_NODIRATIME` | `integer` | `2048` |
+| `MS_BIND` | `integer` | `4096` |
+| `MS_MOVE` | `integer` | `8192` |
+| `MS_REC` | `integer` | `16384` |
+| `MS_SILENT` | `integer` | `32768` |
+| `MS_RELATIME` | `integer` | `2097152` |
+| `RB_AUTOBOOT` | `integer` | `19088743` |
+| `RB_HALT_SYSTEM` | `integer` | `3454992675` |
+| `RB_POWER_OFF` | `integer` | `1126301404` |
+| `RB_DISABLE_CAD` | `integer` | `0` |
+| `RB_ENABLE_CAD` | `integer` | `2309737967` |
+| `WNOHANG` | `integer` | defined in C |
+| `WUNTRACED` | `integer` | defined in C |
+| `EINTR` | `integer` | defined in C |
+| `EBUSY` | `integer` | defined in C |
+| `ESRCH` | `integer` | defined in C |
+| `EAGAIN` | `integer` | defined in C |
+| `POLLIN` | `integer` | `1` |
+| `POLLPRI` | `integer` | `2` |
+| `POLLOUT` | `integer` | `4` |
+| `POLLERR` | `integer` | `8` |
+| `POLLHUP` | `integer` | `16` |
+| `POLLNVAL` | `integer` | `32` |
+
+## `How`
+
+<a id="How" />
+```gust
+enum How: integer
+```
+
+How `sigprocmask` combines the mask it is given with the one already in
+effect: add those signals to it, remove them from it, or replace it
+outright.
+
+**Variants**
+
+- `sig_block = 1`
+- `sig_unblock = 2`
+- `sig_setmask = 3`
+
+## `SignalFd`
+
+<a id="SignalFd" />
+A descriptor that reports signals instead of letting them interrupt.
+
+`signalfd` opens one. Read it with `read`, release it with `close`, and
+hand `fd` to a poller to fold signal delivery into a wait the program is
+already doing.
+
+```gust
+def SignalFd
+
+    fd: integer
+
+end
+```
+
+**Fields**
+
+- `fd: integer` — The underlying file descriptor.
+
+**Methods**
+
+<a id="SignalFd.read" />
+```gust
+def SignalFd.read() -> integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+Take one delivered signal off the descriptor and return its number, or
+-1 with `errno` set.
+
+Blocks until a signal arrives unless the descriptor was opened with
+`SFD_NONBLOCK`, in which case an empty descriptor returns -1 with `errno`
+set to `EAGAIN`. A signal arriving during the read itself reports `EINTR`
+and the read is worth retrying. Those two are ordinary outcomes rather than
+failures, which is why this reports a number and an `errno` instead of
+`none` — there is nothing to distinguish them by otherwise.
+
+Only the signal number is reported. The kernel also records the sender and
+its exit status, which this does not surface — for a child that has exited,
+`waitpid` is the call that answers those.
+
+---
+
+<a id="SignalFd.watch" />
+```gust
+def SignalFd.watch(signals: list[integer]) -> bool
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+Replace the set of signals this descriptor reports, keeping the
+descriptor itself. Returns false with `errno` set if the kernel refuses.
+
+The new signals have to be blocked the same way the original ones were, and
+any of the originals no longer listed goes back to ordinary delivery.
+
+**Parameters**
+
+- `signals` — Signal numbers the descriptor reports from now on.
+
+---
+
+<a id="SignalFd.close" />
+```gust
+def SignalFd.close() -> none
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+Release the descriptor. The signals stay blocked — `sigprocmask` with
+`How.sig_unblock` is what puts them back to ordinary delivery.
+
+Reading a `SignalFd` after closing it reads a descriptor the process no
+longer owns; drop the value here rather than keeping it.
+
+## Functions
+
+<a id="posix.fork" />
+```gust
+def foreign fork() -> integer
+```
+
+Create a new process by duplicating the current one. Returns 0 in the
+child, the child's process ID in the parent, or a negative value on
+failure (with `errno` set).
+
+<Warning>
+In the child, before calling `execvp` or `os.exit_process`, do only
+trivial work: allocation and other library calls are unsafe between
+`fork` and image replacement in a multi-threaded program.
+</Warning>
+
+---
+
+<a id="posix.execvp" />
+```gust
+def foreign execvp(path: string, argv: list[string]) -> integer
+```
+
+Replace the current process image with the program `path`, searching
+`$PATH` when `path` contains no slash. `argv` is the full argument vector,
+including the program name as `argv[0]`.
+
+On success this never returns. On failure it returns -1 with `errno` set —
+the process keeps running, so the caller must handle the error (typically
+by calling `os.exit_process`).
+
+**Parameters**
+
+- `path: string` — Program to execute; looked up on `$PATH` when it has no slash.
+- `argv: list[string]` — Argument vector, conventionally starting with the program name.
+
+---
+
+<a id="posix.execv" />
+```gust
+def foreign execv(path: string, argv: list[string] | none) -> integer
+```
+
+Replace the current process image with the program at `path`, used
+exactly as given with no `$PATH` search. `argv` is the full argument
+vector, including the program name as `argv[0]`; `none` supplies no
+vector, and the program runs with `path` as its only argument.
+
+On success this never returns. On failure it returns -1 with `errno` set —
+the process keeps running, so the caller must handle the error (typically
+by calling `os.exit_process`).
+
+A launcher that has already resolved a program to a concrete path, or that
+must run one specific file and no other, uses this rather than `execvp`,
+whose search can pick up a different program of the same name.
+
+**Parameters**
+
+- `path: string` — Program to execute, as an absolute or relative path.
+- `argv: list[string] | none` — Argument vector, conventionally starting with the program name, or `none` to run the program with `path` alone.
+
+---
+
+<a id="posix.setsid" />
+```gust
+def foreign setsid() -> integer
+```
+
+Start a new session with the calling process as its leader, and return
+the new session ID, or -1 with `errno` set.
+
+The caller leaves its parent's session and process group and leads a new
+group of its own, with no controlling terminal. A signal sent to the
+negated process ID then reaches the whole group — the process and every
+child it goes on to spawn — which is how a supervisor stops a service
+without leaving its children behind.
+
+A process that already leads a process group cannot do this: the call
+fails with `EPERM`. After `fork` the child never does, which is why this
+belongs between `fork` and `execvp`.
+
+---
+
+<a id="posix.sync" />
+```gust
+def foreign sync() -> none
+```
+
+Flush every filesystem's cached writes out to the devices under them.
+
+This returns once the kernel has scheduled the writes, which on Linux is
+once they have reached the disk. It is what a shutdown does before it cuts
+power, and it cannot fail.
+
+---
+
+<a id="posix.pause" />
+```gust
+def foreign pause() -> integer
+```
+
+Suspend the process until a signal arrives, then return -1 with `errno`
+set to `EINTR`.
+
+There is no success: the call only ever comes back because a signal
+interrupted it, and a signal that terminates the process never comes back
+at all. A process with nothing left to do and no reason to exit parks here
+rather than spinning.
+
+---
+
+<a id="posix.dup2" />
+```gust
+def foreign dup2(oldfd: integer, newfd: integer) -> integer
+```
+
+Make `newfd` refer to the same open file as `oldfd`, closing whatever
+`newfd` named before. Returns `newfd`, or -1 with `errno` set.
+
+This is how a child's output is redirected before it execs: open the
+destination, duplicate it onto 1 and 2, and close the original. The
+duplicate survives `execvp`, since it carries no close-on-exec flag of its
+own however `oldfd` was opened.
+
+**Parameters**
+
+- `oldfd: integer` — Open descriptor to duplicate.
+- `newfd: integer` — Descriptor number to make refer to it, closed first if open.
+
+---
+
+<a id="posix.waitpid" />
+```gust
+def foreign waitpid(pid: integer, options: integer) -> tuple[integer, integer]
+```
+
+Wait for a child process to change state and reap it. Returns
+`(result, status)`: `result` is the child's process ID, or -1 on error
+(with `errno` set, e.g. `EINTR` when interrupted by a signal). `status` is
+the raw status word — decode it with `exit_code_of` or the `w*` helpers.
+
+`WNOHANG` returns immediately with a result of 0 when no child has exited,
+which is what drains every pending child without blocking on the ones still
+running. `WUNTRACED` also reports a child that has stopped rather than
+exited. A 0 blocks until some child exits.
+
+**Parameters**
+
+- `pid: integer` — Process ID to wait for; -1 waits for any child.
+- `options: integer` — Bit flags altering the wait; `WNOHANG`, `WUNTRACED`, or 0.
+
+---
+
+<a id="posix.wifexited" />
+```gust
+def foreign wifexited(status: integer) -> bool
+```
+
+True when the child named by `status` exited normally (via `exit` or by
+returning from `main`).
+
+**Parameters**
+
+- `status: integer` — A status word from `waitpid`.
+
+---
+
+<a id="posix.wexitstatus" />
+```gust
+def foreign wexitstatus(status: integer) -> integer
+```
+
+The low-order exit code the child passed to `exit`. Meaningful only when
+`wifexited(status)` is true.
+
+**Parameters**
+
+- `status: integer` — A status word from `waitpid`.
+
+---
+
+<a id="posix.wifsignaled" />
+```gust
+def foreign wifsignaled(status: integer) -> bool
+```
+
+True when the child named by `status` was terminated by a signal.
+
+**Parameters**
+
+- `status: integer` — A status word from `waitpid`.
+
+---
+
+<a id="posix.wtermsig" />
+```gust
+def foreign wtermsig(status: integer) -> integer
+```
+
+The number of the signal that terminated the child. Meaningful only when
+`wifsignaled(status)` is true.
+
+**Parameters**
+
+- `status: integer` — A status word from `waitpid`.
+
+---
+
+<a id="posix.sigfillset" />
+```gust
+def foreign sigfillset() -> list[integer]
+```
+
+Every signal number this platform defines, as the list `sigprocmask`
+takes a set as.
+
+Blocking the lot is what a process does before it forks, so that a signal
+arriving mid-setup reaches neither half at a moment it cannot handle one;
+the child unblocks with an empty set once it has shaped itself, and the
+parent restores the mask `sigprocmask` handed back.
+
+The signals that cannot be blocked are in the list like any other. A mask
+is a request, and `SIGKILL` and `SIGSTOP` are refused by the kernel rather
+than rejected here.
+
+```gust
+previous: list[integer] = []
+posix.sigprocmask(posix.How.sig_block, posix.sigfillset(), previous)
+```
+
+---
+
+<a id="posix.sigprocmask" />
+```gust
+def foreign sigprocmask(
+    how: How,
+    set: list[integer],
+    old_set: list[integer],
+) -> integer
+```
+
+Change the calling thread's signal mask, blocking, unblocking, or
+replacing it with the signal numbers in `set` according to `how`. Returns 0,
+or -1 with `errno` set.
+
+The signals the mask held beforehand are appended to `old_set`, which is
+normally an empty list the caller owns; pass one and ignore it when the
+previous mask is of no interest. An empty `set` is the empty mask — with
+`sig_setmask` that unblocks everything.
+
+**Parameters**
+
+- `how: How` — Whether to add `set` to the mask, remove it, or replace the mask.
+- `set: list[integer]` — Signal numbers to block, unblock, or set as the whole mask.
+- `old_set: list[integer]` — List the previously blocked signal numbers are appended to.
+
+---
+
+<a id="posix.getuid" />
+```gust
+def foreign getuid() -> integer
+```
+
+The real user ID: the user who started this process.
+
+---
+
+<a id="posix.geteuid" />
+```gust
+def foreign geteuid() -> integer
+```
+
+The effective user ID: the user whose permissions this process runs
+with. It differs from `getuid` in a set-user-ID program, and is 0 when the
+process holds root's privileges — which is what a daemon checks before it
+touches anything only root may open.
+
+---
+
+<a id="posix.getgid" />
+```gust
+def foreign getgid() -> integer
+```
+
+The real group ID of this process.
+
+---
+
+<a id="posix.getegid" />
+```gust
+def foreign getegid() -> integer
+```
+
+The effective group ID: the group whose permissions this process runs
+with.
+
+---
+
+<a id="posix.send_fds" />
+```gust
+def foreign send_fds(
+    socket_fd: integer,
+    data: bytes,
+    fds: list[integer],
+) -> integer
+```
+
+Send `data` on a Unix-domain socket with the descriptors in `fds`
+attached. Returns the number of octets sent, or -1 with `errno` set.
+
+The receiver gets its own duplicate of each descriptor, sharing the same
+open file description, and the originals stay open here. That sharing is
+the point: a privileged process opens a device and hands the descriptor to
+an unprivileged one, and whatever it later does to its own copy — revoking
+access with an `ioctl`, say — applies to the receiver's as well.
+
+The descriptors ride with the octets actually sent. A stream socket may
+accept fewer octets than offered; send the rest with an ordinary write,
+since the descriptors have already gone with the first part. At most 253
+descriptors go in one call, the Linux limit; more is refused with
+`EINVAL`. An empty `fds` makes this a plain send.
+
+**Parameters**
+
+- `socket_fd: integer` — A connected Unix-domain socket.
+- `data: bytes` — The octets to send. At least one octet must accompany descriptors on a stream socket.
+- `fds: list[integer]` — Open descriptors to pass.
+
+---
+
+<a id="posix.recv_fds" />
+```gust
+def foreign recv_fds(
+    socket_fd: integer,
+    max: integer,
+    fds: list[integer],
+) -> tuple[integer, bytes]
+```
+
+Receive up to `max` octets from a Unix-domain socket, appending any
+descriptors that came with them to `fds`. Returns the count read with the
+octets: -1 with `errno` set on error, 0 when the peer closed its end.
+
+Each descriptor that arrives is a new one in this process, opened
+close-on-exec, and closing it is this process's responsibility. On a stream
+socket a read never spans two sends that carried descriptors, so the ones
+reported belong to the octets returned alongside them.
+
+**Parameters**
+
+- `socket_fd: integer` — A connected Unix-domain socket.
+- `max: integer` — The most octets to read.
+- `fds: list[integer]` — Receives the descriptors that arrived.
+
+---
+
+<a id="posix.poll" />
+```gust
+def foreign poll(fds: integer, nfds: integer, timeout_ms: integer) -> integer
+```
+
+Wait for readiness on `nfds` descriptors described by the `struct
+pollfd` array at `fds`, built with `unsafe`. Returns the number of
+descriptors with events pending, 0 if `timeout_ms` elapsed first, or -1
+with `errno` set (`EINTR` when a signal interrupted the wait).
+
+Each entry is 8 bytes: a 4-byte `fd` at offset 0, a 2-byte `events` at
+offset 4, and a 2-byte `revents` at offset 6 that `poll` fills in on
+return. Combine the `POLL*` constants with `|` to build `events`, and with
+`&` to test `revents` afterward. A negative `fd` makes `poll` ignore that
+entry — its `revents` comes back 0 — without removing it from the array.
+
+**Parameters**
+
+- `fds: integer` — Address of the `struct pollfd` array.
+- `nfds: integer` — Number of entries in the array.
+- `timeout_ms: integer` — Milliseconds to wait; 0 polls, negative waits indefinitely.
+
+---
+
+<a id="posix.mount" />
+```gust
+def foreign mount(
+    source: string | none,
+    target: string,
+    fstype: string | none,
+    flags: integer,
+    data: string | none,
+) -> integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+Attach a filesystem at `target`, or change the terms an already
+attached one is held under. Returns 0, or -1 with `errno` set.
+
+Which arguments carry meaning depends on `flags`. A fresh mount reads all
+of them. `MS_REMOUNT` changes the flags of an existing mount and ignores
+`source` and `fstype`; `MS_BIND` makes `target` a second view of the tree
+at `source` and ignores `fstype` and `data`; `MS_MOVE` relocates the mount
+at `source` to `target` and ignores the rest. Pass `none` for whatever the
+operation does not read, which is what the kernel expects — an empty
+string is a value, not an absence.
+
+Remounting `/` read-only is how a shutdown sequence leaves the disk clean
+for the next boot:
+
+```gust
+posix.mount(none, "/", none, posix.MS_REMOUNT | posix.MS_RDONLY, none)
+```
+
+**Parameters**
+
+- `source: string | none` — Device, image or source tree to attach, or `none`.
+- `target: string` — Directory the filesystem becomes visible at.
+- `fstype: string | none` — Filesystem name as the kernel knows it, such as "ext4" or "proc", or `none`.
+- `flags: integer` — The MS_* bits, already combined.
+- `data: string | none` — Filesystem-specific options as a comma-separated string, or `none`.
+
+---
+
+<a id="posix.reboot" />
+```gust
+def foreign reboot(cmd: integer) -> integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+Carry out `cmd`: restart the machine, halt it, power it off, or change
+what the console's reboot key combination does.
+
+`RB_AUTOBOOT` restarts, `RB_HALT_SYSTEM` stops the machine without cutting
+power, and `RB_POWER_OFF` switches it off. None of the three returns —
+anything after the call runs only because the reboot failed, and `errno`
+says why. A process without privilege gets `EPERM`.
+
+`RB_DISABLE_CAD` and `RB_ENABLE_CAD` are the ones that do return. They
+decide what the console's reboot key combination does: enabled, the kernel
+restarts the machine itself, with nothing given a chance to shut down
+cleanly; disabled, the key combination sends `SIGINT` to this process
+instead, which is what lets PID 1 treat it as an ordinary shutdown request.
+
+**Parameters**
+
+- `cmd: integer` — One of the `RB_*` constants.
+
+---
+
+<a id="posix.exit_code_of" />
+```gust
+def exit_code_of(status: integer) -> integer
+```
+
+Convert a raw `waitpid` status word into a conventional exit code: the
+child's own exit status when it exited normally, `128 + signal` when a
+signal terminated it, or -1 for any other state.
+
+**Parameters**
+
+- `status: integer` — A status word from `waitpid`.
+
+---
+
+<a id="posix.signalfd" />
+```gust
+def signalfd(signals: list[integer], flags: integer) -> SignalFd | none
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+Open a descriptor that delivers `signals` as bytes to read instead of as
+interruptions, or `none` when the kernel refuses (`os.errno()` says why).
+
+The signals must be blocked first, with
+`sigprocmask(How.sig_block, signals, mask)`, and stay blocked for as long as
+the descriptor is read. A signal left unblocked is delivered the ordinary
+way, which for most of them terminates the process before anything reaches
+the descriptor.
+
+This turns a signal into something the reader already knows how to wait on:
+a descriptor that becomes readable, handled in the flow of a program rather
+than in the reentrant, async-signal-safe world of a handler.
+
+The `signal` package names the numbers: `signal.SIGTERM`, `signal.SIGCHLD`,
+and the rest.
+
+Two flags shape the descriptor. `SFD_CLOEXEC` closes it when the process
+replaces its image with `execvp`, rather than leaking it into the new
+program. `SFD_NONBLOCK` makes `read` report `EAGAIN` on an empty descriptor
+instead of blocking. Combine them with `|`; the default is neither.
+
+Linux only. The BSDs have no signalfd; a portable program blocks the
+signals and reaps them another way.
+
+**Parameters**
+
+- `signals: list[integer]` — Signal numbers the descriptor reports.
+- `flags: integer` — Bitwise OR of `SFD_CLOEXEC` and `SFD_NONBLOCK`.

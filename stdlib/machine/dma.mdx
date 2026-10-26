@@ -1,0 +1,52 @@
+---
+title: machine.dma
+description: "Direct memory access on the Raspberry Pi Pico (RP2040 / RP2350)"
+---
+
+```gust
+use machine.dma
+```
+
+Direct memory access on the Raspberry Pi Pico (RP2040 / RP2350).
+
+The DMA engine moves blocks of memory without occupying the processor. `copy`
+performs a blocking memory-to-memory transfer over a claimed DMA channel, which
+is far faster than a byte-by-byte loop for large buffers. Addresses are raw
+memory addresses, as produced by the `unsafe` package.
+
+**Examples**
+
+```gust
+use unsafe
+
+use machine.dma
+
+def main() -> none
+    src := unsafe.alloc(256)
+    dst := unsafe.alloc(256)
+    dma.copy(dst, src, 64)   # move 64 words (256 bytes)
+end
+```
+
+<Note>
+Only available where `has("dma")`.
+</Note>
+
+**On this page:** [`copy`](#machine.dma.copy)
+
+## Functions
+
+<a id="machine.dma.copy" />
+```gust
+def foreign copy(dest: integer, src: integer, word_count: integer) -> none
+```
+
+Copy `word_count` 32-bit words from `src` to `dest` using a DMA channel,
+blocking until the transfer completes. A channel is claimed for the transfer
+and released afterward.
+
+**Parameters**
+
+- `dest: integer` — Destination address (4-byte aligned).
+- `src: integer` — Source address (4-byte aligned).
+- `word_count: integer` — Number of 32-bit words to move.

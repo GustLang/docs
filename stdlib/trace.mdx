@@ -1,0 +1,184 @@
+---
+title: trace
+description: "Observe a program's own execution"
+---
+
+```gust
+use trace
+```
+
+Observe a program's own execution.
+
+Build with `gust build --trace` and every function and method the compiler
+lowers reports itself: once on entry, once for each return it takes, and once
+for a raise that leaves it. Register what to do with those reports by passing
+a callback to `set_hook`.
+
+```gust
+use trace
+
+def on_event(trace_info: trace.TraceInfo) -> none
+    print(f"{trace_info.event} {trace_info.frame.function}:{trace_info.frame.line}")
+end
+
+def main() -> none
+    trace.set_hook(on_event)
+    work()
+end
+```
+
+Only Gust bodies are instrumented, so a frame always names a `.g` function and
+never the runtime C beneath it. Without `--trace` no instrumentation is emitted
+at all: `set_hook` still installs the callback, and nothing ever calls it. The
+`__TRACING__` predefine is the compile-time answer to which build this is, and
+`enabled()` the runtime answer to whether a hook is currently registered.
+
+The hook runs inline on the reporting thread, in ordinary context, so it may
+allocate and call freely. Events raised while it runs — from its own body, and
+from anything it calls — are suppressed rather than delivered, which is what
+keeps an instrumented hook from recursing into itself forever.
+
+<Warning>
+A frame's argument values and a return value are borrowed for the length
+of the hook call. Read them, format them, copy what you need out; a value
+kept past the call refers to storage the traced function may already have
+released.
+</Warning>
+
+**On this page:** [`TraceEventType`](#TraceEventType) · [`TraceArg`](#TraceArg) · [`Frame`](#Frame) · [`TraceInfo`](#TraceInfo) · [`enabled`](#trace.enabled) · [`set_hook`](#trace.set_hook) · [`clear_hook`](#trace.clear_hook) · [`dispatch`](#trace.dispatch)
+
+## `TraceEventType`
+
+<a id="TraceEventType" />
+```gust
+auto_enum TraceEventType: string
+```
+
+What a report is about.
+
+**Variants**
+
+- `call = "call"` — A function body was entered. Its frame carries the arguments it was called with.
+- `returns = "returns"` — A function is about to return. `TraceInfo.value` holds what it returns.
+- `exception = "exception"` — A raise is unwinding out of a function. The frame names where the raise happened.
+
+## `TraceArg`
+
+<a id="TraceArg" />
+One argument a traced function was called with.
+
+```gust
+def TraceArg
+
+    name: string
+    type_name: string
+    value: Any
+
+end
+```
+
+**Fields**
+
+- `name: string` — The parameter's declared name.
+- `type_name: string` — The parameter's declared type, as written in the signature.
+- `value: Any` — What the caller passed, boxed. `none` for a shape with no honest box — a struct or tuple passed by value, whose box could only point at a stack slot — where `type_name` still says what it was.
+
+## `Frame`
+
+<a id="Frame" />
+Where a reported event happened.
+
+```gust
+def Frame
+
+    function: string
+    package: string
+    file: string
+    line: integer
+    args: list[TraceArg]
+
+end
+```
+
+**Fields**
+
+- `function: string` — The reporting function's name, `Struct.method` for a method.
+- `package: string` — The package it belongs to, empty for the entry program.
+- `file: string` — The `.g` file it is written in. Empty on an `exception` event, which reads its frame from the call stack rather than the call site.
+- `line: integer` — The line the declaration begins on.
+- `args: list[TraceArg]` — The arguments the call was made with. Populated on `call` events; empty on the others, which report after the arguments have stopped being meaningful.
+
+## `TraceInfo`
+
+<a id="TraceInfo" />
+One report delivered to a trace hook.
+
+```gust
+def TraceInfo
+
+    event: TraceEventType
+    frame: Frame
+    value: Any
+
+end
+```
+
+**Fields**
+
+- `event: TraceEventType` — What the report is about.
+- `frame: Frame` — Where it happened.
+- `value: Any` — The returned value on a `returns` event, `none` on every other event and for a return shape with no honest box (see `TraceArg`).
+
+## Functions
+
+<a id="trace.enabled" />
+```gust
+def foreign enabled() -> bool
+```
+
+Whether a hook is currently installed.
+
+This is the runtime question. Whether this build carries any
+instrumentation at all is the `__TRACING__` predefine, which is a literal
+the compiler resolves.
+
+---
+
+<a id="trace.set_hook" />
+```gust
+def set_hook(hook: Function(TraceInfo)[none]) -> none
+```
+
+Install `hook` as the callback every trace event is delivered to,
+replacing any previously installed one.
+
+In a build without `--trace` nothing reports, so the hook is installed and
+never called.
+
+**Parameters**
+
+- `hook: Function(TraceInfo)[none]` — Called with one `TraceInfo` per event, on the thread that reported it.
+
+---
+
+<a id="trace.clear_hook" />
+```gust
+def clear_hook() -> none
+```
+
+Remove the installed hook. Events stop being delivered and cost a null
+check again.
+
+---
+
+<a id="trace.dispatch" />
+```gust
+@c_shim
+def dispatch() -> none
+```
+
+Build the report for the event the runtime is holding and hand it to the
+installed hook.
+
+The runtime calls this — it is the seam that keeps every Gust type in this
+package out of the C side, which knows only this function's address.

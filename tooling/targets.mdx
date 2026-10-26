@@ -1,0 +1,399 @@
+---
+title: Targets
+description: The chips and boards --target accepts, how a target descriptor is written, and how to add a board
+---
+
+A target is a file. Every architecture, family, chip and board Gust can build
+for is one `.gust.toml` descriptor under `targets/` in the installation, and
+`--target <name>` resolves to one of them.
+
+Adding a board is adding a file. There is no compiler change, no new backend,
+and no table of package names anywhere in the compiler.
+
+## Listing what you can build for
+
+```bash
+gust targets
+```
+
+```
+rp2
+  pico_w          Raspberry Pi Pico W
+  pico            Raspberry Pi Pico
+  pico2_w         Raspberry Pi Pico 2 W
+  pico2           Raspberry Pi Pico 2
+  rp2040          Raspberry Pi RP2040
+  rp2350          Raspberry Pi RP2350
+esp
+  esp32s3_lcd_147 Waveshare ESP32-S3-LCD-1.47
+  esp32s3         Espressif ESP32-S3
+  esp32c6         Espressif ESP32-C6
+ti
+  ti84pce         TI-84 Plus CE
+  ti_ez80         TI eZ80 calculator SoC (48 MHz)
+  ...
+```
+
+Names fold case and separators, so `esp32-s3`, `esp32_s3` and `ESP32S3` all
+select the same chip, and `pico2w` selects `pico2_w`.
+
+## Inspecting one target
+
+`gust targets show` resolves a name through its whole chain and prints the
+merged result — what the build, the `cfg` predicates, and the flashing step
+all read.
+
+```bash
+gust targets show pico2_w
+```
+
+```
+pico2_w  (board)
+  chain         cortex-m33 -> rp2 -> rp2350 -> pico2_w
+  triple        arm-none-eabi
+  os            none
+  arch          arm
+  flavor        pico
+  family        rp2
+  chip          rp2350
+  board         pico2_w
+  builder       pico-sdk
+  flash         uf2-volume
+  monitor       usb-cdc
+  cores         2
+  ram           520KiB
+  flash size    4MiB
+  capabilities  gpio, i2c, spi, adc, adc-temperature, pwm, clocks, clock-retune,
+                flash, otp, multicore, dma, interp, pio, power, usb-host,
+                usb-device, random, wifi, ble, bt-classic, sockets, tls
+  pins          LED=cyw43:0, UART0_TX=0, UART0_RX=1, I2C0_SDA=4, I2C0_SCL=5, ...
+```
+
+A chip whose image cannot be produced without knowing the board resolves
+through to one: `--target rp2350` builds for `pico2`, because the Pico SDK
+needs a board for its pin and flash layout. An ESP32 chip is built directly.
+
+## The tree
+
+The directory layout *is* the hierarchy. A descriptor's parents are where it
+sits, not a list it repeats.
+
+```
+targets/
+  arch/                     architectures, shared across families
+    cortex-m33.gust.toml
+    riscv32imc.gust.toml
+  rp2/                      one directory per family
+    rp2.gust.toml             the family descriptor
+    chips/
+      rp2350.gust.toml
+    boards/
+      pico2_w.gust.toml
+```
+
+| Path | Kind | Parents |
+| --- | --- | --- |
+| `arch/<name>.gust.toml` | `arch` | none |
+| `<family>/<family>.gust.toml` | `family` | none |
+| `<family>/chips/<name>.gust.toml` | `chip` | its family, plus the `arch` it names |
+| `<family>/boards/<name>.gust.toml` | `board` | the `chip` it names, and that chip's family and arch |
+
+Architecture is the one axis a directory cannot express, because it crosses
+families — an RP2040 is a Cortex-M0+ and an RP2350 a Cortex-M33, and both are
+built by the Pico SDK. So a chip names its architecture in an `arch` field and
+a board names its chip in a `chip` field. Those two are the only parent links
+written by hand.
+
+Merging runs architecture, family, chip, board, each overwriting what came
+before. `capabilities` is the exception: it is a union, so a board adds the
+radio its chip does not have on its own.
+
+## Capabilities
+
+A capability names a feature Gust can build for that target today — the
+inventory a package tests before it exists there. It is a support matrix, not a
+datasheet: silicon with no Gust backend behind it is not listed.
+
+Capabilities are feature names. A package name never appears in a descriptor:
+the package states what it needs, the target states what it has.
+
+| Capability | Enables |
+| --- | --- |
+| `gpio` | Digital input and output lines |
+| `i2c` / `spi` | The serial bus controllers |
+| `adc` | Analog-to-digital conversion on external channels |
+| `adc-temperature` | The on-chip temperature sensor |
+| `pwm` | Pulse-width-modulation output |
+| `clocks` | Reading the internal clock frequencies |
+| `clock-retune` | Retuning the system clock at run time |
+| `flash` | Program/erase of on-chip flash storage |
+| `sdmmc` | The SD/MMC host controller an SD card socket wires to |
+| `otp` | One-time-programmable memory / eFuse |
+| `multicore` | Running a function on a second core |
+| `dma` / `interp` / `pio` / `power` | The RP-series fixed-function blocks |
+| `usb-host` | Driving devices plugged into the board |
+| `usb-device` | Presenting the board to a host as a USB peripheral |
+| `wifi` | WiFi station and access-point control |
+| `ble` / `bt-classic` | The two Bluetooth roles |
+| `sockets` / `tls` | A TCP/IP stack, and TLS through the platform's own |
+| `random` | A random source seeded from hardware entropy |
+
+A package tests one with `has(...)` in a
+[cfg predicate](/lang/conditional-compilation), so what it needs is stated once
+and every target that can meet it is picked up automatically:
+
+```gust
+"""RP-series programmable I/O state machines.
+"""
+
+#gust:cfg has("pio")
+```
+
+Landing a backend means adding its capability name to the descriptors it now
+works on, in the same commit. Nothing in the package changes.
+
+## Writing a descriptor
+
+```toml
+# targets/rp2/boards/pico2_w.gust.toml
+kind         = "board"
+chip         = "rp2350"
+summary      = "Raspberry Pi Pico 2 W"
+aliases      = ["pico2w"]
+capabilities = ["wifi", "ble", "bt-classic", "sockets", "tls"]
+
+[cfg]
+board = "pico2_w"
+
+[memory]
+flash = "4MiB"
+
+[builder]
+sdk-board = "pico2_w"
+
+[pins]
+LED      = "cyw43:0"
+I2C0_SDA = 4
+I2C0_SCL = 5
+```
+
+Every key above the first `[section]` header is a top-level key. A top-level
+key written *after* a header belongs to that section instead — a mistake the
+checker reports with what to do about it.
+
+`[pins]` is the board's pin map. A name becomes a constant, so it is
+upper-case letters, digits and underscores. A value is a GPIO number, or a
+quoted `<chip>:<line>` for a line on a companion chip — a wireless Pico routes
+no GPIO to its LED, so it is `"cyw43:0"`.
+
+Sizes carry a unit: `520KiB`, `4MiB`. Addresses — the `ram-origin` and
+`flash-origin` a bare-metal link needs — are hexadecimal. The two are not
+interchangeable: a size says how much, an origin says where.
+
+`[monitor]` is the board's console — `transport` (`usb-cdc`,
+`usb-serial-jtag` or `uart`) and `baud`. It is what
+[`gust test --target`](/start/cli#test) reads a run's results back over, so a
+descriptor without it can be built and flashed but not tested on. Both keys are
+usually the family's rather than the board's.
+
+## Bringing up a chip with no SDK
+
+Most descriptors hand the build to a vendor SDK — the Pico SDK's CMake,
+ESP-IDF's `idf.py` — because those SDKs own the linker script, the startup code
+and the packaging. That is the right trade when the SDK exists and is good, and
+no trade at all for a chip whose vendor ships a several-hundred-megabyte HAL to
+set four registers, or ships nothing.
+
+`[builder] name = "direct"` needs no SDK. The linker script comes from
+`[memory]`, the interrupt vector table and reset path are generated from the
+architecture, and the C compiler is pointed at `cfg.triple`. It needs the whole
+memory map in exchange — both sizes *and* both origins — plus `cpu.name`; a
+chain missing any of them is reported by `gust targets check` rather than
+linking a region at the wrong address.
+
+```toml
+# targets/nrf5/chips/nrf52840.gust.toml
+kind          = "chip"
+arch          = "cortex-m4f"
+summary       = "Nordic nRF52840"
+default-board = "nrf52840dk"
+capabilities  = []
+
+[cfg]
+chip = "nrf52840"
+
+[memory]
+flash        = "1MiB"
+flash-origin = "0x00000000"
+ram          = "256KiB"
+ram-origin   = "0x20000000"
+```
+
+The empty `capabilities` is deliberate. The silicon has GPIO, I2C, SPI, an ADC,
+PWM, USB and a Bluetooth LE radio — but a capability names what Gust can
+*build* for a target today, and no `pin`, `i2c`, `spi` or `bluetooth` backend
+selects on this family yet. Declaring them would make `use pin` compile and then
+fail to link.
+
+An image for such a target must size its own heap, since nothing else places
+one — see [`[build].heap`](/tooling/project-config#build.heap). It reaches the
+board over a debug probe rather than a bootloader, so its board descriptor names
+the part the probe is told:
+
+```toml
+[flash]
+probe-chip = "nRF52840_xxAA"
+```
+
+Registers come separately:
+[`gust gen-device`](/start/cli#gen-device) turns the vendor's CMSIS-SVD
+description into a `device.<chip>` package of base addresses, register offsets,
+field masks and accessors over `unsafe` — which is what a peripheral backend is
+written on, and what a program can drive directly before one exists.
+
+## Building for a calculator
+
+`ti84pce` is the one target here that is not firmware. The TI-84 Plus CE boots
+an operating system of its own, and what `gust build` produces is a `.8xp`
+variable that TI-OS loads into RAM and jumps into — so there is no vector table,
+no reset path and no flash to erase. The CE C/C++ toolchain owns the linker
+script, the startup code and the C library, and `[builder] name = "cedev"` hands
+the build to it the way the `esp` family hands its build to ESP-IDF.
+
+The toolchain is a separate install and is not fetched. Download
+[CEdev](https://github.com/CE-Programming/toolchain/releases) and put its `bin`
+on `PATH`, which is what makes `cedev-config` findable:
+
+```bash
+export PATH="$HOME/CEdev/bin:$PATH"
+gust build snake.g --target ti84pce
+```
+
+The program is stored on the calculator under a TI-OS variable name, folded
+from the image's own file name to the eight upper-case characters TI-OS accepts
+— `snake.8xp` is stored as `SNAKE`, and a name that folds to nothing or starts
+with a digit falls back to `GUST`. `gust flash` sends it over the link cable
+with [`tilp`](https://github.com/debrouxl/tilibs); run it from the calculator's
+`[prgm]` menu.
+
+```bash
+gust flash snake.8xp
+```
+
+A compiled program is native code, which TI-OS treats as an assembly program
+rather than a BASIC one. Operating systems 5.5 and later refuse to execute
+native code and answer `ERR: INVALID` — on those, install
+[arTIfiCE](https://yvantt.github.io/arTIfiCE/) and launch the program from the
+shell it opens. It is not needed on OS 5.4 or earlier.
+
+`print` reaches the calculator's home screen. There is no console to read back,
+so `gust monitor` has nothing to attach to.
+
+What a program can use is the language, the runtime and the packages that need
+nothing of a host: `math`, `json`, `time`, `regex`, `toml`, `yaml`, `csv`,
+`url`, `uuid`, `convert`, `buffer`, `cryptography`, `highlight` and the rest of
+the portable surface. The eZ80 has no atomic instruction, no thread-local
+storage, no file descriptors and no environment, so `sync`, `fs`, `signal`,
+`images`, `socket`, `subprocess` and the packages built on them do not exist for
+this target — `use fs` there is a compile error naming the target, not a call
+that fails on the device. `os` keeps the part a calculator can answer: `args`,
+`platform`, `executable`, `stdout_write`, `exit_process`, `errno`/`strerror` and
+the arena.
+
+The calculator's LCD, keypad, real-time clock and USB controller are reached
+through TI-OS and the CE toolchain's own libraries; no Gust backend selects on
+them yet, which is why the chip declares no capabilities.
+
+## The family macro
+
+A family's `cfg.family` becomes a C preprocessor macro in every image built for
+it: `rp2` gives `GUST_FAMILY_RP2`, `esp` gives `GUST_FAMILY_ESP`. A package's
+`.c` files select their own backend with a positive test rather than by
+excluding every other family in turn:
+
+```c
+#if defined(GUST_FAMILY_RP2)
+```
+
+The name comes from the descriptor, so a family arrives by writing its
+descriptor and its backends — no list of families exists in the compiler, and
+the guards in every other family's `.c` stay as they are.
+
+`GUST_FREESTANDING` is a different question and is also defined: it means *any*
+bare-metal target, and selects the runtime profile with no OS threads, sockets
+or signals.
+
+## The `board` package
+
+`[pins]` is not documentation the build ignores: it is compiled. A program
+writes `use board` and gets the pinout of the target it is being built for.
+Each name in the map becomes two `constant[integer]` declarations:
+
+| Constant | Value |
+| --- | --- |
+| `<NAME>` | The line number. |
+| `<NAME>_CHIP` | The GPIO controller that line sits on. |
+
+The pair is what `pin.output` and `pin.input` take, so one call reaches the pin
+whichever controller routes it:
+
+```gust
+use board
+use pin
+
+led := pin.output(board.LED_CHIP, board.LED)
+```
+
+Controller `0` is the chip's own GPIO bank, which is what an unquoted pin
+number addresses. A quoted `<chip>:<line>` puts the line on a companion
+controller, which carries its own number: `LED = "cyw43:0"` makes `board.LED`
+`0` and `board.LED_CHIP` `1`. The call above therefore drives the on-board LED
+on a `pico` and a `pico2` (GPIO 25) and on a `pico_w` and a `pico2_w` (line 0 of
+the radio chip) with nothing to change in between. A companion controller may be
+named only where a `pin` backend can drive it — `cyw43` is the only one so far,
+and `gust targets check` rejects any other.
+
+The package is rendered from the descriptor on each build and never written to
+disk, so there is no generated file to refresh and none to fall out of date.
+Two guarantees follow:
+
+- **A pin the board does not document is not declared.** `board.BUTTON` on a
+  board whose descriptor has no `BUTTON` is `package 'board' has no 'BUTTON'` at
+  compile time, rather than a number that drives the wrong line on the hardware.
+- **It exists only where there are pins.** A host build, a bare chip, and a board
+  whose vendor documents no pinout have no such package: `use board` there is
+  `package 'board' is not available for this target`.
+
+`gust targets show <name>` prints the pin map a target generates.
+
+## Checking the tree
+
+```bash
+gust targets check
+```
+
+```
+ok: 24 descriptors, 15 buildable targets
+```
+
+Every problem is reported at the line and column that caused it:
+
+```
+targets/rp2/chips/rp2350.gust.toml:4:25: error: `teleport` is not a capability
+targets/rp2/chips/rp2350.gust.toml:7:1: error: `cfg.chip` is the target's own name,
+  which this file's name makes `rp2350`
+targets/rp2/chips/rp2350.gust.toml:10:9: error: `cpu.cores` takes a positive whole number
+```
+
+The editor reports the same thing as you type: the
+[language server](/tooling/lsp) validates any `*.gust.toml` and completes its
+sections, keys, values and capability names.
+
+## Adding a board
+
+1. Copy the nearest board descriptor in the same family.
+2. Set `kind`, `chip`, `cfg.board`, and `builder.sdk-board` or
+   `builder.idf-target`.
+3. List only the capabilities its chip does not already carry.
+4. Fill `[pins]` from the vendor's pinout.
+5. Run `gust targets check`.

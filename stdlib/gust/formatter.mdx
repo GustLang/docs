@@ -1,0 +1,123 @@
+---
+title: gust.formatter
+description: "Public entry point of the source formatter: the `Formatter` object"
+---
+
+```gust
+use gust.formatter
+```
+
+Public entry point of the source formatter: the `Formatter` object.
+
+A `Formatter` carries the whole formatting configuration — indent width, soft
+line-length limit, suppressed diagnostic codes, and the set of package names
+that sort as standard library — and `format` runs the multi-pass pipeline over
+one file's source with it. A caller configures the formatter once and formats
+any number of files with it.
+
+```gust
+fmt := Formatter(line_width: 100, stdlib_packages: names)
+result := fmt.format(source, "main.g")
+```
+
+The passes themselves live beside this file — spacing, compound assignment,
+indentation, blank lines, expression collapsing, line splitting, trailing
+commas, import sorting — and are documented at their definitions. A `Formatter` holds no per-file state,
+and `format` is pure: it returns the formatted text rather than writing it, so
+the same formatter may drive several files concurrently.
+
+**On this page:** [`FormatWarning`](#FormatWarning) · [`FormatResult`](#FormatResult) · [`Formatter`](#Formatter)
+
+## `FormatWarning`
+
+<a id="FormatWarning" />
+A single formatter warning. `code` is the diagnostic code (e.g.
+"F018" for line-length) so the driver and LSP can render
+`warning[F018]: …`, mirroring `gust check`, and so `[lint].ignore`
+can suppress it by code.
+
+```gust
+def FormatWarning
+
+    code: string
+    message: string
+
+end
+```
+
+**Fields**
+
+- `code: string` — The `F###` diagnostic code this warning reports under.
+- `message: string` — The rendered, human-readable warning text.
+
+## `FormatResult`
+
+<a id="FormatResult" />
+Result of formatting a source file.
+
+```gust
+def FormatResult
+
+    formatted: string
+    warnings: list[FormatWarning]
+
+end
+```
+
+**Fields**
+
+- `formatted: string` — The formatted source, newline-terminated.
+- `warnings: list[FormatWarning]` — Every diagnostic the pipeline raised, in source order.
+
+## `Formatter`
+
+<a id="Formatter" />
+The formatter and its configuration.
+
+```gust
+def Formatter
+
+    indent: integer
+    line_width: integer
+    ignore: list[string]
+    stdlib_packages: list[string]
+
+end
+```
+
+**Fields**
+
+- `indent: integer` — Width of one indent level, in spaces.
+- `line_width: integer` — Soft line-length limit. Expressions collapse onto one line when they fit within it, over-long lines split at a bracketed group, and a line still exceeding it raises F018.
+- `ignore: list[string]` — Diagnostic codes to suppress, matched case-insensitively — the formatter's half of gust.toml's `[lint].ignore`.
+- `stdlib_packages: list[string]` — Names that sort as standard-library imports, listed ahead of a project's own packages. Left empty, every import sorts as a project import.
+
+**Methods**
+
+<a id="Formatter.indent_unit" />
+```gust
+def Formatter.indent_unit() -> string
+```
+
+One indent level as literal spaces — `indent` rendered.
+
+---
+
+<a id="Formatter.code_ignored" />
+```gust
+def Formatter.code_ignored(code: string) -> bool
+```
+
+Report whether `code` is suppressed by `ignore`, case-insensitively.
+
+---
+
+<a id="Formatter.format" />
+```gust
+def Formatter.format(source: string, filename: string) -> FormatResult
+```
+
+Format `source` and return the formatted text plus any warnings.
+Runs the full multi-pass pipeline. `filename` is used in warning
+messages; the indent width, line-length limit and suppressed codes come
+from this `Formatter`.

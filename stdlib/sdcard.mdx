@@ -1,0 +1,163 @@
+---
+title: sdcard
+description: "An SD or microSD card on the chip's SD/MMC host controller"
+---
+
+```gust
+use sdcard
+```
+
+An SD or microSD card on the chip's SD/MMC host controller.
+
+A socket is described by the pins it is wired to and handed to `mount`, which
+powers the card up, negotiates the fastest bus width and clock both ends agree
+on, and returns a `Card` naming the medium. From then on the card is a block
+device: `block_count` sectors of `block_size` bytes, which is what a consumer of
+raw storage — a filesystem, or the mass-storage drive `usb.device` publishes —
+needs to know about it.
+
+Bus width follows the pins: give `d0` alone for a one-line bus, and `d1`, `d2`
+and `d3` as well for a four-line one, which moves data four times faster. Every
+line needs a pull-up to 3.3 V; most sockets carry them, and `internal_pullup`
+substitutes the chip's own weak ones for a board that does not — enough to bring
+a card up on a bench, not enough to rely on.
+
+The host clocks the card at `max_khz` at most, and slower if the card asks for
+it. 20 MHz is the default speed every SD card supports; a card and a board that
+are up to it will go to 40.
+
+**Examples**
+
+```gust
+use sdcard
+
+def main() -> none
+    card := sdcard.mount(sdcard.Slot(clk: 14, cmd: 15, d0: 16))
+    print(f"{card.name()}: {card.capacity_bytes() // 1000000} MB")
+    card.unmount()
+end
+```
+
+<Note>
+Only available where `has("sdmmc")`.
+</Note>
+
+**On this page:** [`Slot`](#Slot) · [`Card`](#Card) · [`mount`](#sdcard.mount)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `NO_PIN` | `integer` | `-1` |
+| `DEFAULT_KHZ` | `integer` | `20000` |
+
+## `Slot`
+
+<a id="Slot" />
+How a card socket is wired, and how fast the host may clock it.
+
+```gust
+def Slot
+
+    clk: integer
+    cmd: integer
+    d0: integer
+    d1: integer
+    d2: integer
+    d3: integer
+    max_khz: integer
+    internal_pullup: bool
+
+end
+```
+
+**Fields**
+
+- `clk: integer` — GPIO the clock line is wired to.
+- `cmd: integer` — GPIO the command line is wired to.
+- `d0: integer` — GPIO the first data line is wired to.
+- `d1: integer` — GPIO of the second data line, or `NO_PIN` for a one-line bus.
+- `d2: integer` — GPIO of the third data line, or `NO_PIN`.
+- `d3: integer` — GPIO of the fourth data line, or `NO_PIN`.
+- `max_khz: integer` — Fastest the host may clock the card, in kilohertz.
+- `internal_pullup: bool` — Whether to enable the chip's own weak pull-ups on the bus, for a board that carries none of its own.
+
+## `Card`
+
+<a id="Card" />
+A card held open on the SD/MMC host.
+
+```gust
+def Card
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The backend's card handle.
+
+**Methods**
+
+<a id="Card.name" />
+```gust
+def Card.name() -> string
+```
+
+The product name the card publishes in its identification register.
+
+---
+
+<a id="Card.block_count" />
+```gust
+def Card.block_count() -> integer
+```
+
+How many blocks the card holds.
+
+---
+
+<a id="Card.block_size" />
+```gust
+def Card.block_size() -> integer
+```
+
+Bytes in one block — 512 on every SD card.
+
+---
+
+<a id="Card.capacity_bytes" />
+```gust
+def Card.capacity_bytes() -> integer
+```
+
+How many bytes the card holds.
+
+---
+
+<a id="Card.unmount" />
+```gust
+def Card.unmount() -> none
+```
+
+Power the card down and release the host. Using the card afterwards is
+an error, not a crash.
+
+## Functions
+
+<a id="sdcard.mount" />
+```gust
+def mount(slot: Slot) -> Card
+```
+
+Bring the card in `slot` up and return it.
+
+**Parameters**
+
+- `slot: Slot` — The socket's wiring.
+
+**Raises**
+
+- `RuntimeError` — If the host could not be brought up on those pins, or no card answered on them.

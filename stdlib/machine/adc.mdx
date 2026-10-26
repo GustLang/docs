@@ -1,0 +1,133 @@
+---
+title: machine.adc
+description: "On-chip analog-to-digital conversion"
+---
+
+```gust
+use machine.adc
+```
+
+On-chip analog-to-digital conversion.
+
+Readings are 12-bit: every raw value is in the range 0-4095. Open a pin once
+with `input`, then read the resulting `Input` as often as needed —
+`read_voltage` scales a reading against a reference voltage, and
+`temperature_celsius` reads the die temperature.
+
+Which pins are ADC-capable is a property of the chip: GPIO 26-29 on the RP
+series (channels 0-3, with channel 4 the on-chip temperature sensor), and the
+SAR-unit pins on the ESP32 family, where the temperature sensor is a separate
+peripheral rather than a channel. A pin with no ADC behind it yields a closed
+`Input` rather than raising, so a program can fall back — check `ok`.
+
+Not every chip with an ADC has a temperature sensor Gust can read, so
+`temperature_celsius` exists only where it does.
+
+Example — read a potentiometer on GPIO 26:
+```gust
+use machine.adc
+
+def main() -> none
+    knob := adc.input(26)
+    print(knob.read_voltage(3.3))
+end
+```
+
+<Note>
+Only available where `has("adc")`.
+</Note>
+
+**On this page:** [`Input`](#Input) · [`input`](#machine.adc.input) · [`temperature_celsius`](#machine.adc.temperature_celsius)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `ADC_MAX` | `integer` | `4095` |
+| `TEMPERATURE_CHANNEL` | `integer` | `4` |
+
+## `Input`
+
+<a id="Input" />
+A pin switched into analog input mode.
+
+```gust
+def Input
+
+    channel: integer
+
+end
+```
+
+**Fields**
+
+- `channel: integer` — The ADC channel the pin reads through, or -1 if the pin has no ADC behind it.
+
+**Methods**
+
+<a id="Input.ok" />
+```gust
+def Input.ok() -> bool
+```
+
+Whether the pin was routed to an ADC channel.
+
+---
+
+<a id="Input.read_raw" />
+```gust
+def Input.read_raw() -> integer
+```
+
+Take one 12-bit conversion, returned as a raw value in 0-4095, or -1 if
+the channel has no raw reading.
+
+---
+
+<a id="Input.read_voltage" />
+```gust
+def Input.read_voltage(vref: float) -> float
+```
+
+Read the input and scale it to volts against reference voltage `vref`
+(typically 3.3). Returns `raw / 4095 * vref`.
+
+**Parameters**
+
+- `vref` — The ADC reference voltage in volts.
+
+## Functions
+
+<a id="machine.adc.input" />
+```gust
+def foreign input(gpio: integer) -> Input
+```
+
+Switch `gpio` into analog input mode and return it as an ADC input. The
+ADC block is brought up on first use.
+
+A pin with no ADC behind it yields a closed `Input` — check `ok`.
+
+**Parameters**
+
+- `gpio: integer` — GPIO number of an ADC pin.
+
+---
+
+<a id="machine.adc.temperature_celsius" />
+```gust
+@cfg
+def temperature_celsius() -> float
+```
+
+<Note>
+Only available where `has("adc-temperature")`.
+</Note>
+
+Read the on-chip temperature sensor and convert it to degrees Celsius.
+Enables the sensor if it is not already on. Accuracy is a few degrees; the
+reading is best used for relative trends, not calibrated measurement.
+
+Exists only on a target whose temperature sensor Gust can read; on any
+other, naming it is a compile error. Returns NaN if the sensor is there but
+cannot be brought up.

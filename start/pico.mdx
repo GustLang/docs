@@ -1,0 +1,184 @@
+---
+title: Pico setup
+description: Install the toolchain that cross-compiles Gust for the Raspberry Pi Pico
+---
+
+Gust cross-compiles to the **Raspberry Pi Pico 2 W** (RP2350) with no operating
+system underneath — `gust build --target rp2350` produces a `.uf2` you flash
+over USB. This page sets up everything the board build needs; once it's done,
+the [Pico tutorials](/tutorials) run start to finish.
+
+The desktop toolchain from [installation](/start/install) is a prerequisite —
+set that up first and confirm `gust run` works before continuing.
+
+## How a Pico build works
+
+Unlike a desktop build, which ends at your system GCC, a Pico build hands the
+generated C to the **Raspberry Pi Pico SDK**, which drives an ARM
+cross-compiler through CMake to produce the firmware image. So beyond Gust
+itself you need three things: the ARM cross-compiler, CMake, and the SDK. Gust
+fetches the SDK for you; the compilers you install once.
+
+## Requirements
+
+| Dependency | Purpose | Install (Debian / Ubuntu) |
+|---|---|---|
+| **ARM cross-compiler** | Compiles the firmware for the RP2350's Cortex-M33 | `sudo apt install gcc-arm-none-eabi libnewlib-arm-none-eabi` |
+| **CMake** 3.13+ | Drives the Pico SDK build | `sudo apt install cmake` |
+| **`build-essential`** | Native compiler for the SDK's host-side build tools | `sudo apt install build-essential` |
+| **git** | Fetches the Pico SDK and its submodules | `sudo apt install git` |
+
+All four in one line:
+
+```bash
+sudo apt install gcc-arm-none-eabi libnewlib-arm-none-eabi cmake build-essential git
+```
+
+<Tabs>
+  <Tab title="Debian / Ubuntu">
+
+  ```bash
+  sudo apt install gcc-arm-none-eabi libnewlib-arm-none-eabi cmake build-essential git
+  ```
+
+  </Tab>
+  <Tab title="macOS (Homebrew)">
+
+  ```bash
+  brew install --cask gcc-arm-embedded
+  brew install cmake git
+  ```
+
+  `gcc-arm-embedded` provides the `arm-none-eabi-*` cross toolchain; the Xcode
+  Command Line Tools (`xcode-select --install`) cover the native compiler.
+
+  </Tab>
+  <Tab title="Fedora">
+
+  ```bash
+  sudo dnf install arm-none-eabi-gcc-cs arm-none-eabi-newlib cmake gcc gcc-c++ make git
+  ```
+
+  </Tab>
+</Tabs>
+
+## The Pico SDK
+
+Gust needs a copy of the Pico SDK to build against. You have three options, and
+the default requires no action:
+
+- **Auto-fetch (default).** The first `gust build --target rp2350` clones the
+  pinned SDK version into `~/.cache/gust/pico-sdk` (a few minutes, a few hundred
+  MB). It is cached there and reused for every later build. Networking packages
+  (`wifi`, `socket`, `bluetooth`) trigger a one-time fetch of the matching SDK
+  submodules the same way.
+- **Point at an existing checkout.** If you already have the SDK, set
+  `PICO_SDK_PATH` and Gust uses it verbatim, skipping the fetch:
+
+  ```bash
+  export PICO_SDK_PATH="$HOME/pico-sdk"
+  ```
+
+- **A `pico-sdk` sibling of the install root** is also picked up automatically.
+
+The lookup order is `PICO_SDK_PATH`, then the sibling directory, then the
+auto-fetch cache. To pin a version yourself, check out that tag in the SDK you
+point `PICO_SDK_PATH` at.
+
+<Note>
+The auto-fetch and submodule init need `git` and a network connection. On a
+machine without either, pre-populate `~/.cache/gust/pico-sdk` (or set
+`PICO_SDK_PATH`) with a full SDK checkout — including its submodules — ahead of
+time.
+</Note>
+
+## Build and flash
+
+Start from a project (`gust init myboard`) and build for the RP2350:
+
+```bash
+$ gust build --target rp2350            # cross-compile → main.uf2
+$ gust flash                            # upload it to the board
+```
+
+Or do both in one step:
+
+```bash
+$ gust build --target rp2350 --flash
+```
+
+You do **not** need to hold BOOTSEL. Gust resets a board already running Gust
+firmware into flashing mode automatically with a 1200-baud touch over USB, then
+uploads. Only for a brand-new or bricked board do you hold BOOTSEL while
+plugging it in, then run `gust flash`.
+
+## Read the serial console
+
+Programs that `print` write to the USB serial console. On Linux it enumerates
+as `/dev/ttyACM0`:
+
+```bash
+$ sudo cat /dev/ttyACM0
+```
+
+On macOS it appears as `/dev/cu.usbmodem*`. If the reader hangs on a board that
+just booted or went quiet, cap it with a timeout:
+
+```bash
+$ sudo timeout --signal=KILL 12 cat /dev/ttyACM0
+```
+
+## Verify
+
+The quickest confidence check is a blink. In a fresh project, set `src/main.g`
+to:
+
+```gust title="src/main.g"
+use board
+use pin
+use time
+
+def main() -> none
+    led := pin.output(board.LED_CHIP, board.LED)
+    while true
+        led.write(true)
+        time.sleep(250)
+        led.write(false)
+        time.sleep(250)
+    end
+end
+```
+
+`board` holds the pins of the board you are building for, taken from its
+[target descriptor](/tooling/targets), so this is the same source whichever Pico
+is plugged in — the LED is a GPIO on the plain boards and a line on the radio
+chip on the wireless ones. Name the board so the descriptor matches the hardware
+in front of you:
+
+```bash
+$ gust build --target pico2_w --flash
+```
+
+The onboard LED blinks twice a second once the flash completes. If it does,
+your Pico toolchain is working end to end.
+
+## Troubleshooting
+
+- **`Pico SDK not found ... install git or set PICO_SDK_PATH`** — the auto-fetch
+  needs `git` and network access. Install git, or set `PICO_SDK_PATH` to an
+  existing SDK checkout.
+- **CMake configure failed** — usually the ARM cross-compiler is missing or not
+  on `PATH`. Confirm `arm-none-eabi-gcc --version` runs. On Debian/Ubuntu that
+  is the `gcc-arm-none-eabi` and `libnewlib-arm-none-eabi` packages.
+- **`no Pico in BOOTSEL found`** — the board didn't reset into flashing mode.
+  Hold BOOTSEL while plugging it in, then run `gust flash`.
+- **Nothing on `/dev/ttyACM0`** — the firmware waits a moment for USB to
+  enumerate before printing. Attach the reader right after flashing, and make
+  sure your user can read the port (`sudo`, or add yourself to the `dialout`
+  group).
+- **First build is slow** — that's the one-time SDK clone into
+  `~/.cache/gust/pico-sdk`. Later builds reuse it and are fast.
+
+## Next step
+
+→ [Blink an LED](/tutorials/pico-blink) — your first full Pico project.

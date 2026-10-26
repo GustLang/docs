@@ -1,0 +1,26 @@
+---
+title: ref
+description: "Refcounted heap cell holding one value of type `T`"
+---
+
+Refcounted heap cell holding one value of type `T`. Backed by `GRefCell*`
+in the C runtime. Assigning or passing a `ref[T]` shares the one cell rather
+than copying it, so a write through any holder is seen by all of them —
+which is what lets a value be mutated across function and closure boundaries.
+
+Construction:
+ref(value)          # wrap an initial value, yielding ref[T]
+
+Access:
+
+```gust
+cell.value          # read the wrapped value
+cell.value = x      # replace the wrapped value
+```
+
+A struct field of type `ref[T]` makes the enclosing struct a managed
+reference type.
+
+## Fields
+
+- `value: T` — The wrapped value. Reading it yields the current `T`; assigning to it replaces the stored value for every holder of the cell.

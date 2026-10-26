@@ -1,0 +1,135 @@
+---
+title: Tracing
+description: Watch a program run from inside it — build with --trace, register a callback with trace.set_hook, and receive a report for every call, return, and raise
+---
+
+`gust build --trace` instruments every function and method the compiler lowers.
+Each one reports itself on entry, on each return it takes, and on a raise that
+leaves it. You decide what to do with those reports by registering a callback.
+
+```gust
+use trace
+
+
+def on_event(trace_info: trace.TraceInfo) -> none
+    print(f"{trace_info.event} {trace_info.frame.function}:{trace_info.frame.line}")
+end
+
+
+def main() -> none
+    trace.set_hook(on_event)
+    work()
+end
+```
+
+```bash
+$ gust run --trace app.g
+```
+
+The hook runs inline on the thread that reported, in ordinary context, so it
+may allocate, format, and call freely.
+
+## What gets instrumented
+
+Only Gust bodies. A report always names a `.g` function and never the runtime C
+beneath it, so you get clean names without a symbol table or a debugger.
+
+Standard library code is Gust too, so a traced build reports the internals of
+the packages you call as well as your own functions. Filter on
+`frame.package` — empty for your entry program — when that is more than you
+want.
+
+Without `--trace` no instrumentation is emitted at all. `set_hook` still
+installs the callback, and nothing ever calls it.
+
+## The report
+
+A hook receives one `TraceInfo` per event.
+
+| Field | Type | What it holds |
+|---|---|---|
+| `event` | `TraceEventType` | `call`, `returns`, or `exception` |
+| `frame` | `Frame` | Where it happened |
+| `value` | `Any` | The returned value on a `returns` event, `none` otherwise |
+
+A `Frame` names the `function` (`Struct.method` for a method), its `package`,
+the `file` it is written in, the `line` the declaration begins on, and the
+`args` it was called with.
+
+`args` is populated on `call` events, where every parameter is still live and
+holds what the caller passed. Each entry carries the parameter's `name`, its
+declared `type_name`, and its boxed `value`.
+
+```gust
+def on_event(trace_info: trace.TraceInfo) -> none
+    if trace_info.event != trace.TraceEventType.call
+        return
+    end
+    parts: list[string] = []
+    for a in trace_info.frame.args
+        parts.append(f"{a.name}={a.value}")
+    end
+    joined := ", ".join(parts)
+    print(f"{trace_info.frame.function}({joined})")
+end
+```
+
+## Which build am I in?
+
+Two different questions, with two different answers.
+
+`__TRACING__` is a [predefined value](/lang/constants#predefined-values): a
+literal `true` or `false` saying whether this build carries instrumentation. A
+branch on it is settled at compile time, so tracing-only code costs nothing in
+an ordinary build.
+
+`trace.enabled()` is an ordinary call saying whether a hook is registered right
+now. Registration works in any build; only an instrumented one ever reports.
+
+## Limits
+
+Read these before you trust a trace.
+
+**Values are borrowed.** A frame's argument values and a return value are valid
+for the length of the hook call. Read them, format them, copy out what you need
+— a value kept past the call refers to storage the traced function may already
+have released.
+
+**Some values report as `none`.** A struct or tuple passed or returned by value
+has no box that outlives the call, so its `value` is `none`. The declared type
+still reaches you through `type_name` (for an argument) or the signature, so
+what is lost is the value, never the shape.
+
+**A raise reports its frame, not its line.** An `exception` event reads the call
+stack rather than the raise site, so `frame.line` is where the function was
+declared and `frame.file` is empty.
+
+**The hook cannot observe itself.** The hook is an ordinary Gust function, so it
+is instrumented like any other. Events raised while it runs — from its own body,
+and from anything it calls — are suppressed. Without that the first event would
+recurse until the stack ran out.
+
+**A tail call reports one `call` but no `returns` of its own.** A self tail call
+reuses its frame instead of building another, so the iterations it runs report
+one `call` each and share the single `returns` of the frame they all ran in. A
+hook that pairs calls with returns — to indent a call tree, say — has to expect
+that. The tail-call rewrite stays on under `--trace`, so a tail-recursive
+function keeps its constant stack depth.
+
+**Frames are larger.** Boxing arguments at every call costs stack, so recursion
+deep enough to sit near the limit in an ordinary build can overflow in a traced
+one.
+
+Treat a traced binary as a debugging build. Every event allocates a report, and
+the instrumentation is emitted at every call site and every return.
+
+## Compared with `--profile`
+
+[`--profile`](/start/cli#build.profile) answers "where did the time go" and
+prints a table when the program exits. It is the right tool for performance
+work and needs no code of yours.
+
+`--trace` answers "what happened, in what order, with what values", and runs
+your code at each step. Reach for it when you want to record a call log, assert
+on a sequence, or watch a specific function's arguments — questions a timing
+table cannot answer.

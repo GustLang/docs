@@ -1,0 +1,488 @@
+---
+title: In C
+description: Writing hand-written C that works with Gust's runtime types — g_runtime.h accessors for GStr, GBytes, GSlice, GDict, GValue, GClosure, reference counting rules, and calling Gust closures from C
+---
+
+This page covers the C side of the boundary — the entry points `g_runtime.h` exposes for every Gust runtime type, the reference counting rules a C author must follow by hand, and a worked example of each. For the Gust-side spellings (`@c_name`, `@c_shim`, `def foreign`, `foreign` constants, `@manual`/`@raw`, `unsafe`, `dl`), see [In Gust](/lang/ffi-gust). For the representation each Gust type takes in C, see the [introduction](/lang/ffi-intro#how-gust-values-look-in-c).
+
+## The umbrella header
+
+Any hand-written C in a Gust project includes exactly one header:
+
+```c
+#include "g_runtime.h"
+```
+
+That gives you every runtime type and every accessor on this page. The include path is set by `gust build` / `gust run`, so no `-I` flag is needed if the file is a sibling of your entry `.g` or sits inside a stdlib package.
+
+A minimal sibling `main.c` next to a `main.g` entry point:
+
+```c
+#include "g_runtime.h"
+#include <stdio.h>
+
+int64_t add(int64_t a, int64_t b) {
+    return a + b;
+}
+
+char *greet(const char *name) {
+    char *out = g_checked_malloc(strlen(name) + 8);
+    sprintf(out, "hi, %s", name);
+    return out;
+}
+```
+
+```gust
+# main.g
+def foreign add(a: integer, b: integer) -> integer
+end
+
+def foreign greet(name: string) -> string
+end
+
+def main() -> none
+    print(add(2, 3))         # 5
+    print(greet("world"))    # hi, world
+end
+```
+
+`g_checked_malloc` is the runtime's allocator wrapper — same signature as `malloc`, but it aborts cleanly on OOM instead of returning `NULL`, and its allocations are visible to the arena profiler. Use `g_checked_calloc`, `g_checked_realloc`, `g_checked_strdup`, and `g_checked_free` as the matching set.
+
+## Reference counting
+
+The compiler injects retains and drops for every Gust-side variable. Hand-written C has no such injection — the three rules below are what you follow by hand.
+
+| Situation | What to do |
+|---|---|
+| Reading a field, or using an argument only during the call | **Borrow** — nothing to do. |
+| Assigning a refcounted pointer into a struct field, a global, a container, another thread | **Store** — call `g_inc_ref(ptr)` first. |
+| Done with a refcounted pointer you own | **Release** — call `g_dec_ref(ptr)`. Safe on `NULL`. |
+
+The generic entry points work on any heap value with a `GObjectHeader` — `GStr`, `GBytes`, `GSlice`, `GDict`, `GClosure`, a `ref[T]` cell, every class struct. Type-specific fast paths (`g_str_inc_ref`, `g_slice_free`, etc.) exist as optimizations but are never required for correctness.
+
+```c
+#include "g_runtime.h"
+
+/* Store an incoming list into a global for later reuse. */
+static GSlice *g_cached = NULL;
+
+void cache_list(GSlice *s) {
+    if (g_cached != NULL) {
+        g_dec_ref(g_cached);     /* release the previous one */
+    }
+    g_inc_ref(s);                /* we're keeping it past this call */
+    g_cached = s;
+}
+```
+
+A function's return value transfers ownership *out*: whoever receives it owns one reference. A function argument is *borrowed* — the caller still owns its reference, and your body does nothing on exit unless you called `g_inc_ref` to retain it.
+
+`g_ref_count(obj)` reads the current count for debugging.
+
+## Strings — `GStr *`
+
+A `GStr` is a refcounted, length-prefixed byte string. It is **not** guaranteed C-string-safe — a Gust `string` can hold an embedded NUL, so always use `g_str_len` for the exact byte count when you need it.
+
+### Reading
+
+```c
+char *fs_read_whole(Path *self) {
+    const char *path = g_str_cstr(self->path);  /* borrowed C string */
+    size_t     len   = g_str_len(self->path);   /* exact byte length */
+
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    /* ... */
+    (void)len;
+    fclose(f);
+    return out;  /* malloc'd, Gust takes ownership */
+}
+```
+
+- `g_str_cstr(const GStr *s)` returns a borrowed `const char *` into the string's own buffer. Do not free, do not keep past the next operation that could grow or free the string.
+- `g_str_len(const GStr *s)` returns the exact length in bytes.
+- `g_str_hash(const GStr *s)` returns the cached FNV-1a hash.
+
+### Building
+
+```c
+GStr *build_greeting(const GStr *name) {
+    char *buf = g_checked_malloc(g_str_len(name) + 8);
+    sprintf(buf, "hi, %s", g_str_cstr(name));
+    return g_str_takeover_cstr(buf);   /* GStr takes over the malloc'd buffer */
+}
+```
+
+- `g_str_new(const char *src, size_t len)` copies `len` bytes into a fresh `GStr`.
+- `g_str_takeover_cstr(char *p)` wraps a malloc'd NUL-terminated buffer as a `GStr` — ownership passes to the `GStr`, and the original pointer must not be freed by the caller.
+- `g_str_takeover(char *p, size_t len)` same, but with an explicit length (lets embedded NULs survive).
+- `g_str_from_cstr(const char *p)` copies a NUL-terminated C string into a fresh `GStr`.
+
+### Refcounting
+
+```c
+g_str_inc_ref(s);   /* retain */
+g_str_dec_ref(s);   /* release — safe on NULL */
+```
+
+Interned ("immortal") strings have a sentinel refcount and these calls are no-ops on them — you never need to special-case literals.
+
+## Bytes — `GBytes *`
+
+`GBytes` is Gust's `bytes` type: a growable byte buffer. The struct is opaque — always use the accessors.
+
+```c
+void dump_hex(const GBytes *b) {
+    const unsigned char *p = g_bytes_data(b);
+    int64_t              n = g_bytes_len(b);
+    for (int64_t i = 0; i < n; i++) {
+        printf("%02x", p[i]);
+    }
+}
+
+GBytes *make_header(int64_t len) {
+    unsigned char buf[4] = { 'G', 'S', 'T', (unsigned char)len };
+    return g_bytes_from_buf(sizeof buf, (const char *)buf);
+}
+```
+
+- `g_bytes_from_buf(int64_t length, const char *buf)` copies `length` bytes into a fresh `GBytes`.
+- `g_bytes_data(const GBytes *b)` returns a borrowed `unsigned char *` into the payload. Valid until the next mutating call on the same object.
+- `g_bytes_len(const GBytes *b)` returns the length in bytes.
+- `g_bytes_get` / `g_bytes_set` for indexed byte access.
+- `g_bytes_append_byte`, `g_bytes_extend`, `g_bytes_slice`, `g_bytes_drop_front`, `g_bytes_concat_o`, `g_bytes_index_of`, `g_bytes_eq` for the usual operations.
+
+Refcount with `g_inc_ref` / `g_dec_ref` — `GBytes` carries the standard object header.
+
+## Lists — `GSlice *`
+
+A Gust `list[T]` lowers to `GSlice *` — a growable packed array that knows its element size. The struct is opaque:
+
+```c
+double sum_floats(GSlice *xs) {
+    const double *p = g_slice_data(xs);
+    int64_t       n = g_slice_len(xs);
+    double        s = 0.0;
+    for (int64_t i = 0; i < n; i++) s += p[i];
+    return s;
+}
+
+GSlice *make_doubles(int64_t n) {
+    GSlice *s = g_slice_new(sizeof(double));
+    for (int64_t i = 0; i < n; i++) {
+        double v = (double)i;
+        g_slice_append(s, &v);
+    }
+    return s;
+}
+```
+
+- `g_slice_new(int64_t elem_size)` makes an empty slice with the given element size in bytes.
+- `g_slice_new_typed(int64_t elem_size, GDestructor elem_destructor)` same, but each element is dropped with `elem_destructor` on removal/free. Use for a list whose elements are refcounted (e.g. `list[string]`, pass `g_str_free_indirect`).
+- `g_slice_data(const GSlice *s)` returns a borrowed `void *` to the packed element buffer. Reinterpret as the element type.
+- `g_slice_len(const GSlice *s)` returns the element count (not byte count).
+- `g_slice_elem_size(const GSlice *s)` returns the per-element byte stride.
+- `g_slice_append(GSlice *s, const void *elem)` appends `elem_size` bytes read from `elem`.
+- `g_slice_get(GSlice *s, int64_t index)` returns `void *` into the slot at `index`.
+- `g_slice_delete(GSlice *s, int64_t index)` removes the slot, calling the element destructor if any.
+
+Refcount with `g_inc_ref` / `g_dec_ref` as usual.
+
+### Lists of refcounted elements
+
+A `list[string]` holds `GStr *` values. Reading them is a direct cast; appending needs an `inc_ref` because the slice now owns a reference:
+
+```c
+GSlice *copy_strings(GSlice *src) {
+    GSlice *out = g_slice_new_typed(sizeof(GStr *), g_str_free_indirect);
+    GStr *const *p = g_slice_data(src);
+    int64_t n = g_slice_len(src);
+    for (int64_t i = 0; i < n; i++) {
+        g_str_inc_ref(p[i]);
+        g_slice_append(out, &p[i]);
+    }
+    return out;
+}
+```
+
+`g_str_free_indirect` is the paired destructor: given the slot's address, it reads the `GStr *` out and `dec_ref`s it. The equivalent for arbitrary refcounted pointers is `g_dec_ref_indirect`.
+
+## Dicts — `GDict *`
+
+A Gust `dict[K, V]` lowers to `GDict *`. Keys are either `string` (`GStr *`) or `integer`; the value type is any fixed-size payload (int, pointer, boxed value).
+
+```c
+void greet_each(GDict *who) {
+    int64_t n = g_dict_slot_count(who);
+    for (int64_t i = 0; i < n; i++) {
+        if (!g_dict_slot_occupied(who, i)) continue;
+        const char *name  = g_dict_slot_key(who, i);
+        int64_t    *count = g_dict_slot_value(who, i);
+        printf("hi %s (%" PRId64 ")\n", name, *count);
+    }
+}
+
+GDict *word_counts(void) {
+    GDict *d = g_dict_new(sizeof(int64_t));
+    int64_t one = 1;
+    GStr *k = g_str_from_cstr("hello");
+    g_dict_set(d, k, &one);
+    g_str_dec_ref(k);                   /* d took its own retain */
+    return d;
+}
+```
+
+- `g_dict_new(int64_t value_size)` makes a `dict[string, V]` whose values are `value_size` bytes each.
+- `g_dict_new_typed(int64_t value_size, GDestructor value_destructor)` same, with a value destructor (for refcounted-pointer values).
+- `g_dict_new_int(int64_t value_size)` / `g_dict_new_int_typed(...)` for `dict[integer, V]`.
+- `g_dict_set(d, key, &value)` / `g_dict_get(d, key)` for string keys. `g_dict_get` returns a borrowed `void *` into the slot, or `NULL` if absent.
+- `g_dict_has`, `g_dict_delete`, `g_dict_len`.
+- `g_dict_iset`, `g_dict_iget`, `g_dict_ihas`, `g_dict_idelete` for integer-keyed dicts.
+- `g_dict_slot_count`, `g_dict_slot_occupied`, `g_dict_slot_key` / `g_dict_slot_int_key`, `g_dict_slot_value` for iteration.
+
+Refcount with `g_inc_ref` / `g_dec_ref`.
+
+## `GValue` — `Any` and union payloads
+
+A `GValue` is passed by value, built with constructors, and inspected by its `tag`:
+
+```c
+GValue sum_two(GValue a, GValue b) {
+    if (a.tag != G_VAL_INT || b.tag != G_VAL_INT) {
+        g_raisef("ValueError", "sum_two expects two integers");
+    }
+    return g_value_int(a.int_val + b.int_val);
+}
+```
+
+### Building
+
+```c
+GValue v;
+v = g_value_int(42);
+v = g_value_float(3.14);
+v = g_value_bool(true);
+v = g_value_none();
+v = g_value_str(g_str_from_cstr("hi"));   /* takes ownership */
+```
+
+For boxed pointers (lists, dicts, structs stored as `Any`):
+
+- `g_value_ptr(void *v)` — bare pointer box with no type tag or repr.
+- `g_value_ptr_t(void *v, const char *type_tag)` — pointer with a canonical type tag (`"[]string"`, `"dict[string,integer]"`) so runtime type tests work.
+- `g_value_ptr_r(void *v, char *(*repr)(const void *, int))` — pointer with a repr thunk, so `print` on an `Any` renders the payload.
+- `g_value_ptr_rt(void *v, repr, type_tag)` — both.
+
+### Unboxing
+
+```c
+if (v.tag != G_VAL_STRING) {
+    g_raisef("ValueError", "expected string");
+}
+GStr *s = v.str_val;
+```
+
+For pointer payloads, use the checked unbox so a wrong cast fails loudly instead of reinterpreting foreign memory:
+
+```c
+GSlice *xs = g_value_unbox_ptr(v, "[]", "list");
+```
+
+`g_value_unbox_ptr(v, want_shape, target_name)` raises a catchable `ValueError` when the box's recorded shape does not start with `want_shape`.
+
+### Reference counting a `GValue`
+
+A `GValue` passing through a call is borrowed — nothing to do. For a `GValue` you are **storing** in an owning slot (an `Any`-typed collection or struct field):
+
+```c
+g_value_inc_ref(v);                 /* when storing into an owning slot */
+g_value_dec_ref(v);                 /* when dropping an owned value */
+g_value_dec_ref_indirect(slot);     /* dec from the address of the slot */
+```
+
+Only refcounted payloads (`G_VAL_STRING`, `G_VAL_PTR` with a managed shape) actually count; scalars are no-ops.
+
+## Structs
+
+### Value structs
+
+A plain struct is a C `typedef struct`; `self` in a foreign method is a typed pointer:
+
+```gust
+def Rect
+    w: float
+    h: float
+end
+
+def foreign Rect.area() -> float
+end
+```
+
+```c
+double Rect_area(Rect *self) {
+    return self->w * self->h;
+}
+```
+
+A managed field (`string`, `list`, another struct) is the pointer type from the [introduction](/lang/ffi-intro#how-gust-values-look-in-c). To mutate such a field, follow the store rule — release the old pointer, retain the new one:
+
+```c
+void Config_set_name(Config *self, GStr *name) {
+    g_str_inc_ref(name);
+    g_str_dec_ref(self->name);
+    self->name = name;
+}
+```
+
+### Class structs (`extends` hierarchies)
+
+A struct in an `extends` chain has a `GObjectHeader` and a `GClassInfo *_ci` prefix:
+
+```c
+Shape *s = /* ... */;
+const GClassInfo *ci = g_class_of(s);         /* runtime class record */
+if (g_class_is(s, &Circle_class_info)) {      /* instanceof check */
+    Circle *c = g_class_cast(s, &Circle_class_info);
+    /* c is `s` reinterpreted; `g_class_cast` raises on a mismatch */
+}
+```
+
+Class structs refcount with the plain `g_inc_ref` / `g_dec_ref` — the destructor stored in the header handles the per-class field drops.
+
+## Calling a Gust closure
+
+A `Function(P)[R]` Gust value arrives as `GClosure *`. The function pointer always takes the captured environment as its first argument:
+
+```c
+/* A Gust callback: Function(integer)[integer] */
+int64_t run_twice(GClosure *clo, int64_t x) {
+    /* Signature: int64_t (*)(void *env, int64_t) */
+    int64_t (*fn)(void *, int64_t) = (int64_t (*)(void *, int64_t))clo->fn;
+    return fn(clo->env, fn(clo->env, x));
+}
+```
+
+The matching Gust side:
+
+```gust
+def foreign run_twice(f: Function(integer)[integer], x: integer) -> integer
+end
+
+def main() -> none
+    print(run_twice(def(n: integer) -> integer: return n + 1 end, 10))
+    # 12
+end
+```
+
+In a plain explanation, you would call with `((return_type (*)(void*, param_types))clo->fn)(clo->env, args...)`
+
+Refcount with `g_inc_ref` / `g_dec_ref`. A closure you store past the call needs one `g_inc_ref`; its destructor releases the captured environment for you.
+
+## Raising from C
+
+`g_raisef(const char *error_name, const char *fmt, ...)` raises a catchable Gust error with a `printf`-style message. Use it when a C body's precondition is violated:
+
+```c
+int64_t Matrix_at(Matrix *self, int64_t row, int64_t col) {
+    if (row < 0 || row >= self->rows || col < 0 || col >= self->cols) {
+        g_raisef("IndexError", "Matrix.at(%" PRId64 ", %" PRId64 ") out of bounds",
+                 row, col);
+    }
+    return self->data[row * self->cols + col];
+}
+```
+
+The matching Gust side can catch it:
+
+```gust
+try:
+    print(m.at(10, 10))
+catch e: IndexError:
+    print("out of bounds: " + e.message)
+end
+```
+
+## Worked example — binding a C library by hand
+
+A full round-trip: a tiny C histogram backed by a hash table, exposed to Gust as a struct with methods.
+
+```c
+/* histogram.c */
+#include "g_runtime.h"
+
+typedef struct Hist {
+    GDict *counts;   /* dict[string, integer] */
+} Hist;
+
+Hist *Hist_new(void) {
+    Hist *h = g_checked_malloc(sizeof(Hist));
+    h->counts = g_dict_new(sizeof(int64_t));
+    return h;
+}
+
+void Hist_free(Hist *self) {
+    g_dec_ref(self->counts);
+    g_checked_free(self);
+}
+
+void Hist_add(Hist *self, GStr *word) {
+    int64_t *slot = g_dict_get(self->counts, word);
+    int64_t  n    = slot ? *slot + 1 : 1;
+    g_dict_set(self->counts, word, &n);
+}
+
+int64_t Hist_get(Hist *self, GStr *word) {
+    int64_t *slot = g_dict_get(self->counts, word);
+    return slot ? *slot : 0;
+}
+```
+
+```gust
+# histogram.g
+@raw
+def Hist
+    handle: integer
+end
+
+def hist() -> Hist
+    return Hist(handle: raw_new())
+end
+
+def Hist.add(word: string) -> none
+    raw_add(handle, word)
+end
+
+def Hist.get(word: string) -> integer
+    return raw_get(handle, word)
+end
+
+def Hist.close() -> none
+    raw_free(handle)
+end
+
+@c_shim("Hist_new", "void *")
+def private foreign raw_new() -> integer
+end
+
+@c_shim("Hist_free", "void", "void *")
+def private foreign raw_free(h: integer) -> none
+end
+
+@c_shim("Hist_add", "void", "void *", "const char*")
+def private foreign raw_add(h: integer, word: string) -> none
+end
+
+@c_shim("Hist_get", "int64_t", "void *", "const char*")
+def private foreign raw_get(h: integer, word: string) -> integer
+end
+```
+
+Note the Gust struct is `@raw` because `handle: integer` is an opaque C pointer the compiler should not treat as a managed field. The C `Hist_add` receives the word as `const char *` because the `@c_shim` declares it so — if you wanted to inspect the exact byte length, declare the parameter as `GStr *` in the shim and read `g_str_len` on the C side.
+
+## Where to go next
+
+- **[In Gust](/lang/ffi-gust)** — the Gust-side spellings, in case you want to review `@c_name`, `@c_shim`, `def foreign`, or the `unsafe` and `dl` packages.
+- **[Introduction](/lang/ffi-intro)** — the type-representation table and the three seams at a glance.
+- **[Decorators](/lang/decorators#manual-and-raw-unsafe)** — the full description of `@manual` and `@raw`.
+- **[`unsafe` package](/stdlib/unsafe)** — reference for raw memory primitives.
+- **[Compiler internals](/compiler/internals)** — how a `.g` source becomes the `.c` that includes `g_runtime.h`.

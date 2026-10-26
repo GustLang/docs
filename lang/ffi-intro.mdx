@@ -1,0 +1,175 @@
+---
+title: Introduction
+description: How Gust and C share values at an ABI boundary — the runtime representation of each Gust type in C, reference counting across the seam, and the three ways to cross it
+---
+
+Every compiled Gust program is C underneath (see [compiler internals](/compiler/internals)): a `.g` source file becomes a `.c` file that is handed to the system C compiler alongside the Gust runtime. That makes crossing between the two languages cheap — a Gust `integer` is already a C `int64_t`, a Gust `float` is already a C `double`, and the heap-allocated types share one representation on both sides.
+
+This page covers the three places you can open that seam, how Gust values look in C, and how reference counting works across the boundary. The companion pages go deeper:
+
+- [In Gust](/lang/ffi-gust) — the Gust-side spellings: `@c_name`, `@c_shim`, `def foreign`, `foreign` constants, `@manual`/`@raw`, the `unsafe` package, and runtime library loading with `dl`.
+- [In C](/lang/ffi-c) — the C-side API: `g_runtime.h`, the accessors for each runtime type, reference counting rules, and worked examples.
+
+## The three seams
+
+| You want to... | Use |
+|---|---|
+| Call an existing C function whose signature already matches Gust's C type mapping (`double`, `int64_t`, `bool`, `void`) | [`@c_name`](/lang/ffi-gust#c_name-bind-to-an-existing-c-symbol) |
+| Call an existing C function with a different ABI shape (`void *`, `int32_t`, `const char *`, a struct pointer, ...) | [`@c_shim`](/lang/ffi-gust#c_shim-export-a-gust-body-under-a-fixed-abi) |
+| Write hand-written C that implements a Gust declaration directly (a stdlib package, or a sibling file next to your entry point) | [`def foreign` + sibling `.c`](/lang/ffi-gust#def-foreign-a-bodyless-declaration-backed-by-c) |
+| Read a C macro or other value only C can compute (`O_WRONLY`, `EINTR`, `sizeof(void*)`) | [`foreign NAME: constant[T]`](/lang/ffi-gust#foreign-constants) |
+| Do raw pointer arithmetic, manual allocation, or atomics from Gust itself with no C file involved | [the `unsafe` package](/lang/ffi-gust#the-unsafe-package) |
+| Load a shared library (`.so`/`.dylib`) by name at runtime and call a function in it whose address is not known until the program runs | [the `dl` package](/lang/ffi-gust#loading-a-library-at-runtime) |
+
+All of these route through the standard C ABI — there is no header generation or FFI struct marshalling step. What crosses the boundary is a plain scalar (`int64_t`, `double`, `bool`), a pointer-sized `integer` handle you interpret on the C side, or — for a `string` through `@c_shim` — the C string bytes themselves.
+
+## How Gust values look in C
+
+Every Gust type has one C representation that both the generated code and hand-written C share. There is no marshalling layer.
+
+| Gust | C | Notes |
+|---|---|---|
+| `integer` | `int64_t` | Always 64-bit, on every target. |
+| `float` | `double` | Never routed through `int64_t` at an FFI boundary — always passed as `double`. |
+| `bool` | `bool` (`stdbool.h`) | |
+| `none` | `void` (as a return type) | |
+| `string` | `GStr *` | Refcounted, length-prefixed, **not** guaranteed C-string-safe unless you know the content has no embedded NUL. |
+| `bytes` | `GBytes *` | Opaque — read/write only through runtime accessors. |
+| `list[T]` | `GSlice *` | Opaque — accessors give data pointer, length, and element size. |
+| `dict[K, V]` | `GDict *` | Opaque — `g_dict_get`/`g_dict_set`/`g_dict_has`/`g_dict_len`. |
+| `Any` / union types | `GValue` | Tagged union, passed **by value**. |
+| `ref[T]` | a refcounted cell payload pointer (`GBox_*`) | Managed by `g_refcell_new`/`g_refcell_inc`/`g_refcell_dec`. |
+| Structs (value) | a C `typedef struct` with the same field order | Passed by pointer. |
+| Structs (class / `extends`) | a refcounted heap object with a `GClassInfo` vtable prefix | Upcast is a pointer cast. |
+| Interfaces | a vtable struct of function pointers | Not normally touched from hand-written C. |
+| `Function(...)` / lambdas | `GClosure *` | `{ header; void *fn; void *env; }` — call as `((R(*)(void*,P...))clo->fn)(clo->env, args...)`. |
+
+### The umbrella header
+
+Any hand-written C in your project includes exactly one header — the Gust runtime umbrella:
+
+```c
+#include "g_runtime.h"
+```
+
+That gives you every `GStr`, `GBytes`, `GSlice`, `GDict`, `GValue`, `GClosure`, `GObjectHeader`, every runtime accessor, and the refcount entry points. It is the only header a Gust-generated `.c` file ever includes, and the only one you need from hand-written C.
+
+### Every heap value starts with a `GObjectHeader`
+
+`GStr`, `GBytes`, `GSlice`, `GDict`, `GClosure`, a `ref[T]` cell, and every class struct all begin with the same object header:
+
+```c
+typedef struct GObjectHeader {
+    atomic_int ref_count;
+    GDestructor destructor;
+    /* ...flags for immortal strings, cyclic collection, etc. */
+} GObjectHeader;
+```
+
+A plain value struct (`def Name` with no `extends`) does **not** carry this header — it is a bare `typedef struct` passed by pointer. Only managed types do.
+
+The header is why there is one reference-counting rule for every runtime type: `g_inc_ref(ptr)` and `g_dec_ref(ptr)` work on anything with a header, picking up the right destructor from the header itself. Type-specific entry points (`g_str_inc_ref`, `g_slice_free`, …) exist as fast paths and for debugging, but the generic pair is always correct.
+
+### `GValue` — the tagged union for `Any` and unions
+
+Any Gust value that could hold several unrelated types at runtime — an `Any`, a union, a `dict[string, Any]` value slot — lowers to a `GValue`:
+
+```c
+typedef enum {
+    G_VAL_NONE = 0,
+    G_VAL_INT,
+    G_VAL_FLOAT,
+    G_VAL_STRING,
+    G_VAL_BOOL,
+    G_VAL_PTR,
+} GValueTag;
+
+typedef struct {
+    GValueTag tag;
+    union {
+        int64_t int_val;
+        double  float_val;
+        GStr   *str_val;
+        bool    bool_val;
+        void   *ptr_val;
+    };
+    char *(*ptr_repr)(const void *, int mode);  /* G_VAL_PTR only */
+    const char *ptr_type;                       /* G_VAL_PTR only, e.g. "[]string" */
+    bool ptr_cell;                              /* G_VAL_PTR only */
+} GValue;
+```
+
+A `GValue` is passed **by value**, not by pointer — it is small enough that this is cheaper than indirection, and it means a function returning `GValue` returns the tagged value directly rather than a heap pointer.
+
+### Struct and class representation
+
+A plain struct (no `extends`) compiles to an ordinary C struct in declaration order, passed and stored by pointer:
+
+```gust
+def Point
+    x: float
+    y: float
+end
+```
+
+```c
+typedef struct Point {
+    double x;
+    double y;
+} Point;
+```
+
+A struct taking part in an `extends` hierarchy instead compiles to a heap-allocated class object whose layout is:
+
+```c
+struct Shape {
+    GObjectHeader _gh;
+    const GClassInfo *_ci;
+    /* fields follow */
+};
+```
+
+A subclass repeats its ancestors' fields as a prefix, so an upcast is a plain pointer cast. `_ci` points at a per-class record that chains to its parent and carries the virtual method table; a call through a parent-typed pointer dispatches on the runtime type.
+
+### Function values are `GClosure *`
+
+A Gust `Function(P)[R]` value — a lambda, a captured method, or a plain function reference — lowers to a `GClosure *`:
+
+```c
+typedef struct GClosure {
+    GObjectHeader _gh;
+    void *fn;    /* R (*)(void *env, P...) */
+    void *env;   /* captured environment, or NULL */
+} GClosure;
+```
+
+The function pointer always takes the captured environment as its first argument; a non-capturing function has a trivial wrapper and `env == NULL`. See [calling a Gust closure from C](/lang/ffi-c#calling-a-gust-closure).
+
+## Reference counting across the boundary
+
+Ordinary Gust code never calls `g_inc_ref`/`g_dec_ref` directly — the compiler injects retains and scope-exit drops automatically, and the formatter and LSP keep that invariant visible. Hand-written C has no such injection: a foreign function's C body is responsible by hand for the refcount of anything it stores past the call.
+
+The rules collapse to three cases:
+
+- **Borrow** — reading a field, using an argument only for the duration of the call. Nothing to do.
+- **Store** — assign a refcounted pointer into a struct field, a global, a container, hand it to another thread, or otherwise keep it past the call. Call `g_inc_ref(ptr)` first.
+- **Release** — you are done with a refcounted pointer you own. Call `g_dec_ref(ptr)`. Safe to call on `NULL`.
+
+A `GStr *` has `g_str_inc_ref` / `g_str_dec_ref` fast paths that skip the atomic for immortal (interned) strings; `GBytes`, `GSlice`, `GDict`, and `GClosure` each have equivalents. The generic `g_inc_ref` / `g_dec_ref` always work; the type-specific ones are an optimization.
+
+See [In C — reference counting](/lang/ffi-c#reference-counting) for worked examples of each case and the exact entry points to use.
+
+## Linking
+
+`gust build` / `gust run` passes every `runtime/*.c` file, each linked stdlib package's `.c` files, and (for the entry file) any sibling `<stem>.c` to the system C compiler alongside the generated C:
+
+```
+gcc -O2 -std=c11 -D_GNU_SOURCE -I runtime <generated>.c runtime/*.c [pkg .c files] [sibling .c] -lm -lpthread -o <binary>
+```
+
+No build configuration is needed to pick up a sibling `.c` file — its presence next to the entry `.g` file is enough. Extra linker/compiler flags (an additional C library, a system include path) go in `gust.toml`; see [project configuration](/tooling/project-config).
+
+## Next
+
+- **[In Gust](/lang/ffi-gust)** — the Gust-side spellings (`@c_name`, `@c_shim`, `def foreign`, `foreign` constants, `@manual`/`@raw`, `unsafe`, `dl`).
+- **[In C](/lang/ffi-c)** — the C-side API in depth (`g_runtime.h` accessors, refcount rules, reading/writing each runtime type, calling closures).

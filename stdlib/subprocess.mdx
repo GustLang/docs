@@ -1,0 +1,333 @@
+---
+title: subprocess
+description: "Running other programs: one-shot execution with optional output capture and timeouts, executable lookup on `$PATH`, and a long-lived `Process` handle for live, bidirectional streaming — writing to a child's stdin while incrementally reading its stdout and stderr as they arrive"
+---
+
+```gust
+use subprocess
+```
+
+Running other programs: one-shot execution with optional output capture and
+timeouts, executable lookup on `$PATH`, and a long-lived `Process` handle for
+live, bidirectional streaming — writing to a child's stdin while incrementally
+reading its stdout and stderr as they arrive.
+
+Use `run`/`capture` when you only need the child's exit status or its complete
+output. Use `start` when you need to interact with the child while it runs:
+feed input turn by turn, react to output the instant it appears, or impose your
+own timeout on each read.
+
+**Examples**
+
+```gust
+use subprocess
+
+def main() -> none
+    code, out := subprocess.capture(["echo", "hello"])
+    print(code)                        # 0
+    print(out)                         # "hello\n"
+
+    proc := subprocess.start(["cat"])
+    proc.write("stream me\n")
+    proc.close_stdin()
+    line := proc.read_line()
+    print(line.data)                   # "stream me"
+    proc.wait()
+end
+```
+
+<Note>
+Only available on native builds, and not on Windows.
+</Note>
+
+**On this page:** [`ReadResult`](#ReadResult) · [`Process`](#Process) · [`start`](#subprocess.start) · [`run`](#subprocess.run) · [`capture`](#subprocess.capture) · [`capture_with_stdin`](#subprocess.capture_with_stdin) · [`capture_with_timeout`](#subprocess.capture_with_timeout)
+
+## `ReadResult`
+
+<a id="ReadResult" />
+The outcome of a single read from a `Process` stream.
+
+Exactly one of the three states holds: bytes arrived (`data` non-empty,
+both flags false), the stream closed for good (`eof` true), or the read
+deadline elapsed with nothing available (`timed_out` true).
+
+```gust
+def ReadResult
+
+    data: string
+    eof: bool
+    timed_out: bool
+
+end
+```
+
+**Fields**
+
+- `data: string` — Bytes read from the stream; empty on EOF or timeout.
+- `eof: bool` — True once the stream has closed and no more data will arrive.
+- `timed_out: bool` — True when the read timeout elapsed before any data.
+
+## `Process`
+
+<a id="Process" />
+A running child process with its stdin, stdout, and stderr connected to
+the parent by pipes. Construct one with `start`. Writes to stdin and reads
+of stdout/stderr can be interleaved freely; each read takes a timeout so it
+never blocks the caller indefinitely.
+
+Release the child with `close` (or `wait`, which also reaps it) when done —
+an abandoned handle keeps the child and its pipes alive.
+
+```gust
+def Process
+
+    _handle: integer
+
+end
+```
+
+**Fields**
+
+- `_handle: integer` — Opaque pointer to the backing process state, cast to integer.
+
+**Methods**
+
+<a id="Process.write" />
+```gust
+def Process.write(data: string) -> integer
+```
+
+Write `data` to the child's stdin without blocking, returning the number
+of bytes accepted. A short write (result &lt; `data.length`) means the pipe
+was full; call again with the remainder. Returns -1 once the child's stdin
+has closed.
+
+**Parameters**
+
+- `data` — Bytes to send to the child's stdin.
+
+---
+
+<a id="Process.close_stdin" />
+```gust
+def Process.close_stdin() -> none
+```
+
+Close the child's stdin so it reads EOF. Use this to signal end-of-input
+to a child that consumes its stdin to completion. Idempotent.
+
+---
+
+<a id="Process.read" />
+```gust
+def Process.read(max_bytes: integer, timeout_ms: integer) -> ReadResult
+```
+
+Read up to `max_bytes` from the child's stdout, waiting at most
+`timeout_ms` milliseconds for data to appear.
+
+**Parameters**
+
+- `max_bytes` — Maximum number of bytes to return in one read.
+- `timeout_ms` — Milliseconds to wait; negative blocks until data or EOF, zero polls and returns immediately.
+
+---
+
+<a id="Process.read_stderr" />
+```gust
+def Process.read_stderr(max_bytes: integer, timeout_ms: integer) -> ReadResult
+```
+
+Read up to `max_bytes` from the child's stderr, on the same terms as
+`read`. stderr is a separate stream, so diagnostics never intrude on a
+structured stdout protocol.
+
+**Parameters**
+
+- `max_bytes` — Maximum number of bytes to return in one read.
+- `timeout_ms` — Milliseconds to wait; negative blocks until data or EOF, zero polls and returns immediately.
+
+---
+
+<a id="Process.read_line" />
+```gust
+def Process.read_line(timeout_ms: integer) -> ReadResult
+```
+
+Read the next newline-delimited line from the child's stdout, with the
+trailing newline stripped. Bytes are buffered across calls, so partial
+lines are never lost. At end of stream, any final unterminated line is
+returned once, then subsequent calls report EOF.
+
+**Parameters**
+
+- `timeout_ms` — Milliseconds to wait for a complete line; negative blocks, zero polls and returns immediately.
+
+---
+
+<a id="Process.poll" />
+```gust
+def Process.poll() -> integer
+```
+
+Return the child's exit code if it has finished, or -1 while it is still
+running. Reaps the child on completion; does not block. The exit code is
+`128 + signal` when the child was killed by a signal.
+
+---
+
+<a id="Process.wait" />
+```gust
+def Process.wait(timeout_ms: integer) -> integer
+```
+
+Wait for the child to exit and return its exit code. With a negative
+`timeout_ms` this blocks until exit; with a non-negative one it returns -1
+if the child is still running when the deadline passes.
+
+**Parameters**
+
+- `timeout_ms` — Milliseconds to wait; negative blocks until exit.
+
+---
+
+<a id="Process.terminate" />
+```gust
+def Process.terminate() -> none
+```
+
+Ask the child to exit by sending SIGTERM. The child may handle the
+signal and shut down gracefully; follow with `wait` to collect it.
+
+---
+
+<a id="Process.kill" />
+```gust
+def Process.kill() -> none
+```
+
+Force the child to exit immediately with SIGKILL, which cannot be
+caught. Follow with `wait` (or `close`) to reap it.
+
+---
+
+<a id="Process.pid" />
+```gust
+def Process.pid() -> integer
+```
+
+Process ID of the child.
+
+---
+
+<a id="Process.close" />
+```gust
+def Process.close() -> none
+```
+
+Release the child and its pipes. If the child is still running it is
+killed and reaped first, so no zombie is left behind. Using the handle
+after `close` is undefined.
+
+## Functions
+
+<a id="subprocess.start" />
+```gust
+def start(argv: list[string]) -> Process
+```
+
+Start `argv[0]` with the remaining elements as arguments, connecting its
+stdin, stdout, and stderr to pipes, and return immediately while it runs.
+
+**Parameters**
+
+- `argv: list[string]` — Program path followed by its arguments; must be non-empty.
+
+**Raises**
+
+- `ValueError` — When `argv` is empty.
+- `IOError` — When the child could not be started.
+
+---
+
+<a id="subprocess.run" />
+```gust
+def run(argv: list[string]) -> integer
+```
+
+Run `argv[0]` with the remaining elements as arguments, inheriting the
+parent's stdio. Returns the child's exit code, or `128 + signal` when the
+child was killed by a signal.
+
+**Parameters**
+
+- `argv: list[string]` — Program path followed by its arguments; must be non-empty.
+
+**Raises**
+
+- `ValueError` — When `argv` is empty.
+
+---
+
+<a id="subprocess.capture" />
+```gust
+def capture(argv: list[string]) -> tuple[integer, string]
+```
+
+Run `argv[0]` like `run`, but capture stdout and stderr (merged) into a
+single string. Returns `(exit_code, output)`. Child stdin is closed (reads
+EOF immediately); use `capture_with_stdin` to feed data to the child.
+
+**Parameters**
+
+- `argv: list[string]` — Program path followed by its arguments; must be non-empty.
+
+**Raises**
+
+- `ValueError` — When `argv` is empty.
+
+---
+
+<a id="subprocess.capture_with_stdin" />
+```gust
+def capture_with_stdin(
+    argv: list[string],
+    input: string,
+) -> tuple[integer, string]
+```
+
+Like `capture`, but writes `input` to the child's stdin before reading
+its output.
+
+**Parameters**
+
+- `argv: list[string]` — Program path followed by its arguments; must be non-empty.
+- `input: string` — Data to write to the child's stdin.
+
+**Raises**
+
+- `ValueError` — When `argv` is empty.
+
+---
+
+<a id="subprocess.capture_with_timeout" />
+```gust
+def capture_with_timeout(
+    argv: list[string],
+    timeout_secs: float,
+) -> tuple[integer, string]
+```
+
+Like `capture`, but kills the child after `timeout_secs` seconds. On
+timeout, the returned exit code is `-1` and the output contains whatever
+the child wrote before being killed. A non-positive timeout is treated
+as "no timeout".
+
+**Parameters**
+
+- `argv: list[string]` — Program path followed by its arguments; must be non-empty.
+- `timeout_secs: float` — Seconds to wait before killing the child; &lt;= 0 means no timeout.
+
+**Raises**
+
+- `ValueError` — When `argv` is empty.

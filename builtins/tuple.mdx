@@ -1,0 +1,88 @@
+---
+title: tuple
+description: "Fixed-length ordered group of values, each with its own type"
+---
+
+Fixed-length ordered group of values, each with its own type. Written
+`(T1, T2, ...)`. Backed by a heap record of its elements in the C runtime.
+
+Literals:
+
+```gust
+(1, "one")          # a 2-tuple of integer and string
+(x, y, z)           # a 3-tuple
+(value,)            # a 1-tuple — the trailing comma is required
+```
+
+Access:
+
+```gust
+t[0]                # element by constant index (0-based)
+t[1] = value        # overwrite an element with a value of its type
+a, b := t           # destructure into named bindings
+```
+
+Iteration:
+for a, b in pairs   # a `list[tuple[A, B]]` unpacks each element
+
+Casting:
+t as tuple[T1, T2]  # identity, when the element types line up
+
+The index into a tuple must be a constant so each element's static type is
+known; a variable index is rejected.
+
+## Dunders
+
+<a id="tuple.__string" />
+```gust
+def tuple.__string() -> string
+```
+
+Triggered by `print(t)` and f-string interpolation. Renders as `(a, b, ...)`.
+
+---
+
+<a id="tuple.__bool" />
+```gust
+def tuple.__bool() -> bool
+```
+
+Triggered by `t as bool`. A tuple always has at least one element, so it is
+always true.
+
+---
+
+<a id="tuple.__tuple" />
+```gust
+def tuple.__tuple() -> tuple[T1, T2]
+```
+
+Triggered by `t as tuple[T1, T2]`. Identity.
+
+---
+
+<a id="tuple.__get" />
+```gust
+def tuple.__get(index: integer) -> T
+```
+
+Triggered by `t[i]`. Returns the element at the constant index `i`, typed as
+that position's element type.
+
+**Parameters**
+
+- `index: integer` — Constant zero-based position to read.
+
+---
+
+<a id="tuple.__set" />
+```gust
+def tuple.__set(index: integer, value: T) -> none
+```
+
+Triggered by `t[i] = value`. Overwrites the element at the constant index.
+
+**Parameters**
+
+- `index: integer` — Constant zero-based position to overwrite.
+- `value: T` — The new value, of that position's element type.

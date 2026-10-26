@@ -1,0 +1,100 @@
+---
+title: machine.clocks
+description: "On-chip clock frequencies"
+---
+
+```gust
+use machine.clocks
+```
+
+On-chip clock frequencies.
+
+Read the running frequency of each internal clock, and on a target whose system
+clock is not fixed at boot, retune it with `set_sys_khz`. Frequencies are
+reported in hertz; a clock the chip does not expose reads as 0.
+
+**Examples**
+
+```gust
+use machine.clocks
+
+def main() -> none
+    print(clocks.sys_hz())          # e.g. 150000000 on the RP2350
+    print(clocks.peripheral_hz())
+end
+```
+
+<Note>
+Only available where `has("clocks")`.
+</Note>
+
+**On this page:** [`sys_hz`](#machine.clocks.sys_hz) · [`peripheral_hz`](#machine.clocks.peripheral_hz) · [`usb_hz`](#machine.clocks.usb_hz) · [`adc_hz`](#machine.clocks.adc_hz) · [`reference_hz`](#machine.clocks.reference_hz) · [`set_sys_khz`](#machine.clocks.set_sys_khz)
+
+## Functions
+
+<a id="machine.clocks.sys_hz" />
+```gust
+def foreign sys_hz() -> integer
+```
+
+The processor / system clock frequency in hertz.
+
+---
+
+<a id="machine.clocks.peripheral_hz" />
+```gust
+def foreign peripheral_hz() -> integer
+```
+
+The peripheral clock frequency in hertz (feeds UART, SPI, and similar).
+
+---
+
+<a id="machine.clocks.usb_hz" />
+```gust
+def foreign usb_hz() -> integer
+```
+
+The USB clock frequency in hertz, or 0 on a chip with no USB block.
+
+---
+
+<a id="machine.clocks.adc_hz" />
+```gust
+def foreign adc_hz() -> integer
+```
+
+The ADC clock frequency in hertz, or 0 on a chip that does not report
+it.
+
+---
+
+<a id="machine.clocks.reference_hz" />
+```gust
+def foreign reference_hz() -> integer
+```
+
+The reference clock frequency in hertz — the crystal or oscillator the
+other clocks are derived from.
+
+---
+
+<a id="machine.clocks.set_sys_khz" />
+```gust
+def foreign set_sys_khz(khz: integer) -> bool
+```
+
+<Note>
+Only available where `has("clock-retune")`.
+</Note>
+
+Retune the system clock to `khz` kilohertz, returning whether the
+frequency was achievable with the available dividers. Peripheral clocks that
+derive from the system clock are updated to track it.
+
+Exists only on a target whose system clock can be retuned at run time; on
+one whose frequency is fixed at boot, naming it is a compile error.
+
+**Parameters**
+
+- `khz: integer` — Target system frequency in kilohertz.

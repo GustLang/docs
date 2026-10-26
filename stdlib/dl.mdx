@@ -1,0 +1,478 @@
+---
+title: dl
+description: "Load shared libraries at runtime and call into them"
+---
+
+```gust
+use dl
+```
+
+Load shared libraries at runtime and call into them. `open` loads a `.so` (or
+`.dylib`) by name and returns a `Library`; `Library.symbol` resolves a function
+or data address inside it; and `Symbol.call` invokes a function through that
+address with an arbitrary C signature, built at runtime with libffi. Variadic
+functions are reached through `Symbol.call_variadic`.
+
+An argument carries its own C type — build one with `i32`, `i64`, `f64`, `ptr`
+and the rest — and the return type is one of the type-code constants. A call's
+result comes back as a `Value`, read with `as_integer`, `as_float`, or
+`as_address` according to the return type that was requested.
+
+Everything here is unchecked at the ABI boundary: a signature that does not
+match the real function, or an address that is not a function, is undefined
+behavior exactly as in `unsafe`. Marshal C pointers and strings through
+`unsafe` memory and pass their addresses as `ptr` arguments.
+
+Available on native builds for Linux, macOS and the BSDs. Windows (which loads
+libraries through a different interface), the microcontroller targets and the
+browser have no `dl` package: an import there is a compile error.
+
+**Examples**
+
+```gust
+use dl
+
+def main() -> none
+    lib := dl.open("libm.so.6", dl.RTLD_NOW)
+    cos := lib.symbol("cos")
+    args := [dl.f64(1.0)]
+    r := cos.call(args, dl.F64)
+    print(r.as_float())          # 0.5403023058681398
+    lib.close()
+end
+```
+
+<Note>
+Only available on native builds, and not on Windows.
+</Note>
+
+**On this page:** [`Arg`](#Arg) · [`Value`](#Value) · [`Library`](#Library) · [`Symbol`](#Symbol) · [`DlError`](#DlError) · [`i8`](#dl.i8) · [`u8`](#dl.u8) · [`i16`](#dl.i16) · [`u16`](#dl.u16) · [`i32`](#dl.i32) · [`u32`](#dl.u32) · [`i64`](#dl.i64) · [`u64`](#dl.u64) · [`f32`](#dl.f32) · [`f64`](#dl.f64) · [`ptr`](#dl.ptr) · [`cstring`](#dl.cstring) · [`read_cstring`](#dl.read_cstring) · [`open`](#dl.open)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `RTLD_LAZY` | `integer` | defined in C |
+| `RTLD_NOW` | `integer` | defined in C |
+| `RTLD_GLOBAL` | `integer` | defined in C |
+| `RTLD_LOCAL` | `integer` | defined in C |
+| `VOID` | `integer` | defined in C |
+| `I8` | `integer` | defined in C |
+| `U8` | `integer` | defined in C |
+| `I16` | `integer` | defined in C |
+| `U16` | `integer` | defined in C |
+| `I32` | `integer` | defined in C |
+| `U32` | `integer` | defined in C |
+| `I64` | `integer` | defined in C |
+| `U64` | `integer` | defined in C |
+| `F32` | `integer` | defined in C |
+| `F64` | `integer` | defined in C |
+| `PTR` | `integer` | defined in C |
+| `VOID` | `integer` | defined in C |
+| `I8` | `integer` | defined in C |
+| `U8` | `integer` | defined in C |
+| `I16` | `integer` | defined in C |
+| `U16` | `integer` | defined in C |
+| `I32` | `integer` | defined in C |
+| `U32` | `integer` | defined in C |
+| `I64` | `integer` | defined in C |
+| `U64` | `integer` | defined in C |
+| `F32` | `integer` | defined in C |
+| `F64` | `integer` | defined in C |
+| `PTR` | `integer` | defined in C |
+
+## `Arg`
+
+<a id="Arg" />
+One argument to a call: its C type and its value. Only the field that
+matches the type is meaningful — integer and pointer arguments use `ival`,
+floating-point arguments use `fval`.
+
+```gust
+def Arg
+
+    type_code: integer
+    ival: integer
+    fval: float
+
+end
+```
+
+**Fields**
+
+- `type_code: integer` — The argument's C type, one of the type-code constants.
+- `ival: integer` — The value for an integer or pointer argument.
+- `fval: float` — The value for a floating-point argument.
+
+## `Value`
+
+<a id="Value" />
+The result of a call. Read it with the accessor matching the return type
+that was requested: a mismatched accessor returns an unrelated field, not a
+converted value.
+
+```gust
+def Value
+
+    type_code: integer
+    ival: integer
+    fval: float
+
+end
+```
+
+**Fields**
+
+- `type_code: integer` — The return type the value was read as.
+- `ival: integer` — The result of an integer or pointer return.
+- `fval: float` — The result of a floating-point return.
+
+**Methods**
+
+<a id="Value.as_integer" />
+```gust
+def Value.as_integer() -> integer
+```
+
+The result of an integer return.
+
+---
+
+<a id="Value.as_float" />
+```gust
+def Value.as_float() -> float
+```
+
+The result of a floating-point return.
+
+---
+
+<a id="Value.as_address" />
+```gust
+def Value.as_address() -> integer
+```
+
+The result of a pointer return, as an address for use with `unsafe` or
+as the next call's `ptr` argument.
+
+## `Library`
+
+<a id="Library" />
+An open shared library, returned by `open`. Resolve symbols in it with
+`symbol`, and release it with `close` once no resolved symbol will be
+called again.
+
+```gust
+def Library
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The loader's handle address.
+
+**Methods**
+
+<a id="Library.symbol" />
+```gust
+def Library.symbol(name: string) -> Symbol
+```
+
+Resolve `name` in this library and return a callable `Symbol`.
+
+**Parameters**
+
+- `name` — Symbol name, e.g. "cos".
+
+**Raises**
+
+- `DlError` — when the symbol is not found in this library.
+
+---
+
+<a id="Library.close" />
+```gust
+def Library.close() -> none
+```
+
+Release this library handle. After the last handle to a library is
+closed the library may be unmapped, so no symbol resolved from it may be
+called afterwards.
+
+## `Symbol`
+
+<a id="Symbol" />
+A symbol resolved from a `Library`: an address that can be called with a
+C signature given per call. The same symbol may be called with different
+signatures, since the signature lives at the call site, not the symbol.
+
+```gust
+def Symbol
+
+    address: integer
+
+end
+```
+
+**Fields**
+
+- `address: integer` — The symbol's address in the loaded library.
+
+**Methods**
+
+<a id="Symbol.call" />
+```gust
+def Symbol.call(args: list[Arg], ret: integer) -> Value
+```
+
+Call this symbol with `args` and read the result as `ret`.
+
+**Parameters**
+
+- `args` — The arguments, each built with `i32`/`i64`/`f64`/`ptr` and the other constructors; order and types must match the C function's fixed parameters.
+- `ret` — The return type code the result is read as, e.g. `F64` or `VOID`.
+
+**Raises**
+
+- `DlError` — when the call interface cannot be built for the given argument and return types.
+
+---
+
+<a id="Symbol.call_variadic" />
+```gust
+def Symbol.call_variadic(
+    args: list[Arg],
+    nfixed: integer,
+    ret: integer,
+) -> Value
+```
+
+Call a variadic symbol, where `nfixed` arguments are the declared fixed
+parameters and the rest are variadic. The variadic C ABI differs from the
+ordinary one, so a variadic function must be called this way rather than
+through `call`.
+
+**Parameters**
+
+- `args` — All arguments, fixed ones first.
+- `nfixed` — Count of declared fixed parameters, from 0 to `args.length`. The trailing arguments receive the C default argument promotions, so an `i8` or `f32` among them is passed as an `int` or `double`.
+- `ret` — The return type code.
+
+**Raises**
+
+- `DlError` — when the call interface cannot be built.
+
+## `DlError`
+
+<a id="DlError" />
+A dynamic-loading operation failed: the library could not be opened, or
+a symbol could not be resolved.
+
+**Implements:** [`Error`](#Error)
+
+```gust
+def DlError implements Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — human-readable description, including the loader's own error text when one is available.
+
+## Functions
+
+<a id="dl.i8" />
+```gust
+def i8(value: integer) -> Arg
+```
+
+An argument of C type `int8_t`.
+
+**Parameters**
+
+- `value: integer` — The value to pass; only its low 8 bits are used.
+
+---
+
+<a id="dl.u8" />
+```gust
+def u8(value: integer) -> Arg
+```
+
+An argument of C type `uint8_t`.
+
+**Parameters**
+
+- `value: integer` — The value to pass; only its low 8 bits are used.
+
+---
+
+<a id="dl.i16" />
+```gust
+def i16(value: integer) -> Arg
+```
+
+An argument of C type `int16_t`.
+
+**Parameters**
+
+- `value: integer` — The value to pass; only its low 16 bits are used.
+
+---
+
+<a id="dl.u16" />
+```gust
+def u16(value: integer) -> Arg
+```
+
+An argument of C type `uint16_t`.
+
+**Parameters**
+
+- `value: integer` — The value to pass; only its low 16 bits are used.
+
+---
+
+<a id="dl.i32" />
+```gust
+def i32(value: integer) -> Arg
+```
+
+An argument of C type `int32_t` (a plain C `int` on common ABIs).
+
+**Parameters**
+
+- `value: integer` — The value to pass; only its low 32 bits are used.
+
+---
+
+<a id="dl.u32" />
+```gust
+def u32(value: integer) -> Arg
+```
+
+An argument of C type `uint32_t`.
+
+**Parameters**
+
+- `value: integer` — The value to pass; only its low 32 bits are used.
+
+---
+
+<a id="dl.i64" />
+```gust
+def i64(value: integer) -> Arg
+```
+
+An argument of C type `int64_t` (a C `long` on 64-bit ABIs).
+
+**Parameters**
+
+- `value: integer` — The value to pass.
+
+---
+
+<a id="dl.u64" />
+```gust
+def u64(value: integer) -> Arg
+```
+
+An argument of C type `uint64_t`.
+
+**Parameters**
+
+- `value: integer` — The value to pass.
+
+---
+
+<a id="dl.f32" />
+```gust
+def f32(value: float) -> Arg
+```
+
+An argument of C type `float`, rounded to single precision.
+
+**Parameters**
+
+- `value: float` — The value to pass.
+
+---
+
+<a id="dl.f64" />
+```gust
+def f64(value: float) -> Arg
+```
+
+An argument of C type `double`.
+
+**Parameters**
+
+- `value: float` — The value to pass.
+
+---
+
+<a id="dl.ptr" />
+```gust
+def ptr(address: integer) -> Arg
+```
+
+A pointer argument: any C pointer type, passed as an address.
+
+**Parameters**
+
+- `address: integer` — The address to pass, e.g. from `unsafe` memory or a prior call's pointer result.
+
+---
+
+<a id="dl.cstring" />
+```gust
+def cstring(value: string) -> integer
+```
+
+Copy `value` into a freshly allocated, NUL-terminated C string buffer and
+return its address, ready to pass as a `ptr` argument. The caller owns the
+buffer and must release it with `unsafe.free`.
+
+**Parameters**
+
+- `value: string` — The string to copy.
+
+---
+
+<a id="dl.read_cstring" />
+```gust
+def read_cstring(address: integer) -> string
+```
+
+Read the NUL-terminated C string at `address` into a Gust string. Returns
+the empty string for a null address.
+
+**Parameters**
+
+- `address: integer` — Address of the first byte of a NUL-terminated C string, e.g. a pointer result from a call.
+
+---
+
+<a id="dl.open" />
+```gust
+def open(path: string, flags: integer) -> Library
+```
+
+Load the shared library named by `path` and return a handle to it. The
+name is resolved by the system loader, so a bare `libfoo.so` is searched
+for along the usual library path while an absolute path is used as given.
+
+**Parameters**
+
+- `path: string` — Library file name or path, e.g. "libm.so.6".
+- `flags: integer` — Binding and visibility, a combination of the `RTLD_*` constants. One of `RTLD_LAZY` or `RTLD_NOW` is required.
+
+**Raises**
+
+- `DlError` — when the library cannot be loaded.

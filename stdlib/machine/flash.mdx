@@ -1,0 +1,120 @@
+---
+title: machine.flash
+description: "Raw on-chip flash access, for persisting data across reboots and power loss"
+---
+
+```gust
+use machine.flash
+```
+
+Raw on-chip flash access, for persisting data across reboots and power loss.
+
+Flash is written in two steps: erase a region (which sets every bit to 1), then
+program pages into it.
+
+Two hard rules the hardware imposes:
+
+- Erase offset and size must be multiples of `SECTOR_SIZE` (4096 bytes).
+- Program offset must be a multiple of `PAGE_SIZE` (256 bytes). Data shorter
+  than a page boundary is padded with 0xFF.
+
+What an offset is measured from depends on the chip. On the RP series it is the
+start of flash, which the running firmware also occupies — choose an offset well
+past your program image, since writing over it bricks the board until the next
+flash. On the ESP32 family, writable flash is a dedicated data region reserved
+for this package, and offset 0 is its start, so no offset can reach the
+bootloader or the app image.
+
+Either way `total_size` reports how much space is addressable, so a region can be
+reserved at the top:
+
+```gust
+use machine.flash
+
+def main() -> none
+    region := flash.total_size() - flash.SECTOR_SIZE   # last sector
+    flash.erase(region, flash.SECTOR_SIZE)
+    flash.program(region, "boot-count=1" as bytes)
+    print(flash.read(region, 12) as string)
+end
+```
+
+<Note>
+Only available where `has("flash")`.
+</Note>
+
+**On this page:** [`total_size`](#machine.flash.total_size) · [`erase`](#machine.flash.erase) · [`program`](#machine.flash.program) · [`read`](#machine.flash.read)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `SECTOR_SIZE` | `integer` | defined in C |
+| `PAGE_SIZE` | `integer` | defined in C |
+
+## Functions
+
+<a id="machine.flash.total_size" />
+```gust
+def foreign total_size() -> integer
+```
+
+The number of bytes this package can address: the board's total flash on
+the RP series, and the size of the reserved data region on the ESP32 family
+(0 when the running image has no such region).
+
+---
+
+<a id="machine.flash.erase" />
+```gust
+def foreign erase(offset: integer, size: integer) -> none
+```
+
+Erase `size` bytes starting at `offset`, setting every bit to 1. Both
+`offset` and `size` must be multiples of `SECTOR_SIZE`.
+
+**Parameters**
+
+- `offset: integer` — Byte offset into the writable region; a multiple of `SECTOR_SIZE`.
+- `size: integer` — Number of bytes to erase; a multiple of `SECTOR_SIZE`.
+
+**Raises**
+
+- `ValueError` — when `offset` or `size` is not sector-aligned, or the range falls outside the writable region.
+- `RuntimeError` — when the chip has no writable region, or the erase fails.
+
+---
+
+<a id="machine.flash.program" />
+```gust
+def foreign program(offset: integer, data: bytes) -> none
+```
+
+Write `data` to flash starting at `offset`, which must be a multiple of
+`PAGE_SIZE`. The target region must already be erased. `data` is written in
+whole pages, padded with 0xFF to the next page boundary.
+
+**Parameters**
+
+- `offset: integer` — Byte offset into the writable region; a multiple of `PAGE_SIZE`.
+- `data: bytes` — Bytes to write.
+
+**Raises**
+
+- `ValueError` — when `offset` is not page-aligned or the data would fall outside the writable region.
+- `RuntimeError` — when the chip has no writable region, or the write fails.
+
+---
+
+<a id="machine.flash.read" />
+```gust
+def foreign read(offset: integer, count: integer) -> bytes
+```
+
+Read `count` bytes from flash starting at `offset`. Returns the bytes
+read, or an empty value when the range falls outside the writable region.
+
+**Parameters**
+
+- `offset: integer` — Byte offset into the writable region.
+- `count: integer` — Number of bytes to read.

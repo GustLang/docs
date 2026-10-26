@@ -1,0 +1,9291 @@
+---
+title: lvgl
+description: "A widget UI toolkit, wrapping the LVGL rendering engine"
+---
+
+```gust
+use lvgl
+```
+
+A widget UI toolkit, wrapping the LVGL rendering engine. Where the `drm` and
+`framebuffer` packages hand back a raw pixel buffer, this draws laid-out, styled
+widgets — labels, buttons, sliders, lists, charts, and more — with anti-aliased
+text and pointer events.
+
+Two displays are supported, one per platform. A Linux program presents straight
+to `/dev/dri/card<index>` through LVGL's DRM backend (no window system
+required), acquired with `start`. An ESP32 program drives an ST7789 panel over
+SPI, brought up with `start_st7789` (see st7789.g). Everything above the
+display — widgets, layout, styling, events, the render loop — is the same on
+both.
+
+Widgets are objects: a widget is created against a parent (the active `screen`,
+or another widget) and configured through its methods — sizing, positioning,
+styling, layout, and per-widget behavior. `on_click` and `on_event` route
+interactions back into Gust functions. `run` enters the event loop and renders
+until the process exits.
+
+Nothing on screen has to hold still: `animate` moves a widget's property from
+one value to another over time, and `timer` calls a function of yours on a
+period. Both are driven by the same loop that draws, so a handler they run may
+touch the interface directly.
+
+Colors are 24-bit `0xRRGGBB` integers. Sizes and positions are in pixels. Style
+methods take an optional `Part` and `State` to target a sub-component or an
+interaction state (default: the widget's main part in its default state).
+
+Presenting to a card is Linux-only, and requires DRM master (no compositor
+owning the card).
+
+The notes below are about the LVGL a native build links against; an ESP32 build
+compiles LVGL into the firmware itself and configures it as described here
+already.
+
+The linked LVGL must be built with `LV_USE_STDLIB_MALLOC` set to
+`LV_STDLIB_CLIB`. Its built-in allocator defaults to a 64 KB pool, and one
+refresh that draws several dozen widgets can exceed it, because that frame's
+draw tasks and any off-screen layers are all live at once. The default
+`LV_ASSERT_HANDLER` halts in `while(1)`, so exhausting the pool shows up as a
+process spinning at full CPU on a frame that never reaches the display, silent
+because `LV_USE_LOG` defaults to 0. Building the same interface up across
+several refreshes can stay under the ceiling, which makes the limit look
+intermittent. Enabling `LV_USE_LOG` is worthwhile for the same reason, since
+every failure path in the DRM backend reports only through it.
+
+**Examples**
+
+```gust
+use lvgl
+
+def main() -> none
+    if not lvgl.start(0)
+        return
+    end
+    screen := lvgl.screen()
+    screen.set_bg_color(0x101828)
+
+    panel := lvgl.container(screen)
+    panel.set_size(300, 200)
+    panel.center()
+    panel.set_flex_flow(lvgl.FlexFlow.column)
+    panel.set_flex_align(lvgl.FlexAlign.center, lvgl.FlexAlign.center,
+        lvgl.FlexAlign.center)
+
+    title := lvgl.label(panel)
+    title.set_text("Hello, Gust")
+    title.set_text_color(0x38BDF8)
+
+    ok := lvgl.button(panel)
+    ok.set_label("OK")
+    ok.on_click(def () -> none
+        title.set_text("Clicked")
+    end)
+
+    lvgl.run()
+end
+```
+
+<Note>
+Only available on native builds and the ESP32.
+</Note>
+
+**On this page:** [`Align`](#Align) · [`EventCode`](#EventCode) · [`Part`](#Part) · [`State`](#State) · [`Flag`](#Flag) · [`FlexFlow`](#FlexFlow) · [`FlexAlign`](#FlexAlign) · [`ScrollbarMode`](#ScrollbarMode) · [`LongMode`](#LongMode) · [`TextAlign`](#TextAlign) · [`GradDir`](#GradDir) · [`BorderSide`](#BorderSide) · [`BarMode`](#BarMode) · [`SliderMode`](#SliderMode) · [`RollerMode`](#RollerMode) · [`Opa`](#Opa) · [`ArcMode`](#ArcMode) · [`Orientation`](#Orientation) · [`Dir`](#Dir) · [`ScaleMode`](#ScaleMode) · [`ChartType`](#ChartType) · [`ChartAxis`](#ChartAxis) · [`ChartUpdateMode`](#ChartUpdateMode) · [`KeyboardMode`](#KeyboardMode) · [`ImageAlign`](#ImageAlign) · [`BlendMode`](#BlendMode) · [`SpanOverflow`](#SpanOverflow) · [`SpanMode`](#SpanMode) · [`MenuHeaderMode`](#MenuHeaderMode) · [`ButtonCtrl`](#ButtonCtrl) · [`CellCtrl`](#CellCtrl) · [`ImageButtonState`](#ImageButtonState) · [`TextDecor`](#TextDecor) · [`Key`](#Key) · [`ScreenAnim`](#ScreenAnim) · [`AnimProp`](#AnimProp) · [`AnimPath`](#AnimPath) · [`Anim`](#Anim) · [`AnimImage`](#AnimImage) · [`Arc`](#Arc) · [`Bar`](#Bar) · [`Button`](#Button) · [`ButtonMatrix`](#ButtonMatrix) · [`Date`](#Date) · [`Calendar`](#Calendar) · [`Canvas`](#Canvas) · [`ChartSeries`](#ChartSeries) · [`ChartCursor`](#ChartCursor) · [`Chart`](#Chart) · [`Checkbox`](#Checkbox) · [`Dropdown`](#Dropdown) · [`Point`](#Point) · [`Group`](#Group) · [`Image`](#Image) · [`ImageButton`](#ImageButton) · [`Indev`](#Indev) · [`Pointer`](#Pointer) · [`Keypad`](#Keypad) · [`Encoder`](#Encoder) · [`Keyboard`](#Keyboard) · [`Label`](#Label) · [`Led`](#Led) · [`Line`](#Line) · [`List`](#List) · [`Menu`](#Menu) · [`Msgbox`](#Msgbox) · [`Obj`](#Obj) · [`Roller`](#Roller) · [`Scale`](#Scale) · [`Slider`](#Slider) · [`Span`](#Span) · [`SpanGroup`](#SpanGroup) · [`Spinbox`](#Spinbox) · [`Spinner`](#Spinner) · [`Switch`](#Switch) · [`Cell`](#Cell) · [`Table`](#Table) · [`Tabview`](#Tabview) · [`TextArea`](#TextArea) · [`TileView`](#TileView) · [`Timer`](#Timer) · [`Win`](#Win) · [`St7789`](#St7789) · [`animate`](#lvgl.animate) · [`animate_custom`](#lvgl.animate_custom) · [`stop_animations`](#lvgl.stop_animations) · [`stop_all_animations`](#lvgl.stop_all_animations) · [`running_animations`](#lvgl.running_animations) · [`duration_for_speed`](#lvgl.duration_for_speed) · [`anim_image`](#lvgl.anim_image) · [`arc`](#lvgl.arc) · [`bar`](#lvgl.bar) · [`button`](#lvgl.button) · [`button_matrix`](#lvgl.button_matrix) · [`calendar`](#lvgl.calendar) · [`canvas`](#lvgl.canvas) · [`chart`](#lvgl.chart) · [`checkbox`](#lvgl.checkbox) · [`dropdown`](#lvgl.dropdown) · [`event_code`](#lvgl.event_code) · [`event_target`](#lvgl.event_target) · [`event_receiver`](#lvgl.event_receiver) · [`event_key`](#lvgl.event_key) · [`stop_event_bubbling`](#lvgl.stop_event_bubbling) · [`group`](#lvgl.group) · [`set_default_group`](#lvgl.set_default_group) · [`image`](#lvgl.image) · [`image_button`](#lvgl.image_button) · [`pointer`](#lvgl.pointer) · [`keypad`](#lvgl.keypad) · [`encoder`](#lvgl.encoder) · [`keyboard`](#lvgl.keyboard) · [`label`](#lvgl.label) · [`led`](#lvgl.led) · [`line`](#lvgl.line) · [`list_view`](#lvgl.list_view) · [`start`](#lvgl.start) · [`start_offscreen`](#lvgl.start_offscreen) · [`screen`](#lvgl.screen) · [`load_screen`](#lvgl.load_screen) · [`load_screen_animated`](#lvgl.load_screen_animated) · [`top_layer`](#lvgl.top_layer) · [`bottom_layer`](#lvgl.bottom_layer) · [`system_layer`](#lvgl.system_layer) · [`set_rotation`](#lvgl.set_rotation) · [`run`](#lvgl.run) · [`run_once`](#lvgl.run_once) · [`screenshot`](#lvgl.screenshot) · [`tick`](#lvgl.tick) · [`menu`](#lvgl.menu) · [`msgbox`](#lvgl.msgbox) · [`container`](#lvgl.container) · [`create_screen`](#lvgl.create_screen) · [`roller`](#lvgl.roller) · [`scale`](#lvgl.scale) · [`slider`](#lvgl.slider) · [`span_group`](#lvgl.span_group) · [`spinbox`](#lvgl.spinbox) · [`spinner`](#lvgl.spinner) · [`switch`](#lvgl.switch) · [`table`](#lvgl.table) · [`tabview`](#lvgl.tabview) · [`textarea`](#lvgl.textarea) · [`tileview`](#lvgl.tileview) · [`timer`](#lvgl.timer) · [`call_soon`](#lvgl.call_soon) · [`enable_timers`](#lvgl.enable_timers) · [`idle_percent`](#lvgl.idle_percent) · [`time_until_next_timer`](#lvgl.time_until_next_timer) · [`win`](#lvgl.win) · [`start_st7789`](#lvgl.start_st7789)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `ICON_BULLET` | `string` | `"•"` |
+| `ICON_AUDIO` | `string` | `""` |
+| `ICON_VIDEO` | `string` | `""` |
+| `ICON_LIST` | `string` | `""` |
+| `ICON_OK` | `string` | `""` |
+| `ICON_CLOSE` | `string` | `""` |
+| `ICON_POWER` | `string` | `""` |
+| `ICON_SETTINGS` | `string` | `""` |
+| `ICON_HOME` | `string` | `""` |
+| `ICON_DOWNLOAD` | `string` | `""` |
+| `ICON_DRIVE` | `string` | `""` |
+| `ICON_REFRESH` | `string` | `""` |
+| `ICON_MUTE` | `string` | `""` |
+| `ICON_VOLUME_MID` | `string` | `""` |
+| `ICON_VOLUME_MAX` | `string` | `""` |
+| `ICON_IMAGE` | `string` | `""` |
+| `ICON_TINT` | `string` | `""` |
+| `ICON_PREV` | `string` | `""` |
+| `ICON_PLAY` | `string` | `""` |
+| `ICON_PAUSE` | `string` | `""` |
+| `ICON_STOP` | `string` | `""` |
+| `ICON_NEXT` | `string` | `""` |
+| `ICON_EJECT` | `string` | `""` |
+| `ICON_LEFT` | `string` | `""` |
+| `ICON_RIGHT` | `string` | `""` |
+| `ICON_PLUS` | `string` | `""` |
+| `ICON_MINUS` | `string` | `""` |
+| `ICON_EYE_OPEN` | `string` | `""` |
+| `ICON_EYE_CLOSE` | `string` | `""` |
+| `ICON_WARNING` | `string` | `""` |
+| `ICON_SHUFFLE` | `string` | `""` |
+| `ICON_UP` | `string` | `""` |
+| `ICON_DOWN` | `string` | `""` |
+| `ICON_LOOP` | `string` | `""` |
+| `ICON_DIRECTORY` | `string` | `""` |
+| `ICON_UPLOAD` | `string` | `""` |
+| `ICON_CALL` | `string` | `""` |
+| `ICON_CUT` | `string` | `""` |
+| `ICON_COPY` | `string` | `""` |
+| `ICON_SAVE` | `string` | `""` |
+| `ICON_BARS` | `string` | `""` |
+| `ICON_ENVELOPE` | `string` | `""` |
+| `ICON_CHARGE` | `string` | `""` |
+| `ICON_PASTE` | `string` | `""` |
+| `ICON_BELL` | `string` | `""` |
+| `ICON_KEYBOARD` | `string` | `""` |
+| `ICON_GPS` | `string` | `""` |
+| `ICON_FILE` | `string` | `""` |
+| `ICON_WIFI` | `string` | `""` |
+| `ICON_BATTERY_FULL` | `string` | `""` |
+| `ICON_BATTERY_EMPTY` | `string` | `""` |
+| `ICON_USB` | `string` | `""` |
+| `ICON_BLUETOOTH` | `string` | `""` |
+| `ICON_TRASH` | `string` | `""` |
+| `ICON_EDIT` | `string` | `""` |
+| `ICON_BACKSPACE` | `string` | `""` |
+| `ICON_SD_CARD` | `string` | `""` |
+| `ICON_NEW_LINE` | `string` | `""` |
+
+## `Align`
+
+<a id="Align" />
+```gust
+enum Align: integer
+```
+
+Anchor point used by `align` and `align_to` to position a widget
+relative to its parent (or a reference widget). `out_*` variants place the
+widget just outside the reference edge.
+
+**Variants**
+
+- `default = 0` — No alignment (keep the current position).
+- `top_left = 1` — Parent's top-left corner.
+- `top_mid = 2` — Centered along the parent's top edge.
+- `top_right = 3` — Parent's top-right corner.
+- `bottom_left = 4` — Parent's bottom-left corner.
+- `bottom_mid = 5` — Centered along the parent's bottom edge.
+- `bottom_right = 6` — Parent's bottom-right corner.
+- `left_mid = 7` — Centered along the parent's left edge.
+- `right_mid = 8` — Centered along the parent's right edge.
+- `center = 9` — Parent's center.
+- `out_top_left = 10` — Outside, above the top-left corner.
+- `out_top_mid = 11` — Outside, above the top edge, centered.
+- `out_top_right = 12` — Outside, above the top-right corner.
+- `out_bottom_left = 13` — Outside, below the bottom-left corner.
+- `out_bottom_mid = 14` — Outside, below the bottom edge, centered.
+- `out_bottom_right = 15` — Outside, below the bottom-right corner.
+- `out_left_top = 16` — Outside, left of the top-left corner.
+- `out_left_mid = 17` — Outside, left of the left edge, centered.
+- `out_left_bottom = 18` — Outside, left of the bottom-left corner.
+- `out_right_top = 19` — Outside, right of the top-right corner.
+- `out_right_mid = 20` — Outside, right of the right edge, centered.
+- `out_right_bottom = 21` — Outside, right of the bottom-right corner.
+
+## `EventCode`
+
+<a id="EventCode" />
+```gust
+enum EventCode: integer
+```
+
+A widget interaction, passed to `on_event` to select which events invoke
+the handler and returned by `event_code` inside a handler.
+
+**Variants**
+
+- `every = 0` — Every event (register a handler for all interaction types).
+- `pressed = 1` — A press began on the widget.
+- `pressing = 2` — The widget is being held pressed (sent repeatedly).
+- `press_lost = 3` — The press slid off the widget.
+- `short_clicked = 4` — Released before the long-press threshold.
+- `long_pressed = 8` — Held past the long-press threshold.
+- `long_pressed_repeat = 9` — Sent repeatedly while long-pressed.
+- `clicked = 10` — Released without scrolling (a completed tap).
+- `released = 11` — The press was released.
+- `scroll_begin = 12` — Scrolling started.
+- `scroll_end = 14` — Scrolling finished.
+- `scrolling = 15` — The widget is scrolling.
+- `gesture = 16` — A directional gesture was recognized.
+- `key = 17` — A key was sent to the focused widget.
+- `focused = 19` — The widget gained focus.
+- `defocused = 20` — The widget lost focus.
+- `value_changed = 35` — The widget's value changed (slider, switch, dropdown).
+- `ready = 38` — A process finished (e.g. a text area confirmed).
+- `cancel = 39` — A process was cancelled.
+- `deleted = 41` — The widget is being deleted.
+- `size_changed = 49` — The widget's size changed.
+
+## `Part`
+
+<a id="Part" />
+```gust
+enum Part: integer
+```
+
+A sub-component of a widget that a style setter can target. A slider, for
+example, styles its track through `main`, its filled portion through
+`indicator`, and its draggable handle through `knob`.
+
+**Variants**
+
+- `main = 0` — The widget's background and main body.
+- `scrollbar = 65536` — The scrollbar.
+- `indicator = 131072` — The indicator: a slider/bar fill, a checkbox tick.
+- `knob = 196608` — The draggable handle of a slider or switch.
+- `selected = 262144` — The currently selected item (roller, dropdown list).
+- `items = 327680` — The repeated items of a container-like widget.
+- `cursor = 393216` — The cursor of a text area or chart.
+
+## `State`
+
+<a id="State" />
+```gust
+enum State: integer
+```
+
+A widget's interaction state, used both to select a style and to query or
+force the state (see `add_state`, `has_state`).
+
+**Variants**
+
+- `default = 0` — The resting state.
+- `checked = 1` — Toggled on (switch, checkbox, checkable button).
+- `focused = 2` — Has input focus.
+- `focus_key = 4` — Focused via a keypad rather than a pointer.
+- `edited = 8` — Being edited (e.g. a spinbox in edit mode).
+- `hovered = 16` — The pointer is over the widget.
+- `pressed = 32` — Currently pressed.
+- `scrolled = 64` — Being scrolled.
+- `disabled = 128` — Non-interactive and dimmed.
+
+## `Flag`
+
+<a id="Flag" />
+```gust
+enum Flag: integer
+```
+
+A behavior toggle set with `add_flag` and cleared with `remove_flag`.
+
+**Variants**
+
+- `hidden = 1` — The widget is not drawn and takes no space in layouts.
+- `clickable = 2` — The widget receives pointer clicks.
+- `click_focusable = 4` — Clicking the widget focuses it.
+- `checkable = 8` — Clicking toggles the checked state.
+- `scrollable = 16` — The widget can be scrolled.
+- `scroll_on_focus = 1024` — Scroll the widget into view when it is focused.
+- `event_bubble = 16384` — Propagate the widget's events to its parent.
+- `ignore_layout = 131072` — The widget is not positioned by its parent's layout.
+- `floating = 262144` — The widget ignores layout and does not scroll with its parent.
+
+## `FlexFlow`
+
+<a id="FlexFlow" />
+```gust
+enum FlexFlow: integer
+```
+
+Direction and wrapping of a flex layout, passed to `set_flex_flow`.
+
+**Variants**
+
+- `row = 0` — Lay children left to right.
+- `column = 1` — Lay children top to bottom.
+- `row_wrap = 4` — Rows, wrapping to a new line when full.
+- `row_reverse = 8` — Rows, right to left.
+- `row_wrap_reverse = 12` — Reversed rows that wrap.
+- `column_wrap = 5` — Columns, wrapping to a new column when full.
+- `column_reverse = 9` — Columns, bottom to top.
+- `column_wrap_reverse = 13` — Reversed columns that wrap.
+
+## `FlexAlign`
+
+<a id="FlexAlign" />
+```gust
+enum FlexAlign: integer
+```
+
+How a flex layout distributes children along or across the track,
+passed to `set_flex_align`.
+
+**Variants**
+
+- `at_start = 0` — Pack children at the start.
+- `at_end = 1` — Pack children at the end.
+- `center = 2` — Pack children in the center.
+- `space_evenly = 3` — Equal space around and between all children.
+- `space_around = 4` — Equal space around each child (edges get half).
+- `space_between = 5` — Equal space between children, none at the edges.
+
+## `ScrollbarMode`
+
+<a id="ScrollbarMode" />
+```gust
+enum ScrollbarMode: integer
+```
+
+When a widget shows its scrollbar, passed to `set_scrollbar_mode`.
+
+**Variants**
+
+- `off = 0` — Never show the scrollbar.
+- `on = 1` — Always show the scrollbar.
+- `active = 2` — Show only while the widget is being scrolled.
+- `auto = 3` — Show when the content overflows.
+
+## `LongMode`
+
+<a id="LongMode" />
+```gust
+enum LongMode: integer
+```
+
+How a label handles text longer than its width, passed to
+`set_long_mode`.
+
+**Variants**
+
+- `wrap = 0` — Break lines at word boundaries.
+- `dot = 1` — Truncate with a trailing ellipsis.
+- `scroll = 2` — Scroll back and forth when focused or hovered.
+- `scroll_circular = 3` — Scroll continuously in one direction.
+- `clip = 4` — Cut the text at the widget's edge.
+
+## `TextAlign`
+
+<a id="TextAlign" />
+```gust
+enum TextAlign: integer
+```
+
+Horizontal text alignment for the `set_text_align` style.
+
+**Variants**
+
+- `auto = 0` — Choose based on the base text direction.
+- `left = 1` — Align text to the left.
+- `center = 2` — Center the text.
+- `right = 3` — Align text to the right.
+
+## `GradDir`
+
+<a id="GradDir" />
+```gust
+enum GradDir: integer
+```
+
+Direction of a background color gradient, for `set_bg_grad_dir`.
+
+**Variants**
+
+- `off = 0` — No gradient (solid `bg_color`).
+- `vertical = 1` — Gradient from top to bottom.
+- `horizontal = 2` — Gradient from left to right.
+
+## `BorderSide`
+
+<a id="BorderSide" />
+```gust
+enum BorderSide: integer
+```
+
+Which edges of a widget draw a border, for `set_border_side`. Combine
+edges with `|`, e.g. `BorderSide.top | BorderSide.bottom`.
+
+**Variants**
+
+- `bottom = 1` — The bottom edge.
+- `top = 2` — The top edge.
+- `left = 4` — The left edge.
+- `right = 8` — The right edge.
+- `full = 15` — All four edges.
+
+## `BarMode`
+
+<a id="BarMode" />
+```gust
+enum BarMode: integer
+```
+
+How a bar's indicator is drawn, passed to `set_mode`.
+
+**Variants**
+
+- `normal = 0` — Fill from the start to the value.
+- `symmetrical = 1` — Fill from the zero point out to the value.
+- `range = 2` — Fill between a start value and the value.
+
+## `SliderMode`
+
+<a id="SliderMode" />
+```gust
+enum SliderMode: integer
+```
+
+How a slider behaves, passed to `set_mode`.
+
+**Variants**
+
+- `normal = 0` — A single knob from the start to the value.
+- `symmetrical = 1` — A knob measured from the zero point.
+- `range = 2` — Two knobs bounding a range.
+
+## `RollerMode`
+
+<a id="RollerMode" />
+```gust
+enum RollerMode: integer
+```
+
+Whether a roller wraps around, passed to `set_options`.
+
+**Variants**
+
+- `normal = 0` — Stop at the first and last option.
+- `infinite = 1` — Wrap around endlessly.
+
+## `Opa`
+
+<a id="Opa" />
+```gust
+enum Opa: integer
+```
+
+Named opacity levels, from fully transparent to fully opaque. Opacity
+setters also accept any integer from 0 to 255.
+
+**Variants**
+
+- `transparent = 0` — Fully transparent (0).
+- `low = 76` — Roughly 30% opaque (76).
+- `medium = 127` — Roughly 50% opaque (127).
+- `high = 178` — Roughly 70% opaque (178).
+- `cover = 255` — Fully opaque (255).
+
+## `ArcMode`
+
+<a id="ArcMode" />
+```gust
+enum ArcMode: integer
+```
+
+How an arc fills between its background angles, passed to `Arc.set_mode`.
+
+**Variants**
+
+- `normal = 0` — Fill from the start angle to the value.
+- `symmetrical = 1` — Fill from the middle of the range out to the value.
+- `reverse = 2` — Fill from the end angle back to the value.
+
+## `Orientation`
+
+<a id="Orientation" />
+```gust
+enum Orientation: integer
+```
+
+Which way a bar, slider, or switch runs, passed to `set_orientation`.
+
+**Variants**
+
+- `auto = 0` — Follow the widget's own proportions.
+- `horizontal = 1` — Run left to right.
+- `vertical = 2` — Run bottom to top.
+
+## `Dir`
+
+<a id="Dir" />
+```gust
+enum Dir: integer
+```
+
+A direction or set of directions. Combine single edges with `|`, e.g.
+`Dir.left | Dir.right`.
+
+**Variants**
+
+- `no_direction = 0` — No direction.
+- `left = 1` — Leftwards.
+- `right = 2` — Rightwards.
+- `top = 4` — Upwards.
+- `bottom = 8` — Downwards.
+- `horizontal = 3` — Left and right.
+- `vertical = 12` — Top and bottom.
+- `all = 15` — Every direction.
+
+## `ScaleMode`
+
+<a id="ScaleMode" />
+```gust
+enum ScaleMode: integer
+```
+
+Where a scale draws its ticks and labels, passed to `Scale.set_mode`.
+
+**Variants**
+
+- `horizontal_top = 0` — A horizontal ruler with ticks above the line.
+- `horizontal_bottom = 1` — A horizontal ruler with ticks below the line.
+- `vertical_left = 2` — A vertical ruler with ticks to the left.
+- `vertical_right = 4` — A vertical ruler with ticks to the right.
+- `round_inner = 8` — A circular dial with ticks inside the arc.
+- `round_outer = 16` — A circular dial with ticks outside the arc.
+
+## `ChartType`
+
+<a id="ChartType" />
+```gust
+enum ChartType: integer
+```
+
+How a chart draws its series, passed to `Chart.set_type`.
+
+**Variants**
+
+- `no_series = 0` — Draw no series.
+- `line = 1` — Connect the points of each series with lines.
+- `bar = 2` — Draw each point as a column.
+- `scatter = 3` — Plot points at explicit x and y values.
+
+## `ChartAxis`
+
+<a id="ChartAxis" />
+```gust
+enum ChartAxis: integer
+```
+
+Which axis a chart series is measured against, passed to
+`Chart.add_series`.
+
+**Variants**
+
+- `primary_y = 0` — The left-hand vertical axis.
+- `secondary_y = 1` — The right-hand vertical axis.
+- `primary_x = 2` — The bottom horizontal axis.
+- `secondary_x = 4` — The top horizontal axis.
+
+## `ChartUpdateMode`
+
+<a id="ChartUpdateMode" />
+```gust
+enum ChartUpdateMode: integer
+```
+
+What happens to older points when a chart is fed a new one with
+`Chart.push_value`, passed to `Chart.set_update_mode`.
+
+**Variants**
+
+- `shift = 0` — Shift every point left and append the new one on the right.
+- `circular = 1` — Overwrite the oldest point in place, sweeping around.
+
+## `KeyboardMode`
+
+<a id="KeyboardMode" />
+```gust
+enum KeyboardMode: integer
+```
+
+Which key layout a keyboard shows, passed to `Keyboard.set_mode` and
+`Keyboard.set_map`.
+
+**Variants**
+
+- `text_lower = 0` — Lower-case letters.
+- `text_upper = 1` — Upper-case letters.
+- `special = 2` — Punctuation and symbols.
+- `number = 3` — Digits and arithmetic signs.
+- `user_1 = 4` — The first custom layout.
+- `user_2 = 5` — The second custom layout.
+- `user_3 = 6` — The third custom layout.
+- `user_4 = 7` — The fourth custom layout.
+
+## `ImageAlign`
+
+<a id="ImageAlign" />
+```gust
+enum ImageAlign: integer
+```
+
+How an image is placed and fitted inside its widget, passed to
+`Image.set_inner_align`.
+
+**Variants**
+
+- `default = 0` — Draw at the top-left, honoring the offsets.
+- `top_left = 1` — Anchor at the top-left corner.
+- `top_mid = 2` — Anchor at the top edge, centered.
+- `top_right = 3` — Anchor at the top-right corner.
+- `bottom_left = 4` — Anchor at the bottom-left corner.
+- `bottom_mid = 5` — Anchor at the bottom edge, centered.
+- `bottom_right = 6` — Anchor at the bottom-right corner.
+- `left_mid = 7` — Anchor at the left edge, centered.
+- `right_mid = 8` — Anchor at the right edge, centered.
+- `center = 9` — Anchor at the center.
+- `auto_transform = 10` — Keep the transform's pivot at the widget's center.
+- `stretch = 11` — Scale both axes to fill the widget, ignoring aspect ratio.
+- `tile = 12` — Repeat the image to fill the widget.
+- `contain = 13` — Scale to the largest size that fits, keeping aspect ratio.
+- `cover = 14` — Scale to fill the widget, keeping aspect ratio and cropping.
+
+## `BlendMode`
+
+<a id="BlendMode" />
+```gust
+enum BlendMode: integer
+```
+
+How a drawing is combined with what is already on the display, passed to
+`Image.set_blend_mode`.
+
+**Variants**
+
+- `normal = 0` — Mix according to the opacity.
+- `additive = 1` — Add the color channels.
+- `subtractive = 2` — Subtract the drawing from the background.
+- `multiply = 3` — Multiply the color channels.
+- `difference = 4` — Take the absolute difference of the color channels.
+
+## `SpanOverflow`
+
+<a id="SpanOverflow" />
+```gust
+enum SpanOverflow: integer
+```
+
+What a span group does with text that does not fit, passed to
+`SpanGroup.set_overflow`.
+
+**Variants**
+
+- `clip = 0` — Cut the text at the widget's edge.
+- `ellipsis = 1` — Truncate with a trailing ellipsis.
+
+## `SpanMode`
+
+<a id="SpanMode" />
+```gust
+enum SpanMode: integer
+```
+
+How a span group sizes itself around its text, passed to
+`SpanGroup.set_mode`.
+
+**Variants**
+
+- `fixed = 0` — Keep the size set on the widget and clip.
+- `expand = 1` — Grow the widget to the full width of one line of text.
+- `wrap = 2` — Keep the width, break long lines, and grow the height.
+
+## `MenuHeaderMode`
+
+<a id="MenuHeaderMode" />
+```gust
+enum MenuHeaderMode: integer
+```
+
+Where a menu keeps its header bar, passed to `Menu.set_header_mode`.
+
+**Variants**
+
+- `top_fixed = 0` — Pinned to the top.
+- `top_unfixed = 1` — At the top, scrolling out of view with the content.
+- `bottom_fixed = 2` — Pinned to the bottom.
+
+## `ButtonCtrl`
+
+<a id="ButtonCtrl" />
+```gust
+enum ButtonCtrl: integer
+```
+
+A per-button behavior flag of a button matrix, set with
+`ButtonMatrix.add_ctrl` and cleared with `ButtonMatrix.remove_ctrl`.
+Combine flags with `|`.
+
+**Variants**
+
+- `hidden = 16` — The button is not drawn but keeps its space in the layout.
+- `no_repeat = 32` — Do not repeat the long-press event while held.
+- `disabled = 64` — The button is dimmed and takes no input.
+- `checkable = 128` — Clicking the button toggles its checked state.
+- `checked = 256` — The button starts out checked.
+- `click_trig = 512` — Report the value change on release rather than on press.
+- `popover = 1024` — Show the button's text in a pop-over while pressed.
+- `recolor = 2048` — Honor `#RRGGBB text#` recoloring in the button's text.
+- `custom_1 = 16384` — A flag with no built-in meaning, for the program's own use.
+- `custom_2 = 32768` — A second flag with no built-in meaning.
+
+## `CellCtrl`
+
+<a id="CellCtrl" />
+```gust
+enum CellCtrl: integer
+```
+
+A per-cell behavior flag of a table, set with `Table.add_cell_ctrl` and
+cleared with `Table.remove_cell_ctrl`. Combine flags with `|`.
+
+**Variants**
+
+- `merge_right = 1` — Merge the cell with the one to its right.
+- `text_crop = 2` — Crop text that does not fit rather than wrapping it.
+- `custom_1 = 16` — A flag with no built-in meaning, for the program's own use.
+- `custom_2 = 32` — A second flag with no built-in meaning.
+- `custom_3 = 64` — A third flag with no built-in meaning.
+- `custom_4 = 128` — A fourth flag with no built-in meaning.
+
+## `ImageButtonState`
+
+<a id="ImageButtonState" />
+```gust
+enum ImageButtonState: integer
+```
+
+Which of an image button's six appearances a source applies to, passed to
+`ImageButton.set_src` and `ImageButton.set_state`.
+
+**Variants**
+
+- `released = 0` — Idle and unchecked.
+- `pressed = 1` — Held down and unchecked.
+- `disabled = 2` — Non-interactive and unchecked.
+- `checked_released = 3` — Idle and checked.
+- `checked_pressed = 4` — Held down and checked.
+- `checked_disabled = 5` — Non-interactive and checked.
+
+## `TextDecor`
+
+<a id="TextDecor" />
+```gust
+enum TextDecor: integer
+```
+
+A line drawn through or under text, passed to `Span.set_text_decor`.
+Combine values with `|`.
+
+**Variants**
+
+- `no_decor = 0` — No decoration.
+- `underline = 1` — A line under the text.
+- `strikethrough = 2` — A line through the text.
+
+## `Key`
+
+<a id="Key" />
+```gust
+enum Key: integer
+```
+
+A key a `Keypad` sends, or an `Encoder`'s equivalent action. These are
+the keys LVGL acts on itself — moving focus within a `Group` and editing the
+focused widget. Any other key is a character to type, sent as its character
+code.
+
+**Variants**
+
+- `up = 17` — Increase the focused widget's value, or move up.
+- `down = 18` — Decrease the focused widget's value, or move down.
+- `right = 19` — Move right, or to the next character.
+- `left = 20` — Move left, or to the previous character.
+- `escape = 27` — Close or cancel, leaving edit mode.
+- `delete = 127` — Delete the character after the cursor.
+- `backspace = 8` — Delete the character before the cursor.
+- `enter = 10` — Activate the focused widget, as a click does.
+- `next = 9` — Focus the next widget in the group.
+- `previous = 11` — Focus the previous widget in the group.
+- `home = 2` — Move to the beginning.
+- `at_end = 3` — Move to the end.
+
+## `ScreenAnim`
+
+<a id="ScreenAnim" />
+```gust
+enum ScreenAnim: integer
+```
+
+How one screen gives way to another, passed to `load_screen_animated`.
+An `over_*` effect slides the new screen in on top of the old one, a
+`move_*` effect pushes both across together, and an `out_*` effect slides
+the old one away to reveal the new one already in place.
+
+**Variants**
+
+- `no_effect = 0` — Replace at once, with no transition.
+- `over_left = 1` — The new screen slides in from the right, covering the old.
+- `over_right = 2` — The new screen slides in from the left, covering the old.
+- `over_top = 3` — The new screen slides in from below, covering the old.
+- `over_bottom = 4` — The new screen slides in from above, covering the old.
+- `move_left = 5` — Both screens move left together.
+- `move_right = 6` — Both screens move right together.
+- `move_top = 7` — Both screens move up together.
+- `move_bottom = 8` — Both screens move down together.
+- `fade_in = 9` — The new screen fades in over the old.
+- `fade_out = 10` — The old screen fades out, revealing the new.
+- `out_left = 11` — The old screen slides off to the left.
+- `out_right = 12` — The old screen slides off to the right.
+- `out_top = 13` — The old screen slides off upwards.
+- `out_bottom = 14` — The old screen slides off downwards.
+
+## `AnimProp`
+
+<a id="AnimProp" />
+```gust
+enum AnimProp: integer
+```
+
+What an animation changes about the widget it runs on, given to
+`animate`. An animation that has to reach something else drives a function
+of its own instead (`animate_custom`).
+
+**Variants**
+
+- `x = 0` — Horizontal position in pixels, as `set_x` sets it.
+- `y = 1` — Vertical position in pixels.
+- `width = 2` — Width in pixels.
+- `height = 3` — Height in pixels.
+- `opa = 4` — Overall opacity, 0 (transparent) to 255 (opaque).
+- `bg_opa = 5` — Background opacity, 0 to 255.
+- `scale = 6` — Rendered size as a percentage; 100 is the natural size.
+- `rotation = 7` — Rendered rotation in tenths of a degree.
+- `value = 8` — The value of a widget that carries one — a bar, a slider, or an arc. Any other widget ignores it.
+
+## `AnimPath`
+
+<a id="AnimPath" />
+```gust
+enum AnimPath: integer
+```
+
+The curve an animation follows from its start value to its end value.
+`linear` covers the distance at a constant rate; the rest start or finish
+at a different pace, which reads as weight.
+
+**Variants**
+
+- `linear = 0` — Constant rate throughout.
+- `ease_in = 1` — Starts slowly, finishes at full speed.
+- `ease_out = 2` — Starts at full speed, settles slowly.
+- `ease_in_out = 3` — Slow at both ends, quickest in the middle.
+- `overshoot = 4` — Passes the end value and comes back to it.
+- `bounce = 5` — Reaches the end value and rebounds a few times.
+- `step = 6` — Holds the start value, then jumps to the end at the last moment.
+- `bezier = 7` — The cubic curve `Anim.set_bezier` describes.
+
+## `Anim`
+
+<a id="Anim" />
+A described animation, identified by its opaque engine handle. Create one
+with `animate` or `animate_custom`, set it up, then `start` it.
+
+The description stays after it is started, so the same `Anim` can be
+adjusted and started again — a panel that slides in and out is one
+animation whose values are swapped between runs.
+
+```gust
+def Anim
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The engine's opaque pointer to the description, as an integer.
+
+**Methods**
+
+<a id="Anim.set_values" />
+```gust
+def Anim.set_values(from_value: integer, to_value: integer) -> none
+```
+
+Set the values the animation moves between.
+
+**Parameters**
+
+- `from_value` — The value at the first frame.
+- `to_value` — The value it arrives at.
+
+---
+
+<a id="Anim.set_duration" />
+```gust
+def Anim.set_duration(ms: integer) -> none
+```
+
+Set how long the animation takes to travel from one value to the other,
+in milliseconds. The default is 500.
+
+**Parameters**
+
+- `ms` — Duration in milliseconds.
+
+---
+
+<a id="Anim.set_delay" />
+```gust
+def Anim.set_delay(ms: integer) -> none
+```
+
+Wait before the first frame. The animation is started with everything
+else, but holds until the delay has passed; nothing is applied to the
+widget in the meantime unless `set_early_apply` says otherwise.
+
+**Parameters**
+
+- `ms` — Milliseconds to wait after `start`.
+
+---
+
+<a id="Anim.set_path" />
+```gust
+def Anim.set_path(path: AnimPath) -> none
+```
+
+Set the curve the animation follows between its two values. The default
+is `AnimPath.linear`.
+
+**Parameters**
+
+- `path` — The easing curve. `AnimPath.bezier` takes its shape from `set_bezier`.
+
+---
+
+<a id="Anim.set_bezier" />
+```gust
+def Anim.set_bezier(x1: integer, y1: integer, x2: integer, y2: integer) -> none
+```
+
+Set the two control points of the cubic bezier curve, and follow it. The
+coordinates are on a scale where 1024 is 1: the curve runs from (0, 0) to
+(1024, 1024), and a control point outside that range overshoots.
+
+**Parameters**
+
+- `x1` — First control point's time coordinate.
+- `y1` — First control point's value coordinate.
+- `x2` — Second control point's time coordinate.
+- `y2` — Second control point's value coordinate.
+
+---
+
+<a id="Anim.set_repeat_count" />
+```gust
+def Anim.set_repeat_count(count: integer) -> none
+```
+
+Play the animation `count` times rather than once.
+
+**Parameters**
+
+- `count` — How many times to play it; 0 disables repetition.
+
+---
+
+<a id="Anim.repeat_forever" />
+```gust
+def Anim.repeat_forever() -> none
+```
+
+Play the animation over and over until it is stopped, which is what a
+pulsing indicator or a rotating badge wants.
+
+---
+
+<a id="Anim.set_repeat_delay" />
+```gust
+def Anim.set_repeat_delay(ms: integer) -> none
+```
+
+Wait between one play and the next.
+
+**Parameters**
+
+- `ms` — Milliseconds to hold the end value before repeating.
+
+---
+
+<a id="Anim.set_reverse" />
+```gust
+def Anim.set_reverse(duration: integer, delay: integer) -> none
+```
+
+Travel back to the start value once the end value is reached, so one
+play covers the distance twice. A repeating animation reverses on every
+play.
+
+**Parameters**
+
+- `duration` — Milliseconds the return trip takes; 0 disables it.
+- `delay` — Milliseconds to hold the end value before turning back.
+
+---
+
+<a id="Anim.set_early_apply" />
+```gust
+def Anim.set_early_apply(enabled: bool) -> none
+```
+
+Apply the start value at `start` rather than when the delay expires. A
+widget animated in from off-screen wants this, or it is drawn at its old
+position for the length of the delay.
+
+**Parameters**
+
+- `enabled` — Whether the start value lands before the delay.
+
+---
+
+<a id="Anim.set_property" />
+```gust
+def Anim.set_property(property: AnimProp) -> none
+```
+
+Change which property the animation moves, replacing a property or a
+custom step set before.
+
+**Parameters**
+
+- `property` — The property to move.
+
+---
+
+<a id="Anim.on_step" />
+```gust
+def Anim.on_step(step: Function(integer)[none]) -> none
+```
+
+Call `step` with the value for each frame instead of setting a property.
+Replaces whatever the animation was changing before.
+
+**Parameters**
+
+- `step` — Called on every frame with the current value.
+
+---
+
+<a id="Anim.on_start" />
+```gust
+def Anim.on_start(handler: Function()[none]) -> none
+```
+
+Call `handler` when the animation actually begins — after the delay, not
+at `start`. A repeating animation reports only its first play.
+
+**Parameters**
+
+- `handler` — Function invoked as the first frame is applied.
+
+---
+
+<a id="Anim.on_complete" />
+```gust
+def Anim.on_complete(handler: Function()[none]) -> none
+```
+
+Call `handler` once the animation has reached its end value, which is
+where a sequence chains the next one. An animation stopped early never
+completes, so the handler does not run.
+
+**Parameters**
+
+- `handler` — Function invoked on the last frame.
+
+---
+
+<a id="Anim.start" />
+```gust
+def Anim.start() -> none
+```
+
+Hand the animation to the engine and begin. Any animation of the same
+property already running on the widget is replaced, so starting one twice
+restarts it rather than stacking two.
+
+---
+
+<a id="Anim.stop" />
+```gust
+def Anim.stop() -> bool
+```
+
+End the animation where it stands, reporting whether it was running. The
+property keeps the value of the last frame applied, and `on_complete` does
+not run.
+
+---
+
+<a id="Anim.is_running" />
+```gust
+def Anim.is_running() -> bool
+```
+
+Whether the engine is playing this animation.
+
+---
+
+<a id="Anim.pause" />
+```gust
+def Anim.pause() -> none
+```
+
+Hold the animation at the current frame, keeping its place. Does nothing
+if it is not running.
+
+---
+
+<a id="Anim.pause_for" />
+```gust
+def Anim.pause_for(ms: integer) -> none
+```
+
+Hold the animation for a while, then carry on from where it stopped.
+
+**Parameters**
+
+- `ms` — Milliseconds to stay paused.
+
+---
+
+<a id="Anim.resume" />
+```gust
+def Anim.resume() -> none
+```
+
+Carry on from where `pause` stopped.
+
+---
+
+<a id="Anim.is_paused" />
+```gust
+def Anim.is_paused() -> bool
+```
+
+Whether the animation is running but held.
+
+---
+
+<a id="Anim.duration" />
+```gust
+def Anim.duration() -> integer
+```
+
+How long one trip between the values takes, in milliseconds.
+
+---
+
+<a id="Anim.delay" />
+```gust
+def Anim.delay() -> integer
+```
+
+The wait before the first frame, in milliseconds.
+
+---
+
+<a id="Anim.repeat_count" />
+```gust
+def Anim.repeat_count() -> integer
+```
+
+How many times the animation plays.
+
+---
+
+<a id="Anim.playtime" />
+```gust
+def Anim.playtime() -> integer
+```
+
+How long the animation runs in total, in milliseconds, counting the
+return trip and every repeat. An animation set to repeat forever reports
+4294967295.
+
+## `AnimImage`
+
+<a id="AnimImage" />
+A flipbook of images. `set_frames` supplies the sequence, `set_duration`
+sets how long one pass takes, and `start` runs it. The frames are copied, so
+the list may be reused or discarded afterwards.
+
+```gust
+def AnimImage
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="AnimImage.set_frames" />
+```gust
+def AnimImage.set_frames(paths: list[string], reverse: bool) -> none
+```
+
+Replace the image sequence. Each path is resolved the way `Image.set_src`
+resolves one.
+
+**Parameters**
+
+- `paths` — Paths to the frames, in playback order.
+- `reverse` — Whether this sequence is the return leg played after the forward one rather than the forward sequence itself.
+
+---
+
+<a id="AnimImage.set_duration" />
+```gust
+def AnimImage.set_duration(milliseconds: integer) -> none
+```
+
+Set how long one pass through the frames takes.
+
+**Parameters**
+
+- `milliseconds` — Duration of one pass.
+
+---
+
+<a id="AnimImage.set_reverse_duration" />
+```gust
+def AnimImage.set_reverse_duration(milliseconds: integer) -> none
+```
+
+Set how long the return leg takes, when one has been set with
+`set_frames`.
+
+**Parameters**
+
+- `milliseconds` — Duration of the return leg.
+
+---
+
+<a id="AnimImage.set_reverse_delay" />
+```gust
+def AnimImage.set_reverse_delay(milliseconds: integer) -> none
+```
+
+Set how long the animation pauses before the return leg.
+
+**Parameters**
+
+- `milliseconds` — Pause before the return leg.
+
+---
+
+<a id="AnimImage.set_repeat_count" />
+```gust
+def AnimImage.set_repeat_count(count: integer) -> none
+```
+
+Set how many times the sequence plays. Pass 0xFFFF to repeat forever,
+which is the default.
+
+**Parameters**
+
+- `count` — Number of passes.
+
+---
+
+<a id="AnimImage.duration" />
+```gust
+def AnimImage.duration() -> integer
+```
+
+How long one pass through the frames takes, in milliseconds.
+
+---
+
+<a id="AnimImage.repeat_count" />
+```gust
+def AnimImage.repeat_count() -> integer
+```
+
+How many times the sequence plays.
+
+---
+
+<a id="AnimImage.start" />
+```gust
+def AnimImage.start() -> none
+```
+
+Play the sequence from its first frame.
+
+---
+
+<a id="AnimImage.frame_count" />
+```gust
+def AnimImage.frame_count() -> integer
+```
+
+How many frames the sequence holds.
+
+## `Arc`
+
+<a id="Arc" />
+A circular arc. Its value spans the range set by `set_range`; the swept
+background is controlled with `set_bg_angles`. Drag the knob or call
+`set_value` to change it. Angles are degrees clockwise from the 3 o'clock
+position, before `set_rotation` is applied.
+
+```gust
+def Arc
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Arc.set_value" />
+```gust
+def Arc.set_value(value: integer) -> none
+```
+
+Set the arc's value, clamped to its range.
+
+**Parameters**
+
+- `value` — The new value.
+
+---
+
+<a id="Arc.set_range" />
+```gust
+def Arc.set_range(minimum: integer, maximum: integer) -> none
+```
+
+Set the inclusive value range the arc spans.
+
+**Parameters**
+
+- `minimum` — Value at the start angle.
+- `maximum` — Value at the end angle.
+
+---
+
+<a id="Arc.value" />
+```gust
+def Arc.value() -> integer
+```
+
+The arc's current value.
+
+---
+
+<a id="Arc.minimum" />
+```gust
+def Arc.minimum() -> integer
+```
+
+The value at the arc's start angle.
+
+---
+
+<a id="Arc.maximum" />
+```gust
+def Arc.maximum() -> integer
+```
+
+The value at the arc's end angle.
+
+---
+
+<a id="Arc.set_bg_angles" />
+```gust
+def Arc.set_bg_angles(start_angle: integer, end_angle: integer) -> none
+```
+
+Set the angular span of the arc's background — the track the value is
+drawn along.
+
+**Parameters**
+
+- `start_angle` — Start angle in degrees.
+- `end_angle` — End angle in degrees.
+
+---
+
+<a id="Arc.set_bg_start_angle" />
+```gust
+def Arc.set_bg_start_angle(angle: integer) -> none
+```
+
+Set where the arc's background begins.
+
+**Parameters**
+
+- `angle` — Start angle in degrees.
+
+---
+
+<a id="Arc.set_bg_end_angle" />
+```gust
+def Arc.set_bg_end_angle(angle: integer) -> none
+```
+
+Set where the arc's background ends.
+
+**Parameters**
+
+- `angle` — End angle in degrees.
+
+---
+
+<a id="Arc.bg_start_angle" />
+```gust
+def Arc.bg_start_angle() -> integer
+```
+
+Where the arc's background begins, in degrees.
+
+---
+
+<a id="Arc.bg_end_angle" />
+```gust
+def Arc.bg_end_angle() -> integer
+```
+
+Where the arc's background ends, in degrees.
+
+---
+
+<a id="Arc.set_angles" />
+```gust
+def Arc.set_angles(start_angle: integer, end_angle: integer) -> none
+```
+
+Set the angular span of the drawn indicator directly, bypassing the
+value. A later `set_value` overwrites it.
+
+**Parameters**
+
+- `start_angle` — Start angle in degrees.
+- `end_angle` — End angle in degrees.
+
+---
+
+<a id="Arc.set_start_angle" />
+```gust
+def Arc.set_start_angle(angle: integer) -> none
+```
+
+Set where the drawn indicator begins.
+
+**Parameters**
+
+- `angle` — Start angle in degrees.
+
+---
+
+<a id="Arc.set_end_angle" />
+```gust
+def Arc.set_end_angle(angle: integer) -> none
+```
+
+Set where the drawn indicator ends.
+
+**Parameters**
+
+- `angle` — End angle in degrees.
+
+---
+
+<a id="Arc.start_angle" />
+```gust
+def Arc.start_angle() -> integer
+```
+
+Where the drawn indicator begins, in degrees.
+
+---
+
+<a id="Arc.end_angle" />
+```gust
+def Arc.end_angle() -> integer
+```
+
+Where the drawn indicator ends, in degrees.
+
+---
+
+<a id="Arc.set_mode" />
+```gust
+def Arc.set_mode(mode: ArcMode) -> none
+```
+
+Choose which way the indicator fills between the background angles.
+
+**Parameters**
+
+- `mode` — Fill from the start, from the middle, or from the end.
+
+---
+
+<a id="Arc.mode" />
+```gust
+def Arc.mode() -> ArcMode
+```
+
+Which way the indicator fills.
+
+---
+
+<a id="Arc.set_rotation" />
+```gust
+def Arc.set_rotation(degrees: integer) -> none
+```
+
+Turn the whole arc, moving where 0° sits.
+
+**Parameters**
+
+- `degrees` — Clockwise offset applied to every angle.
+
+---
+
+<a id="Arc.rotation" />
+```gust
+def Arc.rotation() -> integer
+```
+
+The clockwise offset applied to every angle, in degrees.
+
+---
+
+<a id="Arc.set_change_rate" />
+```gust
+def Arc.set_change_rate(degrees_per_second: integer) -> none
+```
+
+Limit how fast a drag can move the value, so a press far from the knob
+sweeps to it rather than jumping.
+
+**Parameters**
+
+- `degrees_per_second` — Maximum sweep rate.
+
+---
+
+<a id="Arc.set_knob_offset" />
+```gust
+def Arc.set_knob_offset(degrees: integer) -> none
+```
+
+Offset the knob from the end of the drawn indicator.
+
+**Parameters**
+
+- `degrees` — Clockwise offset of the knob.
+
+---
+
+<a id="Arc.knob_offset" />
+```gust
+def Arc.knob_offset() -> integer
+```
+
+The knob's clockwise offset from the indicator's end, in degrees.
+
+---
+
+<a id="Arc.align_to_angle" />
+```gust
+def Arc.align_to_angle(widget: Obj, radius_offset: integer) -> none
+```
+
+Move `widget` onto the arc at the current value's angle, `radius_offset`
+pixels from the arc's radius. Call it again whenever the value changes.
+
+**Parameters**
+
+- `widget` — The widget to place.
+- `radius_offset` — Offset from the arc's radius, in pixels.
+
+---
+
+<a id="Arc.rotate_to_angle" />
+```gust
+def Arc.rotate_to_angle(widget: Obj, radius_offset: integer) -> none
+```
+
+Place `widget` on the arc as `align_to_angle` does, and turn it to face
+along the arc.
+
+**Parameters**
+
+- `widget` — The widget to place and turn.
+- `radius_offset` — Offset from the arc's radius, in pixels.
+
+## `Bar`
+
+<a id="Bar" />
+A bar showing a value within a range (0-100 by default) as a filled
+portion of its track. Unlike a slider, a bar has no handle and takes no
+input.
+
+```gust
+def Bar
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Bar.set_value" />
+```gust
+def Bar.set_value(value: integer, animated: bool) -> none
+```
+
+Set the filled value, clamped to the bar's range.
+
+**Parameters**
+
+- `value` — The new value.
+- `animated` — Whether to animate the change.
+
+---
+
+<a id="Bar.set_range" />
+```gust
+def Bar.set_range(minimum: integer, maximum: integer) -> none
+```
+
+Set the inclusive value range the bar spans.
+
+**Parameters**
+
+- `minimum` — Value at an empty bar.
+- `maximum` — Value at a full bar.
+
+---
+
+<a id="Bar.value" />
+```gust
+def Bar.value() -> integer
+```
+
+The bar's current value.
+
+---
+
+<a id="Bar.set_start_value" />
+```gust
+def Bar.set_start_value(value: integer, animated: bool) -> none
+```
+
+Set where the fill begins. This is the lower end of the filled band in
+`BarMode.range`, and is ignored in the other modes.
+
+**Parameters**
+
+- `value` — The value the fill starts at.
+- `animated` — Whether to animate the change.
+
+---
+
+<a id="Bar.start_value" />
+```gust
+def Bar.start_value() -> integer
+```
+
+The value the fill begins at.
+
+---
+
+<a id="Bar.minimum" />
+```gust
+def Bar.minimum() -> integer
+```
+
+The value at an empty bar.
+
+---
+
+<a id="Bar.maximum" />
+```gust
+def Bar.maximum() -> integer
+```
+
+The value at a full bar.
+
+---
+
+<a id="Bar.set_mode" />
+```gust
+def Bar.set_mode(mode: BarMode) -> none
+```
+
+Choose how the bar's fill is drawn.
+
+**Parameters**
+
+- `mode` — Normal, symmetrical, or range fill.
+
+---
+
+<a id="Bar.mode" />
+```gust
+def Bar.mode() -> BarMode
+```
+
+How the bar's fill is drawn.
+
+---
+
+<a id="Bar.set_orientation" />
+```gust
+def Bar.set_orientation(orientation: Orientation) -> none
+```
+
+Choose which way the bar fills.
+
+**Parameters**
+
+- `orientation` — Follow the bar's proportions, or force one direction.
+
+---
+
+<a id="Bar.orientation" />
+```gust
+def Bar.orientation() -> Orientation
+```
+
+Which way the bar fills, as it was set.
+
+---
+
+<a id="Bar.is_symmetrical" />
+```gust
+def Bar.is_symmetrical() -> bool
+```
+
+Whether the bar fills out from the zero point — true in
+`BarMode.symmetrical` when the range spans zero.
+
+## `Button`
+
+<a id="Button" />
+A clickable button. It is a container; `set_label` adds a centered
+caption, and `on_click` registers a press handler.
+
+```gust
+def Button
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Button.set_label" />
+```gust
+def Button.set_label(text: string) -> Label
+```
+
+Add a centered text caption to the button and return the created label,
+so its style can be adjusted further.
+
+**Parameters**
+
+- `text` — The caption text.
+
+## `ButtonMatrix`
+
+<a id="ButtonMatrix" />
+A grid of buttons drawn as a single widget, so hundreds of keys cost one
+widget rather than one each. `set_map` lays out the rows; the buttons have
+no individual widgets, so behavior is set per button index through
+`add_ctrl`, `set_button_width`, and `selected`.
+
+```gust
+def ButtonMatrix
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="ButtonMatrix.set_map" />
+```gust
+def ButtonMatrix.set_map(rows: list[list[string]]) -> none
+```
+
+Replace the layout. Each inner list is one row of button captions, laid
+out left to right; rows are stacked top to bottom. Button indices used by
+the other methods run across the whole matrix in this order.
+
+**Parameters**
+
+- `rows` — One list of captions per row.
+
+---
+
+<a id="ButtonMatrix.button_text" />
+```gust
+def ButtonMatrix.button_text(index: integer) -> string
+```
+
+The caption of the button at `index`, or "" when there is no such button.
+
+**Parameters**
+
+- `index` — Zero-based button index.
+
+---
+
+<a id="ButtonMatrix.selected" />
+```gust
+def ButtonMatrix.selected() -> integer
+```
+
+The index of the button being pressed or last pressed. Read this from an
+`on_change` handler to tell which button fired.
+
+---
+
+<a id="ButtonMatrix.set_selected" />
+```gust
+def ButtonMatrix.set_selected(index: integer) -> none
+```
+
+Move the keyboard-navigation focus to the button at `index`.
+
+**Parameters**
+
+- `index` — Zero-based button index.
+
+---
+
+<a id="ButtonMatrix.add_ctrl" />
+```gust
+def ButtonMatrix.add_ctrl(index: integer, ctrl: ButtonCtrl) -> none
+```
+
+Turn on behavior flags for one button.
+
+**Parameters**
+
+- `index` — Zero-based button index.
+- `ctrl` — Flags to set, combined with `|`.
+
+---
+
+<a id="ButtonMatrix.remove_ctrl" />
+```gust
+def ButtonMatrix.remove_ctrl(index: integer, ctrl: ButtonCtrl) -> none
+```
+
+Turn off behavior flags for one button.
+
+**Parameters**
+
+- `index` — Zero-based button index.
+- `ctrl` — Flags to clear, combined with `|`.
+
+---
+
+<a id="ButtonMatrix.add_ctrl_all" />
+```gust
+def ButtonMatrix.add_ctrl_all(ctrl: ButtonCtrl) -> none
+```
+
+Turn on behavior flags for every button.
+
+**Parameters**
+
+- `ctrl` — Flags to set, combined with `|`.
+
+---
+
+<a id="ButtonMatrix.remove_ctrl_all" />
+```gust
+def ButtonMatrix.remove_ctrl_all(ctrl: ButtonCtrl) -> none
+```
+
+Turn off behavior flags for every button.
+
+**Parameters**
+
+- `ctrl` — Flags to clear, combined with `|`.
+
+---
+
+<a id="ButtonMatrix.has_ctrl" />
+```gust
+def ButtonMatrix.has_ctrl(index: integer, ctrl: ButtonCtrl) -> bool
+```
+
+Whether every flag in `ctrl` is set on the button at `index`.
+
+**Parameters**
+
+- `index` — Zero-based button index.
+- `ctrl` — Flags to test, combined with `|`.
+
+---
+
+<a id="ButtonMatrix.set_button_width" />
+```gust
+def ButtonMatrix.set_button_width(index: integer, width: integer) -> none
+```
+
+Set how much of its row's width a button takes, relative to the other
+buttons in that row. A button of width 2 beside two of width 1 fills half
+the row.
+
+**Parameters**
+
+- `index` — Zero-based button index.
+- `width` — Relative width from 1 to 15.
+
+---
+
+<a id="ButtonMatrix.set_one_checked" />
+```gust
+def ButtonMatrix.set_one_checked(enabled: bool) -> none
+```
+
+Make the checkable buttons behave as a radio group, so checking one
+unchecks the rest.
+
+**Parameters**
+
+- `enabled` — Whether at most one button may be checked.
+
+---
+
+<a id="ButtonMatrix.is_one_checked" />
+```gust
+def ButtonMatrix.is_one_checked() -> bool
+```
+
+Whether the checkable buttons behave as a radio group.
+
+## `Date`
+
+<a id="Date" />
+A calendar day. A `year` of 0 means the calendar had no date to report —
+what `pressed` returns when no day is being pressed.
+
+```gust
+def Date
+
+    year: integer
+    month: integer
+    day: integer
+
+end
+```
+
+**Fields**
+
+- `year: integer` — Four-digit year.
+- `month: integer` — Month from 1 (January) to 12 (December).
+- `day: integer` — Day of the month, from 1.
+
+## `Calendar`
+
+<a id="Calendar" />
+A month grid. `set_today` marks the current day, `set_month_shown`
+chooses the displayed month, and `set_highlighted` marks a set of dates.
+Add `add_header_arrow` or `add_header_dropdown` for month navigation.
+
+```gust
+def Calendar
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Calendar.set_today" />
+```gust
+def Calendar.set_today(year: integer, month: integer, day: integer) -> none
+```
+
+Set the day the calendar marks as today.
+
+**Parameters**
+
+- `year` — Four-digit year.
+- `month` — Month from 1 to 12.
+- `day` — Day of the month, from 1.
+
+---
+
+<a id="Calendar.set_month_shown" />
+```gust
+def Calendar.set_month_shown(year: integer, month: integer) -> none
+```
+
+Show the given month.
+
+**Parameters**
+
+- `year` — Four-digit year.
+- `month` — Month from 1 to 12.
+
+---
+
+<a id="Calendar.today" />
+```gust
+def Calendar.today() -> Date
+```
+
+The day the calendar marks as today.
+
+---
+
+<a id="Calendar.shown" />
+```gust
+def Calendar.shown() -> Date
+```
+
+The month on display, with `day` set to 1.
+
+---
+
+<a id="Calendar.pressed" />
+```gust
+def Calendar.pressed() -> Date
+```
+
+The day currently being pressed. Read this from an `on_change` handler to
+tell which day was picked; the returned `year` is 0 when no day is pressed.
+
+---
+
+<a id="Calendar.set_highlighted" />
+```gust
+def Calendar.set_highlighted(dates: list[Date]) -> none
+```
+
+Replace the set of dates drawn as highlighted.
+
+**Parameters**
+
+- `dates` — The days to highlight.
+
+---
+
+<a id="Calendar.set_day_names" />
+```gust
+def Calendar.set_day_names(names: list[string]) -> none
+```
+
+Replace the seven weekday headings, starting with Sunday.
+
+**Parameters**
+
+- `names` — Seven weekday headings, Sunday first.
+
+---
+
+<a id="Calendar.add_header_arrow" />
+```gust
+def Calendar.add_header_arrow() -> Obj
+```
+
+Add a header with previous/next month arrows and return it.
+
+---
+
+<a id="Calendar.add_header_dropdown" />
+```gust
+def Calendar.add_header_dropdown() -> Obj
+```
+
+Add a header with month and year dropdowns and return it.
+
+---
+
+<a id="Calendar.set_year_list" />
+```gust
+def Calendar.set_year_list(years: string) -> none
+```
+
+Replace the years offered by a dropdown header. Separate years with
+newlines, most recent first.
+
+**Parameters**
+
+- `years` — Newline-separated years.
+
+---
+
+<a id="Calendar.buttons" />
+```gust
+def Calendar.buttons() -> ButtonMatrix
+```
+
+The button matrix drawing the day grid, for styling its cells.
+
+---
+
+<a id="Calendar.highlighted" />
+```gust
+def Calendar.highlighted() -> list[Date]
+```
+
+The dates drawn as highlighted.
+
+## `Canvas`
+
+<a id="Canvas" />
+A pixel surface. `set_buffer` allocates the pixels; `fill`, `set_pixel`
+and the `draw_*` methods paint into them, and the result stays on the
+surface until it is painted over. Colors are `0xRRGGBB` and opacity runs
+from 0 to 255.
+
+```gust
+def Canvas
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Canvas.set_buffer" />
+```gust
+def Canvas.set_buffer(width: integer, height: integer) -> none
+```
+
+Allocate the drawing surface, discarding whatever was drawn before. The
+surface holds full color and per-pixel opacity; it starts out uninitialized,
+so `fill` it before drawing. The pixels are released with the widget.
+
+**Parameters**
+
+- `width` — Surface width in pixels.
+- `height` — Surface height in pixels.
+
+---
+
+<a id="Canvas.fill" />
+```gust
+def Canvas.fill(rgb: integer, opa: integer) -> none
+```
+
+Paint the whole surface one color.
+
+**Parameters**
+
+- `rgb` — Color as `0xRRGGBB`.
+- `opa` — Opacity from 0 (transparent) to 255 (opaque).
+
+---
+
+<a id="Canvas.set_pixel" />
+```gust
+def Canvas.set_pixel(x: integer, y: integer, rgb: integer, opa: integer) -> none
+```
+
+Paint one pixel.
+
+**Parameters**
+
+- `x` — Horizontal offset in pixels from the surface's left edge.
+- `y` — Vertical offset in pixels from the surface's top edge.
+- `rgb` — Color as `0xRRGGBB`.
+- `opa` — Opacity from 0 (transparent) to 255 (opaque).
+
+---
+
+<a id="Canvas.pixel" />
+```gust
+def Canvas.pixel(x: integer, y: integer) -> integer
+```
+
+The color of one pixel as `0xRRGGBB`, or -1 outside the surface.
+
+**Parameters**
+
+- `x` — Horizontal offset in pixels from the surface's left edge.
+- `y` — Vertical offset in pixels from the surface's top edge.
+
+---
+
+<a id="Canvas.draw_rect" />
+```gust
+def Canvas.draw_rect(
+    x: integer,
+    y: integer,
+    width: integer,
+    height: integer,
+    rgb: integer,
+    opa: integer,
+    radius: integer,
+    border_rgb: integer,
+    border_width: integer,
+) -> none
+```
+
+Paint a filled rectangle, optionally rounded and outlined.
+
+**Parameters**
+
+- `x` — Left edge in pixels from the surface's left.
+- `y` — Top edge in pixels from the surface's top.
+- `width` — Width in pixels.
+- `height` — Height in pixels.
+- `rgb` — Fill color as `0xRRGGBB`.
+- `opa` — Fill opacity from 0 to 255.
+- `radius` — Corner radius in pixels.
+- `border_rgb` — Outline color as `0xRRGGBB`.
+- `border_width` — Outline thickness in pixels; 0 draws no outline.
+
+---
+
+<a id="Canvas.draw_line" />
+```gust
+def Canvas.draw_line(
+    x1: integer,
+    y1: integer,
+    x2: integer,
+    y2: integer,
+    rgb: integer,
+    opa: integer,
+    width: integer,
+) -> none
+```
+
+Paint a straight line between two points.
+
+**Parameters**
+
+- `x1` — Start point's horizontal offset in pixels.
+- `y1` — Start point's vertical offset in pixels.
+- `x2` — End point's horizontal offset in pixels.
+- `y2` — End point's vertical offset in pixels.
+- `rgb` — Line color as `0xRRGGBB`.
+- `opa` — Opacity from 0 to 255.
+- `width` — Line thickness in pixels.
+
+---
+
+<a id="Canvas.draw_arc" />
+```gust
+def Canvas.draw_arc(
+    x: integer,
+    y: integer,
+    radius: integer,
+    start_angle: integer,
+    end_angle: integer,
+    rgb: integer,
+    opa: integer,
+    width: integer,
+) -> none
+```
+
+Paint a circular arc. Angles are degrees clockwise from the 3 o'clock
+position.
+
+**Parameters**
+
+- `x` — Center's horizontal offset in pixels.
+- `y` — Center's vertical offset in pixels.
+- `radius` — Outer radius in pixels.
+- `start_angle` — Start angle in degrees.
+- `end_angle` — End angle in degrees.
+- `rgb` — Arc color as `0xRRGGBB`.
+- `opa` — Opacity from 0 to 255.
+- `width` — Arc thickness in pixels.
+
+---
+
+<a id="Canvas.draw_text" />
+```gust
+def Canvas.draw_text(
+    x: integer,
+    y: integer,
+    width: integer,
+    text: string,
+    rgb: integer,
+    opa: integer,
+    font_size: integer,
+    align: TextAlign,
+) -> none
+```
+
+Paint text, wrapping it within `width`.
+
+**Parameters**
+
+- `x` — Left edge of the text block in pixels.
+- `y` — Top edge of the text block in pixels.
+- `width` — Width the text wraps within, in pixels.
+- `text` — The text to draw.
+- `rgb` — Text color as `0xRRGGBB`.
+- `opa` — Opacity from 0 to 255.
+- `font_size` — Requested font size; the largest enabled built-in font no larger than this is used.
+- `align` — Horizontal alignment within `width`.
+
+---
+
+<a id="Canvas.draw_image" />
+```gust
+def Canvas.draw_image(
+    x: integer,
+    y: integer,
+    width: integer,
+    height: integer,
+    path: string,
+    opa: integer,
+) -> none
+```
+
+Paint a decoded image into the given area.
+
+**Parameters**
+
+- `x` — Left edge in pixels from the surface's left.
+- `y` — Top edge in pixels from the surface's top.
+- `width` — Width in pixels.
+- `height` — Height in pixels.
+- `path` — Path to the image, with an LVGL drive-letter prefix.
+- `opa` — Opacity from 0 to 255.
+
+## `ChartSeries`
+
+<a id="ChartSeries" />
+One data series of a chart, returned by `Chart.add_series` and passed
+back to the methods that read or write its points.
+
+```gust
+def ChartSeries
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The engine's opaque pointer to the series, as an integer.
+
+## `ChartCursor`
+
+<a id="ChartCursor" />
+A crosshair on a chart, returned by `Chart.add_cursor` and passed back to
+the methods that move it.
+
+```gust
+def ChartCursor
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The engine's opaque pointer to the cursor, as an integer.
+
+## `Chart`
+
+<a id="Chart" />
+A plot area. Add a series with `add_series`, size the data with
+`set_point_count`, and fill it with `set_values` or a point at a time with
+`push_value`. `set_axis_range` maps values onto the plot; a `scale` widget
+aligned to an edge draws the axis ticks and labels.
+
+```gust
+def Chart
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Chart.set_type" />
+```gust
+def Chart.set_type(kind: ChartType) -> none
+```
+
+Choose how the series are drawn.
+
+**Parameters**
+
+- `kind` — Lines, bars, or scattered points.
+
+---
+
+<a id="Chart.set_point_count" />
+```gust
+def Chart.set_point_count(count: integer) -> none
+```
+
+Set how many points each series holds. Points added beyond this count
+displace the oldest, in the direction `set_update_mode` selects.
+
+**Parameters**
+
+- `count` — Number of points per series.
+
+---
+
+<a id="Chart.point_count" />
+```gust
+def Chart.point_count() -> integer
+```
+
+How many points each series holds.
+
+---
+
+<a id="Chart.set_axis_range" />
+```gust
+def Chart.set_axis_range(
+    axis: ChartAxis,
+    minimum: integer,
+    maximum: integer,
+) -> none
+```
+
+Set the value range an axis spans. Values outside it are clipped to the
+plot's edge.
+
+**Parameters**
+
+- `axis` — The axis to range.
+- `minimum` — Value at the axis's start.
+- `maximum` — Value at the axis's end.
+
+---
+
+<a id="Chart.set_update_mode" />
+```gust
+def Chart.set_update_mode(mode: ChartUpdateMode) -> none
+```
+
+Choose what `push_value` does to the older points.
+
+**Parameters**
+
+- `mode` — Shift them along, or overwrite the oldest in place.
+
+---
+
+<a id="Chart.set_div_lines" />
+```gust
+def Chart.set_div_lines(horizontal: integer, vertical: integer) -> none
+```
+
+Set how many division lines rule the plot area.
+
+**Parameters**
+
+- `horizontal` — Number of horizontal lines.
+- `vertical` — Number of vertical lines.
+
+---
+
+<a id="Chart.refresh" />
+```gust
+def Chart.refresh() -> none
+```
+
+Redraw the plot. Needed only after writing points through a path that
+does not invalidate the chart itself.
+
+---
+
+<a id="Chart.add_series" />
+```gust
+def Chart.add_series(rgb: integer, axis: ChartAxis) -> ChartSeries
+```
+
+Add a data series drawn in `rgb` and measured against `axis`, and return
+it. Its points all start at the axis minimum.
+
+**Parameters**
+
+- `rgb` — Series color as `0xRRGGBB`.
+- `axis` — The axis its values are measured against.
+
+---
+
+<a id="Chart.remove_series" />
+```gust
+def Chart.remove_series(series: ChartSeries) -> none
+```
+
+Remove a series and free its points.
+
+**Parameters**
+
+- `series` — The series to remove.
+
+---
+
+<a id="Chart.hide_series" />
+```gust
+def Chart.hide_series(series: ChartSeries, hidden: bool) -> none
+```
+
+Stop or resume drawing a series without removing its points.
+
+**Parameters**
+
+- `series` — The series to hide or show.
+- `hidden` — Whether the series is hidden.
+
+---
+
+<a id="Chart.set_series_color" />
+```gust
+def Chart.set_series_color(series: ChartSeries, rgb: integer) -> none
+```
+
+Recolor a series.
+
+**Parameters**
+
+- `series` — The series to recolor.
+- `rgb` — The new color as `0xRRGGBB`.
+
+---
+
+<a id="Chart.set_values" />
+```gust
+def Chart.set_values(series: ChartSeries, values: list[integer]) -> none
+```
+
+Replace a series' points, starting from the first. Values beyond the
+chart's point count are ignored.
+
+**Parameters**
+
+- `series` — The series to fill.
+- `values` — The new values, in point order.
+
+---
+
+<a id="Chart.set_all_values" />
+```gust
+def Chart.set_all_values(series: ChartSeries, value: integer) -> none
+```
+
+Set every point of a series to one value.
+
+**Parameters**
+
+- `series` — The series to fill.
+- `value` — The value to write to every point.
+
+---
+
+<a id="Chart.set_value" />
+```gust
+def Chart.set_value(series: ChartSeries, index: integer, value: integer) -> none
+```
+
+Set one point of a series.
+
+**Parameters**
+
+- `series` — The series to write to.
+- `index` — Zero-based point index.
+- `value` — The new value.
+
+---
+
+<a id="Chart.set_point" />
+```gust
+def Chart.set_point(
+    series: ChartSeries,
+    index: integer,
+    x: integer,
+    y: integer,
+) -> none
+```
+
+Set one point of a scatter series, which carries an x value as well as a
+y value.
+
+**Parameters**
+
+- `series` — The series to write to.
+- `index` — Zero-based point index.
+- `x` — The new x value.
+- `y` — The new y value.
+
+---
+
+<a id="Chart.push_value" />
+```gust
+def Chart.push_value(series: ChartSeries, value: integer) -> none
+```
+
+Append a value to a series, displacing the oldest point as
+`set_update_mode` selects. This is the call for streaming data.
+
+**Parameters**
+
+- `series` — The series to append to.
+- `value` — The new value.
+
+---
+
+<a id="Chart.push_point" />
+```gust
+def Chart.push_point(series: ChartSeries, x: integer, y: integer) -> none
+```
+
+Append an x/y pair to a scatter series, displacing the oldest point.
+
+**Parameters**
+
+- `series` — The series to append to.
+- `x` — The new x value.
+- `y` — The new y value.
+
+---
+
+<a id="Chart.pressed_point" />
+```gust
+def Chart.pressed_point() -> integer
+```
+
+The zero-based index of the point under the press. Read this from an
+`on_event` handler for `EventCode.pressed`.
+
+---
+
+<a id="Chart.add_cursor" />
+```gust
+def Chart.add_cursor(rgb: integer, direction: Dir) -> ChartCursor
+```
+
+Add a crosshair drawn in `rgb` and return it. `direction` selects which
+of its lines are drawn.
+
+**Parameters**
+
+- `rgb` — Cursor color as `0xRRGGBB`.
+- `direction` — Which lines the crosshair draws.
+
+---
+
+<a id="Chart.set_cursor_pos" />
+```gust
+def Chart.set_cursor_pos(cursor: ChartCursor, x: integer, y: integer) -> none
+```
+
+Move a cursor to a pixel position within the plot area.
+
+**Parameters**
+
+- `cursor` — The cursor to move.
+- `x` — Horizontal offset in pixels from the plot's left edge.
+- `y` — Vertical offset in pixels from the plot's top edge.
+
+---
+
+<a id="Chart.set_cursor_point" />
+```gust
+def Chart.set_cursor_point(
+    cursor: ChartCursor,
+    series: ChartSeries,
+    index: integer,
+) -> none
+```
+
+Pin a cursor to one point of a series, so it follows that point as the
+data changes.
+
+**Parameters**
+
+- `cursor` — The cursor to pin.
+- `series` — The series to follow.
+- `index` — Zero-based point index.
+
+---
+
+<a id="Chart.kind" />
+```gust
+def Chart.kind() -> ChartType
+```
+
+How the series are drawn.
+
+---
+
+<a id="Chart.series_color" />
+```gust
+def Chart.series_color(series: ChartSeries) -> integer
+```
+
+A series' color as `0xRRGGBB`.
+
+**Parameters**
+
+- `series` — The series to report.
+
+---
+
+<a id="Chart.point_pos" />
+```gust
+def Chart.point_pos(series: ChartSeries, index: integer) -> Point
+```
+
+Where one of a series' points is drawn, relative to the chart's top-left
+corner. Use it to place a marker or a tooltip on a point.
+
+**Parameters**
+
+- `series` — The series the point belongs to.
+- `index` — Zero-based point index.
+
+---
+
+<a id="Chart.set_series_start" />
+```gust
+def Chart.set_series_start(series: ChartSeries, index: integer) -> none
+```
+
+Rotate a series so the point at `index` is drawn leftmost. This is what
+`ChartUpdateMode.circular` moves as points are pushed.
+
+**Parameters**
+
+- `series` — The series to rotate.
+- `index` — Zero-based index of the point to draw first.
+
+---
+
+<a id="Chart.series_start" />
+```gust
+def Chart.series_start(series: ChartSeries) -> integer
+```
+
+The index of the point drawn leftmost.
+
+**Parameters**
+
+- `series` — The series to report.
+
+## `Checkbox`
+
+<a id="Checkbox" />
+A tick box with a text label. Read its state with `is_checked` (inherited
+from `Obj`) and set the label with `set_text`.
+
+```gust
+def Checkbox
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Checkbox.set_text" />
+```gust
+def Checkbox.set_text(text: string) -> none
+```
+
+Set the label shown beside the tick box.
+
+**Parameters**
+
+- `text` — The label text.
+
+---
+
+<a id="Checkbox.text" />
+```gust
+def Checkbox.text() -> string
+```
+
+The label shown beside the tick box.
+
+## `Dropdown`
+
+<a id="Dropdown" />
+A dropdown selector. Populate it with `set_options` (newline-separated),
+read the chosen index with `selected`, and set it with `set_selected`.
+
+```gust
+def Dropdown
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Dropdown.set_options" />
+```gust
+def Dropdown.set_options(options: string) -> none
+```
+
+Replace the option list. Separate options with newlines, e.g.
+"Red\nGreen\nBlue".
+
+**Parameters**
+
+- `options` — Newline-separated option text.
+
+---
+
+<a id="Dropdown.add_option" />
+```gust
+def Dropdown.add_option(option: string, position: integer) -> none
+```
+
+Insert an option at `position` (0 is first).
+
+**Parameters**
+
+- `option` — The option text.
+- `position` — Zero-based index to insert at.
+
+---
+
+<a id="Dropdown.set_selected" />
+```gust
+def Dropdown.set_selected(index: integer) -> none
+```
+
+Select the option at `index` (0 is first).
+
+**Parameters**
+
+- `index` — Zero-based option index.
+
+---
+
+<a id="Dropdown.selected" />
+```gust
+def Dropdown.selected() -> integer
+```
+
+The zero-based index of the currently selected option.
+
+---
+
+<a id="Dropdown.selected_text" />
+```gust
+def Dropdown.selected_text() -> string
+```
+
+The text of the currently selected option.
+
+---
+
+<a id="Dropdown.options" />
+```gust
+def Dropdown.options() -> string
+```
+
+The option list as newline-separated text.
+
+---
+
+<a id="Dropdown.option_count" />
+```gust
+def Dropdown.option_count() -> integer
+```
+
+How many options the list holds.
+
+---
+
+<a id="Dropdown.index_of" />
+```gust
+def Dropdown.index_of(option: string) -> integer
+```
+
+The zero-based index of the option with the given text, or -1 when there
+is no such option.
+
+**Parameters**
+
+- `option` — The option text to look for.
+
+---
+
+<a id="Dropdown.clear_options" />
+```gust
+def Dropdown.clear_options() -> none
+```
+
+Remove every option.
+
+---
+
+<a id="Dropdown.set_text" />
+```gust
+def Dropdown.set_text(text: string) -> none
+```
+
+Show `text` on the closed dropdown instead of the selected option. Pass
+"" to go back to showing the selection.
+
+**Parameters**
+
+- `text` — Fixed text for the closed dropdown, or "" for the selection.
+
+---
+
+<a id="Dropdown.set_symbol" />
+```gust
+def Dropdown.set_symbol(symbol: string) -> none
+```
+
+Set the glyph drawn beside the text, usually one of the `ICON_*`
+constants. Pass "" to draw none.
+
+**Parameters**
+
+- `symbol` — The symbol text, or "" for none.
+
+---
+
+<a id="Dropdown.set_direction" />
+```gust
+def Dropdown.set_direction(direction: Dir) -> none
+```
+
+Choose which way the option list opens from the button.
+
+**Parameters**
+
+- `direction` — Where the list appears.
+
+---
+
+<a id="Dropdown.direction" />
+```gust
+def Dropdown.direction() -> Dir
+```
+
+Which way the option list opens.
+
+---
+
+<a id="Dropdown.set_selected_highlight" />
+```gust
+def Dropdown.set_selected_highlight(enabled: bool) -> none
+```
+
+Draw the selected option highlighted while the list is open.
+
+**Parameters**
+
+- `enabled` — Whether the selection is highlighted.
+
+---
+
+<a id="Dropdown.open" />
+```gust
+def Dropdown.open() -> none
+```
+
+Open the option list.
+
+---
+
+<a id="Dropdown.close" />
+```gust
+def Dropdown.close() -> none
+```
+
+Close the option list.
+
+---
+
+<a id="Dropdown.is_open" />
+```gust
+def Dropdown.is_open() -> bool
+```
+
+Whether the option list is open.
+
+---
+
+<a id="Dropdown.list_view" />
+```gust
+def Dropdown.list_view() -> Obj
+```
+
+The widget holding the open option list, for styling it.
+
+---
+
+<a id="Dropdown.text" />
+```gust
+def Dropdown.text() -> string
+```
+
+The fixed text shown on the closed dropdown, or "" when it shows the
+selected option.
+
+---
+
+<a id="Dropdown.symbol" />
+```gust
+def Dropdown.symbol() -> string
+```
+
+The glyph drawn beside the text, or "" when none is drawn.
+
+---
+
+<a id="Dropdown.has_selected_highlight" />
+```gust
+def Dropdown.has_selected_highlight() -> bool
+```
+
+Whether the selected option is drawn highlighted while the list is
+open.
+
+## `Point`
+
+<a id="Point" />
+A position in pixels, relative to whatever the using widget measures
+from — its own top-left corner for a polyline vertex or a transform pivot.
+
+```gust
+def Point
+
+    x: integer
+    y: integer
+
+end
+```
+
+**Fields**
+
+- `x: integer` — Horizontal offset in pixels.
+- `y: integer` — Vertical offset in pixels.
+
+## `Group`
+
+<a id="Group" />
+An ordered set of focusable widgets, identified by its opaque engine
+handle. Create one with `group`.
+
+```gust
+def Group
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The engine's opaque pointer to the group, as an integer.
+
+**Methods**
+
+<a id="Group.add" />
+```gust
+def Group.add(obj: Obj) -> none
+```
+
+Append a widget to the group and focus it if the group was empty. A
+widget belongs to one group at a time; adding it here removes it from any
+other.
+
+**Parameters**
+
+- `obj` — The widget to make reachable.
+
+---
+
+<a id="Group.remove" />
+```gust
+def Group.remove(obj: Obj) -> none
+```
+
+Remove a widget from whichever group holds it.
+
+**Parameters**
+
+- `obj` — The widget to stop focusing.
+
+---
+
+<a id="Group.clear" />
+```gust
+def Group.clear() -> none
+```
+
+Remove every widget from the group, leaving it empty.
+
+---
+
+<a id="Group.focus" />
+```gust
+def Group.focus(obj: Obj) -> none
+```
+
+Move focus straight to a widget, which must already be in the group.
+
+**Parameters**
+
+- `obj` — The widget to focus.
+
+---
+
+<a id="Group.focus_next" />
+```gust
+def Group.focus_next() -> none
+```
+
+Move focus to the next widget in the group.
+
+---
+
+<a id="Group.focus_previous" />
+```gust
+def Group.focus_previous() -> none
+```
+
+Move focus to the previous widget in the group.
+
+---
+
+<a id="Group.freeze_focus" />
+```gust
+def Group.freeze_focus(frozen: bool) -> none
+```
+
+Hold focus where it is, ignoring anything that would move it.
+
+**Parameters**
+
+- `frozen` — Whether focus stays put.
+
+---
+
+<a id="Group.set_wrap" />
+```gust
+def Group.set_wrap(wrap: bool) -> none
+```
+
+Choose whether stepping past the last widget returns to the first.
+
+**Parameters**
+
+- `wrap` — Whether the ends join up.
+
+---
+
+<a id="Group.set_editing" />
+```gust
+def Group.set_editing(editing: bool) -> none
+```
+
+Enter or leave edit mode, where an encoder's turns change the focused
+widget's value instead of moving focus.
+
+**Parameters**
+
+- `editing` — Whether turns edit rather than navigate.
+
+---
+
+<a id="Group.send_key" />
+```gust
+def Group.send_key(key: integer) -> none
+```
+
+Deliver a key to the focused widget directly, without an input device.
+
+**Parameters**
+
+- `key` — A `Key` member, or the character code of a printable character.
+
+---
+
+<a id="Group.focused" />
+```gust
+def Group.focused() -> Obj
+```
+
+The widget currently holding focus. Its handle is 0 when the group is
+empty.
+
+---
+
+<a id="Group.count" />
+```gust
+def Group.count() -> integer
+```
+
+How many widgets are in the group.
+
+---
+
+<a id="Group.at" />
+```gust
+def Group.at(index: integer) -> Obj
+```
+
+The widget at a position in the group's order.
+
+**Parameters**
+
+- `index` — Zero-based position; out of range yields a handle of 0.
+
+---
+
+<a id="Group.is_editing" />
+```gust
+def Group.is_editing() -> bool
+```
+
+Whether an encoder's turns currently edit the focused widget.
+
+---
+
+<a id="Group.wraps" />
+```gust
+def Group.wraps() -> bool
+```
+
+Whether stepping past the last widget returns to the first.
+
+---
+
+<a id="Group.delete" />
+```gust
+def Group.delete() -> none
+```
+
+Delete the group. The widgets it held stay alive, unfocusable until they
+join another group. The handle is dead afterwards.
+
+## `Image`
+
+<a id="Image" />
+A picture. Point it at a source with `set_src`, and transform it with
+`set_rotation` and `set_scale`.
+
+```gust
+def Image
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Image.set_src" />
+```gust
+def Image.set_src(path: string) -> none
+```
+
+Set the image source to a file path understood by LVGL's file system,
+e.g. "A:/icons/home.png".
+
+**Parameters**
+
+- `path` — Path to the image, with an LVGL drive-letter prefix.
+
+---
+
+<a id="Image.set_rotation" />
+```gust
+def Image.set_rotation(angle: integer) -> none
+```
+
+Rotate the image about its pivot.
+
+**Parameters**
+
+- `angle` — Rotation in tenths of a degree (900 is 90°).
+
+---
+
+<a id="Image.set_scale" />
+```gust
+def Image.set_scale(zoom: integer) -> none
+```
+
+Scale the image. 256 is the original size; 512 doubles it, 128 halves it.
+
+**Parameters**
+
+- `zoom` — Zoom factor where 256 is 1:1.
+
+---
+
+<a id="Image.src" />
+```gust
+def Image.src() -> string
+```
+
+The source path, or "" when the widget draws something other than a
+file — a symbol or an in-memory image.
+
+---
+
+<a id="Image.rotation" />
+```gust
+def Image.rotation() -> integer
+```
+
+The current rotation in tenths of a degree.
+
+---
+
+<a id="Image.scale" />
+```gust
+def Image.scale() -> integer
+```
+
+The current zoom factor, where 256 is 1:1.
+
+---
+
+<a id="Image.set_scale_x" />
+```gust
+def Image.set_scale_x(zoom: integer) -> none
+```
+
+Scale the image horizontally only. 256 is the original width.
+
+**Parameters**
+
+- `zoom` — Horizontal zoom factor where 256 is 1:1.
+
+---
+
+<a id="Image.set_scale_y" />
+```gust
+def Image.set_scale_y(zoom: integer) -> none
+```
+
+Scale the image vertically only. 256 is the original height.
+
+**Parameters**
+
+- `zoom` — Vertical zoom factor where 256 is 1:1.
+
+---
+
+<a id="Image.scale_x" />
+```gust
+def Image.scale_x() -> integer
+```
+
+The current horizontal zoom factor, where 256 is 1:1.
+
+---
+
+<a id="Image.scale_y" />
+```gust
+def Image.scale_y() -> integer
+```
+
+The current vertical zoom factor, where 256 is 1:1.
+
+---
+
+<a id="Image.set_pivot" />
+```gust
+def Image.set_pivot(x: integer, y: integer) -> none
+```
+
+Set the point rotation and scaling turn about, measured from the image's
+top-left corner.
+
+**Parameters**
+
+- `x` — Horizontal offset of the pivot in pixels.
+- `y` — Vertical offset of the pivot in pixels.
+
+---
+
+<a id="Image.pivot" />
+```gust
+def Image.pivot() -> Point
+```
+
+The point rotation and scaling turn about.
+
+---
+
+<a id="Image.set_offset" />
+```gust
+def Image.set_offset(x: integer, y: integer) -> none
+```
+
+Shift the drawn image within the widget, which crops what falls outside.
+Animating the offset scrolls a larger image behind a fixed window.
+
+**Parameters**
+
+- `x` — Horizontal shift in pixels.
+- `y` — Vertical shift in pixels.
+
+---
+
+<a id="Image.offset_x" />
+```gust
+def Image.offset_x() -> integer
+```
+
+The image's horizontal shift within the widget, in pixels.
+
+---
+
+<a id="Image.offset_y" />
+```gust
+def Image.offset_y() -> integer
+```
+
+The image's vertical shift within the widget, in pixels.
+
+---
+
+<a id="Image.set_inner_align" />
+```gust
+def Image.set_inner_align(align: ImageAlign) -> none
+```
+
+Choose where the image sits inside the widget and how it is fitted to it.
+
+**Parameters**
+
+- `align` — Placement and fitting rule.
+
+---
+
+<a id="Image.inner_align" />
+```gust
+def Image.inner_align() -> ImageAlign
+```
+
+Where the image sits inside the widget.
+
+---
+
+<a id="Image.set_antialias" />
+```gust
+def Image.set_antialias(enabled: bool) -> none
+```
+
+Smooth the edges of a rotated or scaled image.
+
+**Parameters**
+
+- `enabled` — Whether transformed edges are smoothed.
+
+---
+
+<a id="Image.is_antialiased" />
+```gust
+def Image.is_antialiased() -> bool
+```
+
+Whether transformed edges are smoothed.
+
+---
+
+<a id="Image.set_blend_mode" />
+```gust
+def Image.set_blend_mode(mode: BlendMode) -> none
+```
+
+Choose how the image combines with what is behind it.
+
+**Parameters**
+
+- `mode` — Blending rule.
+
+---
+
+<a id="Image.blend_mode" />
+```gust
+def Image.blend_mode() -> BlendMode
+```
+
+How the image combines with what is behind it.
+
+---
+
+<a id="Image.src_width" />
+```gust
+def Image.src_width() -> integer
+```
+
+The source image's own width in pixels, before any transform.
+
+---
+
+<a id="Image.src_height" />
+```gust
+def Image.src_height() -> integer
+```
+
+The source image's own height in pixels, before any transform.
+
+---
+
+<a id="Image.transformed_width" />
+```gust
+def Image.transformed_width() -> integer
+```
+
+The drawn width in pixels, after rotation and scaling.
+
+---
+
+<a id="Image.transformed_height" />
+```gust
+def Image.transformed_height() -> integer
+```
+
+The drawn height in pixels, after rotation and scaling.
+
+## `ImageButton`
+
+<a id="ImageButton" />
+A button whose appearance comes entirely from images, one set per state.
+Each state is drawn as a left cap, a middle stretched across the button's
+width, and a right cap, so one set of images serves any width.
+
+```gust
+def ImageButton
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="ImageButton.set_src" />
+```gust
+def ImageButton.set_src(
+    state: ImageButtonState,
+    middle: string,
+    left: string,
+    right: string,
+) -> none
+```
+
+Set the images drawn for one state. Each path is resolved the way
+`Image.set_src` resolves one; an empty path leaves that slice undrawn. The
+paths are copied, so the strings may be discarded afterwards.
+
+**Parameters**
+
+- `state` — The state these images apply to.
+- `middle` — Path to the image tiled across the button's width.
+- `left` — Path to the left cap image.
+- `right` — Path to the right cap image.
+
+---
+
+<a id="ImageButton.set_state" />
+```gust
+def ImageButton.set_state(state: ImageButtonState) -> none
+```
+
+Force the button into one state, overriding what its interaction would
+select.
+
+**Parameters**
+
+- `state` — The state to draw.
+
+---
+
+<a id="ImageButton.src" />
+```gust
+def ImageButton.src(state: ImageButtonState) -> string
+```
+
+The path of the image tiled across the button's width in one state, or
+"" when that state has none.
+
+**Parameters**
+
+- `state` — The state to report.
+
+---
+
+<a id="ImageButton.src_left" />
+```gust
+def ImageButton.src_left(state: ImageButtonState) -> string
+```
+
+The path of the left cap image in one state, or "" when unused.
+
+**Parameters**
+
+- `state` — The state to report.
+
+---
+
+<a id="ImageButton.src_right" />
+```gust
+def ImageButton.src_right(state: ImageButtonState) -> string
+```
+
+The path of the right cap image in one state, or "" when unused.
+
+**Parameters**
+
+- `state` — The state to report.
+
+## `Indev`
+
+<a id="Indev" />
+A live input device, identified by its opaque engine handle. Create one
+through `pointer`, `keypad`, or `encoder`; the shared controls here apply to
+all three.
+
+```gust
+def Indev
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The engine's opaque pointer to the device, as an integer.
+
+**Methods**
+
+<a id="Indev.enable" />
+```gust
+def Indev.enable(enabled: bool) -> none
+```
+
+Start or stop delivering this device's samples, without deleting it.
+
+**Parameters**
+
+- `enabled` — Whether the device feeds the widgets.
+
+---
+
+<a id="Indev.read" />
+```gust
+def Indev.read() -> none
+```
+
+Deliver the current sample immediately, rather than waiting for the
+engine's next poll. Use it when a program reads its hardware on its own
+schedule and wants each sample acted on as it arrives.
+
+---
+
+<a id="Indev.set_long_press_time" />
+```gust
+def Indev.set_long_press_time(milliseconds: integer) -> none
+```
+
+Set how long a press must be held before it counts as a long press.
+
+**Parameters**
+
+- `milliseconds` — Hold time that fires `EventCode.long_pressed`.
+
+---
+
+<a id="Indev.set_long_press_repeat_time" />
+```gust
+def Indev.set_long_press_repeat_time(milliseconds: integer) -> none
+```
+
+Set how often a held press repeats once it has become a long press.
+
+**Parameters**
+
+- `milliseconds` — Interval between repeats.
+
+---
+
+<a id="Indev.set_scroll_limit" />
+```gust
+def Indev.set_scroll_limit(pixels: integer) -> none
+```
+
+Set how far a press must travel before it scrolls instead of clicking.
+
+**Parameters**
+
+- `pixels` — Movement threshold that starts a scroll.
+
+---
+
+<a id="Indev.delete" />
+```gust
+def Indev.delete() -> none
+```
+
+Remove the device. The handle is dead afterwards.
+
+## `Pointer`
+
+<a id="Pointer" />
+A device that reports a coordinate — a touch panel or a mouse. Report
+where it is with `set_position` and whether it is down with `set_pressed`;
+the widget under the point receives the press, click, and scroll events.
+
+```gust
+def Pointer
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Pointer.set_position" />
+```gust
+def Pointer.set_position(x: integer, y: integer) -> none
+```
+
+Report where the pointer is, in display pixels from the top-left corner.
+
+**Parameters**
+
+- `x` — Horizontal position in pixels.
+- `y` — Vertical position in pixels.
+
+---
+
+<a id="Pointer.set_pressed" />
+```gust
+def Pointer.set_pressed(pressed: bool) -> none
+```
+
+Report whether the pointer is down. A press followed by a release over
+the same widget is what makes a click.
+
+**Parameters**
+
+- `pressed` — Whether the panel is touched or the button is held.
+
+---
+
+<a id="Pointer.set_cursor" />
+```gust
+def Pointer.set_cursor(cursor: Obj) -> none
+```
+
+Draw `cursor` at the pointer's position, following it as it moves. A
+mouse needs one; a touch panel does not.
+
+**Parameters**
+
+- `cursor` — Any widget, typically a small `Image`.
+
+## `Keypad`
+
+<a id="Keypad" />
+A keypad or keyboard. It types into the focused widget of its group and
+moves focus with `Key.next`, `Key.previous`, and the arrow keys, so it does
+nothing until `set_group` attaches one.
+
+```gust
+def Keypad
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Keypad.set_group" />
+```gust
+def Keypad.set_group(group: Group) -> none
+```
+
+Attach the group whose focused widget receives the keys.
+
+**Parameters**
+
+- `group` — The group to navigate and type into.
+
+---
+
+<a id="Keypad.press_key" />
+```gust
+def Keypad.press_key(key: integer) -> none
+```
+
+Report a key as held down. It stays down, repeating as a long press,
+until `release_key`. Pass a `Key` member for navigation and editing, or a
+character code to type it.
+
+**Parameters**
+
+- `key` — A `Key` member, or the character code of a printable character.
+
+---
+
+<a id="Keypad.release_key" />
+```gust
+def Keypad.release_key() -> none
+```
+
+Report the held key as let go.
+
+---
+
+<a id="Keypad.send_key" />
+```gust
+def Keypad.send_key(key: integer) -> none
+```
+
+Deliver one complete keystroke — press and release, both acted on at
+once, without waiting for the engine's poll.
+
+**Parameters**
+
+- `key` — A `Key` member, or the character code of a printable character.
+
+## `Encoder`
+
+<a id="Encoder" />
+A rotary encoder with a push button. Turning steps focus through its
+group; pressing enters the focused widget to edit it, so it does nothing
+until `set_group` attaches one.
+
+```gust
+def Encoder
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Encoder.set_group" />
+```gust
+def Encoder.set_group(group: Group) -> none
+```
+
+Attach the group the knob steps through.
+
+**Parameters**
+
+- `group` — The group to navigate and edit.
+
+---
+
+<a id="Encoder.turn" />
+```gust
+def Encoder.turn(steps: integer) -> none
+```
+
+Report the knob turned by `steps` detents, positive for clockwise. Steps
+accumulate until the engine reads them, so two turns between reads both
+count.
+
+**Parameters**
+
+- `steps` — Detents turned since the last report; negative turns back.
+
+---
+
+<a id="Encoder.set_pressed" />
+```gust
+def Encoder.set_pressed(pressed: bool) -> none
+```
+
+Report whether the knob is pushed in. A press and release enters the
+focused widget for editing, and a long press leaves it.
+
+**Parameters**
+
+- `pressed` — Whether the knob's button is held.
+
+## `Keyboard`
+
+<a id="Keyboard" />
+An on-screen keyboard. Point it at a `TextArea` with `set_textarea` so
+key presses insert into that field.
+
+```gust
+def Keyboard
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Keyboard.set_textarea" />
+```gust
+def Keyboard.set_textarea(field: TextArea) -> none
+```
+
+Direct the keyboard's input into a text area.
+
+**Parameters**
+
+- `field` — The text area to type into.
+
+---
+
+<a id="Keyboard.set_mode" />
+```gust
+def Keyboard.set_mode(mode: KeyboardMode) -> none
+```
+
+Show a different key layout.
+
+**Parameters**
+
+- `mode` — The layout to show.
+
+---
+
+<a id="Keyboard.mode" />
+```gust
+def Keyboard.mode() -> KeyboardMode
+```
+
+The key layout on display.
+
+---
+
+<a id="Keyboard.set_map" />
+```gust
+def Keyboard.set_map(
+    mode: KeyboardMode,
+    rows: list[list[string]],
+    ctrl: list[integer],
+) -> none
+```
+
+Replace the keys of one layout. Each inner list is one row of key
+captions; `ctrl` carries one `ButtonCtrl` word per key, in the same order,
+and may be left empty to give every key the default behavior.
+
+A key whose caption is one of LVGL's keyboard control strings keeps that
+behavior — `LV_SYMBOL_OK` closes the keyboard, `LV_SYMBOL_BACKSPACE`
+deletes, and the mode names switch layouts.
+
+**Parameters**
+
+- `mode` — The layout to replace.
+- `rows` — One list of key captions per row.
+- `ctrl` — Behavior flags per key, or an empty list for the defaults.
+
+<Note>
+LVGL keeps custom layouts in globals shared by every keyboard, so a
+layout set here applies to keyboards created later as well and lives
+until the same mode is given a new one.
+</Note>
+
+---
+
+<a id="Keyboard.set_popovers" />
+```gust
+def Keyboard.set_popovers(enabled: bool) -> none
+```
+
+Show the pressed key's caption in a pop-over above it, so a finger does
+not hide what it is typing.
+
+**Parameters**
+
+- `enabled` — Whether pressed keys show a pop-over.
+
+---
+
+<a id="Keyboard.has_popovers" />
+```gust
+def Keyboard.has_popovers() -> bool
+```
+
+Whether pressed keys show a pop-over.
+
+---
+
+<a id="Keyboard.selected" />
+```gust
+def Keyboard.selected() -> integer
+```
+
+The index of the key being pressed or last pressed.
+
+---
+
+<a id="Keyboard.button_text" />
+```gust
+def Keyboard.button_text(index: integer) -> string
+```
+
+The caption of the key at `index`, or "" when there is no such key.
+
+**Parameters**
+
+- `index` — Zero-based key index.
+
+---
+
+<a id="Keyboard.textarea" />
+```gust
+def Keyboard.textarea() -> TextArea
+```
+
+The text area the keyboard types into.
+
+## `Label`
+
+<a id="Label" />
+A text label. Set its content with `set_text`, its color with
+`set_text_color`, and how it handles overflow with `set_long_mode`.
+
+```gust
+def Label
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Label.set_text" />
+```gust
+def Label.set_text(text: string) -> none
+```
+
+Set the displayed text.
+
+**Parameters**
+
+- `text` — The string to display.
+
+---
+
+<a id="Label.text" />
+```gust
+def Label.text() -> string
+```
+
+The displayed text.
+
+---
+
+<a id="Label.insert_text" />
+```gust
+def Label.insert_text(position: integer, text: string) -> none
+```
+
+Insert text at a character position, keeping what is already there.
+
+**Parameters**
+
+- `position` — Zero-based character position; -1 appends to the end.
+- `text` — The text to insert.
+
+---
+
+<a id="Label.cut_text" />
+```gust
+def Label.cut_text(position: integer, count: integer) -> none
+```
+
+Remove characters from the displayed text.
+
+**Parameters**
+
+- `position` — Zero-based character position to cut from.
+- `count` — How many characters to remove.
+
+---
+
+<a id="Label.set_long_mode" />
+```gust
+def Label.set_long_mode(mode: LongMode) -> none
+```
+
+Choose how text longer than the label's width is handled.
+
+**Parameters**
+
+- `mode` — Wrapping, truncation, or scrolling behavior.
+
+---
+
+<a id="Label.long_mode" />
+```gust
+def Label.long_mode() -> LongMode
+```
+
+How text longer than the label's width is handled.
+
+---
+
+<a id="Label.set_recolor" />
+```gust
+def Label.set_recolor(enabled: bool) -> none
+```
+
+Honor `#RRGGBB text#` markers in the text, drawing the marked run in the
+named color.
+
+**Parameters**
+
+- `enabled` — Whether recoloring markers are honored.
+
+---
+
+<a id="Label.set_selection" />
+```gust
+def Label.set_selection(start: integer, end_index: integer) -> none
+```
+
+Highlight the characters from `start` up to `end_index`. Style the
+highlight through `Part.selected`.
+
+**Parameters**
+
+- `start` — Zero-based character index the selection starts at.
+- `end_index` — Zero-based character index the selection ends before.
+
+---
+
+<a id="Label.selection_start" />
+```gust
+def Label.selection_start() -> integer
+```
+
+Where the highlighted run starts, as a zero-based character index.
+
+---
+
+<a id="Label.selection_end" />
+```gust
+def Label.selection_end() -> integer
+```
+
+Where the highlighted run ends, as a zero-based character index.
+
+---
+
+<a id="Label.is_recolored" />
+```gust
+def Label.is_recolored() -> bool
+```
+
+Whether `#RRGGBB text#` markers in the text are honored.
+
+---
+
+<a id="Label.letter_pos" />
+```gust
+def Label.letter_pos(index: integer) -> Point
+```
+
+Where the character at `index` is drawn, relative to the label's
+top-left corner.
+
+**Parameters**
+
+- `index` — Zero-based character index.
+
+---
+
+<a id="Label.letter_at" />
+```gust
+def Label.letter_at(x: integer, y: integer) -> integer
+```
+
+The index of the character drawn at a point, relative to the label's
+top-left corner. Positions past the end of a line report the index just
+after it.
+
+**Parameters**
+
+- `x` — Horizontal offset in pixels.
+- `y` — Vertical offset in pixels.
+
+## `Led`
+
+<a id="Led" />
+A glowing indicator light. Set its hue with `set_color`, its intensity
+with `set_brightness`, and switch it with `on`, `off`, and `toggle`.
+
+```gust
+def Led
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Led.set_color" />
+```gust
+def Led.set_color(rgb: integer) -> none
+```
+
+Set the LED's color.
+
+**Parameters**
+
+- `rgb` — Color as `0xRRGGBB`.
+
+---
+
+<a id="Led.set_brightness" />
+```gust
+def Led.set_brightness(brightness: integer) -> none
+```
+
+Set the LED's brightness.
+
+**Parameters**
+
+- `brightness` — Brightness from 0 (off) to 255 (full).
+
+---
+
+<a id="Led.brightness" />
+```gust
+def Led.brightness() -> integer
+```
+
+The LED's current brightness, from 0 to 255.
+
+---
+
+<a id="Led.on" />
+```gust
+def Led.on() -> none
+```
+
+Turn the LED to full brightness.
+
+---
+
+<a id="Led.off" />
+```gust
+def Led.off() -> none
+```
+
+Dim the LED to its lowest brightness.
+
+---
+
+<a id="Led.toggle" />
+```gust
+def Led.toggle() -> none
+```
+
+Switch the LED between on and off.
+
+## `Line`
+
+<a id="Line" />
+A polyline. `set_points` gives it its vertices, measured from the
+widget's top-left corner; the widget sizes itself to contain them.
+
+```gust
+def Line
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Line.set_points" />
+```gust
+def Line.set_points(points: list[Point]) -> none
+```
+
+Replace the vertices the line runs through, in order. The points are
+copied, so the list may be reused or discarded afterwards.
+
+**Parameters**
+
+- `points` — The vertices, relative to the widget's top-left corner.
+
+---
+
+<a id="Line.point_count" />
+```gust
+def Line.point_count() -> integer
+```
+
+How many vertices the line runs through.
+
+---
+
+<a id="Line.set_y_invert" />
+```gust
+def Line.set_y_invert(enabled: bool) -> none
+```
+
+Measure y upwards from the widget's bottom edge rather than downwards
+from its top, so a rising series reads as rising.
+
+**Parameters**
+
+- `enabled` — Whether y grows upwards.
+
+---
+
+<a id="Line.is_y_inverted" />
+```gust
+def Line.is_y_inverted() -> bool
+```
+
+Whether y is measured upwards from the bottom edge.
+
+---
+
+<a id="Line.points" />
+```gust
+def Line.points() -> list[Point]
+```
+
+The vertices the line runs through, in order.
+
+## `List`
+
+<a id="List" />
+A scrolling list. Add non-interactive headings with `add_text` and
+clickable rows with `add_button`, wiring each button's `on_click`.
+
+```gust
+def List
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="List.add_text" />
+```gust
+def List.add_text(text: string) -> Label
+```
+
+Append a non-interactive heading and return it.
+
+**Parameters**
+
+- `text` — The heading text.
+
+---
+
+<a id="List.add_button" />
+```gust
+def List.add_button(text: string, icon: string) -> Button
+```
+
+Append a clickable row and return it, so an `on_click` handler can be
+attached.
+
+**Parameters**
+
+- `text` — The button's caption.
+- `icon` — Glyph drawn before the caption, usually one of the `ICON_*` constants; "" draws none.
+
+---
+
+<a id="List.button_text" />
+```gust
+def List.button_text(row: Button) -> string
+```
+
+The caption of a row added with `add_button`.
+
+**Parameters**
+
+- `row` — A row returned by `add_button`.
+
+---
+
+<a id="List.set_button_text" />
+```gust
+def List.set_button_text(row: Button, text: string) -> none
+```
+
+Replace the caption of a row added with `add_button`.
+
+**Parameters**
+
+- `row` — A row returned by `add_button`.
+- `text` — The new caption.
+
+## `Menu`
+
+<a id="Menu" />
+A page stack. `add_page` creates a page to fill with rows, `set_page`
+shows one, and `link` wires a row so pressing it opens another page — the
+menu keeps the history and its header's back button walks it. `add_section`
+and `add_separator` group the rows of a page.
+
+```gust
+def Menu
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Menu.add_page" />
+```gust
+def Menu.add_page(title: string) -> Obj
+```
+
+Create a page belonging to this menu and return it — the parent to create
+the page's rows against. A page is not shown until `set_page` or `link`
+reaches it.
+
+**Parameters**
+
+- `title` — Header text for the page; "" leaves the header empty.
+
+---
+
+<a id="Menu.set_page" />
+```gust
+def Menu.set_page(page: Obj) -> none
+```
+
+Show `page` in the main area, pushing the current page onto the history.
+
+**Parameters**
+
+- `page` — A page from `add_page`.
+
+---
+
+<a id="Menu.set_sidebar_page" />
+```gust
+def Menu.set_sidebar_page(page: Obj) -> none
+```
+
+Show `page` in a sidebar beside the main area, giving the menu the
+two-column layout of a settings window.
+
+**Parameters**
+
+- `page` — A page from `add_page`.
+
+---
+
+<a id="Menu.set_page_title" />
+```gust
+def Menu.set_page_title(page: Obj, title: string) -> none
+```
+
+Replace a page's header text.
+
+**Parameters**
+
+- `page` — A page from `add_page`.
+- `title` — The new header text.
+
+---
+
+<a id="Menu.link" />
+```gust
+def Menu.link(row: Obj, page: Obj) -> none
+```
+
+Make pressing `row` open `page` in the main area.
+
+**Parameters**
+
+- `row` — The widget to make navigable, usually from `add_container`.
+- `page` — The page to open.
+
+---
+
+<a id="Menu.add_container" />
+```gust
+def Menu.add_container(page: Obj) -> Obj
+```
+
+Add a row container to `page` and return it — the parent to build one
+menu entry against. Pass it to `link` to make the entry navigate.
+
+**Parameters**
+
+- `page` — The page to add the row to.
+
+---
+
+<a id="Menu.add_section" />
+```gust
+def Menu.add_section(page: Obj) -> Obj
+```
+
+Add a visually grouped section to `page` and return it — the parent for
+the rows that belong together.
+
+**Parameters**
+
+- `page` — The page to add the section to.
+
+---
+
+<a id="Menu.add_separator" />
+```gust
+def Menu.add_separator(page: Obj) -> Obj
+```
+
+Add a dividing rule to `page` and return it.
+
+**Parameters**
+
+- `page` — The page to add the separator to.
+
+---
+
+<a id="Menu.set_header_mode" />
+```gust
+def Menu.set_header_mode(mode: MenuHeaderMode) -> none
+```
+
+Choose where the header bar sits and whether it scrolls away.
+
+**Parameters**
+
+- `mode` — Header placement.
+
+---
+
+<a id="Menu.set_root_back_button" />
+```gust
+def Menu.set_root_back_button(enabled: bool) -> none
+```
+
+Show the back button on the root page as well, where there is nothing to
+go back to. Pair it with an `on_click` handler to leave the menu.
+
+**Parameters**
+
+- `enabled` — Whether the root page shows a back button.
+
+---
+
+<a id="Menu.main_page" />
+```gust
+def Menu.main_page() -> Obj
+```
+
+The page currently shown in the main area.
+
+---
+
+<a id="Menu.sidebar_page" />
+```gust
+def Menu.sidebar_page() -> Obj
+```
+
+The page currently shown in the sidebar.
+
+---
+
+<a id="Menu.header" />
+```gust
+def Menu.header() -> Obj
+```
+
+The main area's header bar, for styling it.
+
+---
+
+<a id="Menu.back_button" />
+```gust
+def Menu.back_button() -> Obj
+```
+
+The main area's back button, for styling it or handling its clicks.
+
+---
+
+<a id="Menu.is_at_root" />
+```gust
+def Menu.is_at_root(back_button: Obj) -> bool
+```
+
+Whether a back button press came from the root page, where there is no
+earlier page to return to.
+
+**Parameters**
+
+- `back_button` — The widget the press came from.
+
+---
+
+<a id="Menu.clear_history" />
+```gust
+def Menu.clear_history() -> none
+```
+
+Forget the pages visited so far, making the current page the root.
+
+---
+
+<a id="Menu.sidebar_header" />
+```gust
+def Menu.sidebar_header() -> Obj
+```
+
+The sidebar's header bar, for styling it.
+
+---
+
+<a id="Menu.sidebar_back_button" />
+```gust
+def Menu.sidebar_back_button() -> Obj
+```
+
+The sidebar's back button, for styling it or handling its clicks.
+
+## `Msgbox`
+
+<a id="Msgbox" />
+A dialog box assembled from parts: `add_title` and `add_text` fill the
+body, `add_footer_button` adds an action, and `add_close_button` adds the
+corner dismiss button.
+
+```gust
+def Msgbox
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Msgbox.add_title" />
+```gust
+def Msgbox.add_title(text: string) -> Obj
+```
+
+Add a title to the dialog's header and return it.
+
+**Parameters**
+
+- `text` — The title text.
+
+---
+
+<a id="Msgbox.add_text" />
+```gust
+def Msgbox.add_text(text: string) -> Obj
+```
+
+Add a paragraph to the dialog's body and return it.
+
+**Parameters**
+
+- `text` — The body text.
+
+---
+
+<a id="Msgbox.add_footer_button" />
+```gust
+def Msgbox.add_footer_button(text: string) -> Button
+```
+
+Add an action button to the dialog's footer and return it, so an
+`on_click` handler can be attached.
+
+**Parameters**
+
+- `text` — The button's caption.
+
+---
+
+<a id="Msgbox.add_close_button" />
+```gust
+def Msgbox.add_close_button() -> Button
+```
+
+Add a close button to the dialog's header corner and return it.
+
+---
+
+<a id="Msgbox.add_header_button" />
+```gust
+def Msgbox.add_header_button(icon: string) -> Button
+```
+
+Add a button to the dialog's header and return it, so an `on_click`
+handler can be attached.
+
+**Parameters**
+
+- `icon` — The button's glyph, usually one of the `ICON_*` constants.
+
+---
+
+<a id="Msgbox.header" />
+```gust
+def Msgbox.header() -> Obj
+```
+
+The dialog's header bar, for styling it.
+
+---
+
+<a id="Msgbox.content" />
+```gust
+def Msgbox.content() -> Obj
+```
+
+The dialog's body area — the parent to create extra widgets against.
+
+---
+
+<a id="Msgbox.footer" />
+```gust
+def Msgbox.footer() -> Obj
+```
+
+The dialog's footer bar, for styling it.
+
+---
+
+<a id="Msgbox.title" />
+```gust
+def Msgbox.title() -> Obj
+```
+
+The dialog's title label.
+
+---
+
+<a id="Msgbox.close" />
+```gust
+def Msgbox.close() -> none
+```
+
+Dismiss the dialog and delete it.
+
+---
+
+<a id="Msgbox.close_later" />
+```gust
+def Msgbox.close_later() -> none
+```
+
+Dismiss the dialog after the current event finishes. Use this from a
+handler on one of the dialog's own widgets, where deleting the dialog
+outright would destroy the widget mid-event.
+
+## `Obj`
+
+<a id="Obj" />
+A live LVGL widget, identified by its opaque engine handle. Instances are
+created through `screen`, `container`, and the per-widget constructors
+(`label`, `button`, ...); construct one directly only to wrap a handle
+obtained elsewhere.
+
+```gust
+def Obj
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The engine's opaque pointer to the widget, as an integer.
+
+**Methods**
+
+<a id="Obj.delete" />
+```gust
+def Obj.delete() -> none
+```
+
+Delete this widget and all of its children, freeing their resources. The
+handle must not be used afterwards.
+
+---
+
+<a id="Obj.clean" />
+```gust
+def Obj.clean() -> none
+```
+
+Delete every child of this widget while keeping the widget itself.
+
+---
+
+<a id="Obj.set_parent" />
+```gust
+def Obj.set_parent(parent: Obj) -> none
+```
+
+Move this widget to become a child of `parent`.
+
+**Parameters**
+
+- `parent` — The new parent widget.
+
+---
+
+<a id="Obj.parent" />
+```gust
+def Obj.parent() -> Obj
+```
+
+The widget this one is a child of. A screen has no parent, so its handle
+is 0.
+
+---
+
+<a id="Obj.screen" />
+```gust
+def Obj.screen() -> Obj
+```
+
+The screen this widget is on, however deep in the tree it sits.
+
+---
+
+<a id="Obj.child_count" />
+```gust
+def Obj.child_count() -> integer
+```
+
+How many children this widget has.
+
+---
+
+<a id="Obj.child" />
+```gust
+def Obj.child(index: integer) -> Obj
+```
+
+The child at a position in draw order, first drawn first. A position
+past the end yields a handle of 0.
+
+**Parameters**
+
+- `index` — Zero-based position; negative counts back from the end.
+
+---
+
+<a id="Obj.index" />
+```gust
+def Obj.index() -> integer
+```
+
+This widget's position among its parent's children.
+
+---
+
+<a id="Obj.move_to_index" />
+```gust
+def Obj.move_to_index(index: integer) -> none
+```
+
+Move this widget to a position among its siblings, changing what is
+drawn over what.
+
+**Parameters**
+
+- `index` — Zero-based position; negative counts back from the end.
+
+---
+
+<a id="Obj.swap" />
+```gust
+def Obj.swap(other: Obj) -> none
+```
+
+Exchange this widget's place among its siblings with another's.
+
+**Parameters**
+
+- `other` — The widget to trade places with.
+
+---
+
+<a id="Obj.delete_delayed" />
+```gust
+def Obj.delete_delayed(milliseconds: integer) -> none
+```
+
+Delete this widget once `milliseconds` have passed, letting a handler
+that is still running finish with it. The handle is dead from then on.
+
+**Parameters**
+
+- `milliseconds` — Delay before the widget is deleted.
+
+---
+
+<a id="Obj.set_pos" />
+```gust
+def Obj.set_pos(x: integer, y: integer) -> none
+```
+
+Place this widget at (`x`, `y`) relative to its parent's top-left.
+
+**Parameters**
+
+- `x` — Left offset in pixels.
+- `y` — Top offset in pixels.
+
+---
+
+<a id="Obj.set_x" />
+```gust
+def Obj.set_x(x: integer) -> none
+```
+
+Set the left offset relative to the parent, in pixels.
+
+**Parameters**
+
+- `x` — Left offset in pixels.
+
+---
+
+<a id="Obj.set_y" />
+```gust
+def Obj.set_y(y: integer) -> none
+```
+
+Set the top offset relative to the parent, in pixels.
+
+**Parameters**
+
+- `y` — Top offset in pixels.
+
+---
+
+<a id="Obj.set_size" />
+```gust
+def Obj.set_size(w: integer, h: integer) -> none
+```
+
+Set the width and height in pixels.
+
+**Parameters**
+
+- `w` — Width in pixels.
+- `h` — Height in pixels.
+
+---
+
+<a id="Obj.set_width" />
+```gust
+def Obj.set_width(w: integer) -> none
+```
+
+Set the width in pixels.
+
+**Parameters**
+
+- `w` — Width in pixels.
+
+---
+
+<a id="Obj.set_height" />
+```gust
+def Obj.set_height(h: integer) -> none
+```
+
+Set the height in pixels.
+
+**Parameters**
+
+- `h` — Height in pixels.
+
+---
+
+<a id="Obj.x" />
+```gust
+def Obj.x() -> integer
+```
+
+Current left offset relative to the parent, in pixels.
+
+---
+
+<a id="Obj.y" />
+```gust
+def Obj.y() -> integer
+```
+
+Current top offset relative to the parent, in pixels.
+
+---
+
+<a id="Obj.width" />
+```gust
+def Obj.width() -> integer
+```
+
+Current width in pixels.
+
+---
+
+<a id="Obj.height" />
+```gust
+def Obj.height() -> integer
+```
+
+Current height in pixels.
+
+---
+
+<a id="Obj.update_layout" />
+```gust
+def Obj.update_layout() -> none
+```
+
+Compute where this widget and everything under it sit, now, rather than
+at the next frame. Sizes and positions are otherwise assigned during a
+refresh, so a widget measured or hit-tested before one has been drawn
+reports nothing: call this first.
+
+---
+
+<a id="Obj.align" />
+```gust
+def Obj.align(at: Align, x: integer, y: integer) -> none
+```
+
+Anchor this widget to a point of its parent, then offset by (`x`, `y`).
+
+**Parameters**
+
+- `at` — Anchor point within the parent.
+- `x` — Horizontal offset from the anchor in pixels.
+- `y` — Vertical offset from the anchor in pixels.
+
+---
+
+<a id="Obj.align_to" />
+```gust
+def Obj.align_to(reference: Obj, at: Align, x: integer, y: integer) -> none
+```
+
+Anchor this widget to a point of another widget, then offset by (`x`,
+`y`).
+
+**Parameters**
+
+- `reference` — The widget to align against.
+- `at` — Anchor point relative to `reference`.
+- `x` — Horizontal offset from the anchor in pixels.
+- `y` — Vertical offset from the anchor in pixels.
+
+---
+
+<a id="Obj.center" />
+```gust
+def Obj.center() -> none
+```
+
+Center this widget within its parent.
+
+---
+
+<a id="Obj.add_flag" />
+```gust
+def Obj.add_flag(flag: Flag) -> none
+```
+
+Turn on a behavior flag.
+
+**Parameters**
+
+- `flag` — The flag to set.
+
+---
+
+<a id="Obj.remove_flag" />
+```gust
+def Obj.remove_flag(flag: Flag) -> none
+```
+
+Turn off a behavior flag.
+
+**Parameters**
+
+- `flag` — The flag to clear.
+
+---
+
+<a id="Obj.hide" />
+```gust
+def Obj.hide() -> none
+```
+
+Hide this widget: stop drawing it and remove it from layouts.
+
+---
+
+<a id="Obj.show" />
+```gust
+def Obj.show() -> none
+```
+
+Show a widget previously hidden with `hide`.
+
+---
+
+<a id="Obj.add_state" />
+```gust
+def Obj.add_state(state: State) -> none
+```
+
+Add an interaction state, e.g. to check a switch or disable a button.
+
+**Parameters**
+
+- `state` — The state to add.
+
+---
+
+<a id="Obj.remove_state" />
+```gust
+def Obj.remove_state(state: State) -> none
+```
+
+Remove an interaction state.
+
+**Parameters**
+
+- `state` — The state to remove.
+
+---
+
+<a id="Obj.has_state" />
+```gust
+def Obj.has_state(state: State) -> bool
+```
+
+Whether this widget currently carries the given interaction state.
+
+**Parameters**
+
+- `state` — The state to test for.
+
+---
+
+<a id="Obj.is_checked" />
+```gust
+def Obj.is_checked() -> bool
+```
+
+Whether this widget is toggled on (checked).
+
+---
+
+<a id="Obj.set_scrollbar_mode" />
+```gust
+def Obj.set_scrollbar_mode(mode: ScrollbarMode) -> none
+```
+
+Control when this widget shows its scrollbar.
+
+**Parameters**
+
+- `mode` — When the scrollbar is visible.
+
+---
+
+<a id="Obj.scroll_to_view" />
+```gust
+def Obj.scroll_to_view(animated: bool) -> none
+```
+
+Scroll this widget's parent so this widget becomes visible.
+
+**Parameters**
+
+- `animated` — Whether to animate the scroll.
+
+---
+
+<a id="Obj.set_scroll_direction" />
+```gust
+def Obj.set_scroll_direction(direction: Dir) -> none
+```
+
+Choose which ways this widget's content may be scrolled.
+
+**Parameters**
+
+- `direction` — The permitted directions, combined with `|`.
+
+---
+
+<a id="Obj.scroll_to" />
+```gust
+def Obj.scroll_to(x: integer, y: integer, animated: bool) -> none
+```
+
+Scroll the content to a position, measured as how far the content has
+been pulled left and up from its resting place.
+
+**Parameters**
+
+- `x` — Horizontal scroll position in pixels.
+- `y` — Vertical scroll position in pixels.
+- `animated` — Whether to animate the scroll.
+
+---
+
+<a id="Obj.scroll_by" />
+```gust
+def Obj.scroll_by(dx: integer, dy: integer, animated: bool) -> none
+```
+
+Scroll the content by an offset from where it is now. The offset moves
+the content itself, so it runs opposite to `scroll_x` and `scroll_y`:
+pulling the content down by 20 takes 20 off `scroll_y`.
+
+**Parameters**
+
+- `dx` — Horizontal distance in pixels; positive moves the content right.
+- `dy` — Vertical distance in pixels; positive moves the content down.
+- `animated` — Whether to animate the scroll.
+
+---
+
+<a id="Obj.scroll_x" />
+```gust
+def Obj.scroll_x() -> integer
+```
+
+How far the content is scrolled horizontally, in pixels.
+
+---
+
+<a id="Obj.scroll_y" />
+```gust
+def Obj.scroll_y() -> integer
+```
+
+How far the content is scrolled vertically, in pixels.
+
+---
+
+<a id="Obj.scroll_top" />
+```gust
+def Obj.scroll_top() -> integer
+```
+
+How much content sits above the visible area, in pixels.
+
+---
+
+<a id="Obj.scroll_bottom" />
+```gust
+def Obj.scroll_bottom() -> integer
+```
+
+How much content sits below the visible area, in pixels.
+
+---
+
+<a id="Obj.is_scrolling" />
+```gust
+def Obj.is_scrolling() -> bool
+```
+
+Whether the content is being dragged or is still coasting.
+
+---
+
+<a id="Obj.stop_scroll" />
+```gust
+def Obj.stop_scroll() -> none
+```
+
+Stop a scroll animation where it is, without settling.
+
+---
+
+<a id="Obj.move_foreground" />
+```gust
+def Obj.move_foreground() -> none
+```
+
+Raise this widget above its siblings so it draws on top.
+
+---
+
+<a id="Obj.move_background" />
+```gust
+def Obj.move_background() -> none
+```
+
+Lower this widget below its siblings so it draws behind them.
+
+---
+
+<a id="Obj.invalidate" />
+```gust
+def Obj.invalidate() -> none
+```
+
+Mark this widget as needing a redraw on the next render pass.
+
+---
+
+<a id="Obj.set_bg_color" />
+```gust
+def Obj.set_bg_color(rgb: integer, part: Part, state: State) -> none
+```
+
+Set the background fill color.
+
+**Parameters**
+
+- `rgb` — Color as `0xRRGGBB`.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_bg_grad_color" />
+```gust
+def Obj.set_bg_grad_color(rgb: integer, part: Part, state: State) -> none
+```
+
+Set the end color of the background gradient. Pair with `set_bg_grad_dir`
+to enable the gradient from `set_bg_color`.
+
+**Parameters**
+
+- `rgb` — Gradient end color as `0xRRGGBB`.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_text_color" />
+```gust
+def Obj.set_text_color(rgb: integer, part: Part, state: State) -> none
+```
+
+Set the text color.
+
+**Parameters**
+
+- `rgb` — Color as `0xRRGGBB`.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_border_color" />
+```gust
+def Obj.set_border_color(rgb: integer, part: Part, state: State) -> none
+```
+
+Set the border color. Has no visible effect until the border width is
+non-zero (see `set_border_width`).
+
+**Parameters**
+
+- `rgb` — Color as `0xRRGGBB`.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_outline_color" />
+```gust
+def Obj.set_outline_color(rgb: integer, part: Part, state: State) -> none
+```
+
+Set the outline color, drawn outside the border.
+
+**Parameters**
+
+- `rgb` — Color as `0xRRGGBB`.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_shadow_color" />
+```gust
+def Obj.set_shadow_color(rgb: integer, part: Part, state: State) -> none
+```
+
+Set the drop-shadow color.
+
+**Parameters**
+
+- `rgb` — Color as `0xRRGGBB`.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_line_color" />
+```gust
+def Obj.set_line_color(rgb: integer, part: Part, state: State) -> none
+```
+
+Set the line color (line, chart series, scale ticks).
+
+**Parameters**
+
+- `rgb` — Color as `0xRRGGBB`.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_arc_color" />
+```gust
+def Obj.set_arc_color(rgb: integer, part: Part, state: State) -> none
+```
+
+Set the arc color (arc, spinner). Target `Part.indicator` for the value
+arc or `Part.main` for the background arc.
+
+**Parameters**
+
+- `rgb` — Color as `0xRRGGBB`.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_image_recolor" />
+```gust
+def Obj.set_image_recolor(rgb: integer, part: Part, state: State) -> none
+```
+
+Blend an image toward a color. Pair with `set_image_recolor_opa` to
+control the blend strength.
+
+**Parameters**
+
+- `rgb` — Recolor as `0xRRGGBB`.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_opa" />
+```gust
+def Obj.set_opa(opa: integer, part: Part, state: State) -> none
+```
+
+Set the overall opacity of this widget and its children.
+
+**Parameters**
+
+- `opa` — Opacity from 0 (transparent) to 255 (opaque).
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_bg_opa" />
+```gust
+def Obj.set_bg_opa(opa: integer, part: Part, state: State) -> none
+```
+
+Set the background opacity.
+
+**Parameters**
+
+- `opa` — Opacity from 0 (transparent) to 255 (opaque).
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_border_opa" />
+```gust
+def Obj.set_border_opa(opa: integer, part: Part, state: State) -> none
+```
+
+Set the border opacity.
+
+**Parameters**
+
+- `opa` — Opacity from 0 (transparent) to 255 (opaque).
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_text_opa" />
+```gust
+def Obj.set_text_opa(opa: integer, part: Part, state: State) -> none
+```
+
+Set the text opacity.
+
+**Parameters**
+
+- `opa` — Opacity from 0 (transparent) to 255 (opaque).
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_shadow_opa" />
+```gust
+def Obj.set_shadow_opa(opa: integer, part: Part, state: State) -> none
+```
+
+Set the drop-shadow opacity.
+
+**Parameters**
+
+- `opa` — Opacity from 0 (transparent) to 255 (opaque).
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_image_recolor_opa" />
+```gust
+def Obj.set_image_recolor_opa(opa: integer, part: Part, state: State) -> none
+```
+
+Set the strength of an image recolor blend (see `set_image_recolor`).
+
+**Parameters**
+
+- `opa` — Blend strength from 0 (none) to 255 (full recolor).
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_border_width" />
+```gust
+def Obj.set_border_width(width: integer, part: Part, state: State) -> none
+```
+
+Set the border thickness in pixels (0 hides the border).
+
+**Parameters**
+
+- `width` — Border width in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_border_side" />
+```gust
+def Obj.set_border_side(side: integer, part: Part, state: State) -> none
+```
+
+Choose which edges draw a border.
+
+**Parameters**
+
+- `side` — A `BorderSide` value, or several combined with `|`.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_outline_width" />
+```gust
+def Obj.set_outline_width(width: integer, part: Part, state: State) -> none
+```
+
+Set the outline thickness in pixels (0 hides the outline).
+
+**Parameters**
+
+- `width` — Outline width in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_outline_pad" />
+```gust
+def Obj.set_outline_pad(pad: integer, part: Part, state: State) -> none
+```
+
+Set the gap between the border and the outline, in pixels.
+
+**Parameters**
+
+- `pad` — Gap in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_radius" />
+```gust
+def Obj.set_radius(radius: integer, part: Part, state: State) -> none
+```
+
+Set the corner radius in pixels. A large value rounds a square widget
+into a circle.
+
+**Parameters**
+
+- `radius` — Corner radius in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_pad_all" />
+```gust
+def Obj.set_pad_all(pad: integer, part: Part, state: State) -> none
+```
+
+Set the inner padding on all four sides, in pixels.
+
+**Parameters**
+
+- `pad` — Padding in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_pad_top" />
+```gust
+def Obj.set_pad_top(pad: integer, part: Part, state: State) -> none
+```
+
+Set the top inner padding, in pixels.
+
+**Parameters**
+
+- `pad` — Padding in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_pad_bottom" />
+```gust
+def Obj.set_pad_bottom(pad: integer, part: Part, state: State) -> none
+```
+
+Set the bottom inner padding, in pixels.
+
+**Parameters**
+
+- `pad` — Padding in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_pad_left" />
+```gust
+def Obj.set_pad_left(pad: integer, part: Part, state: State) -> none
+```
+
+Set the left inner padding, in pixels.
+
+**Parameters**
+
+- `pad` — Padding in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_pad_right" />
+```gust
+def Obj.set_pad_right(pad: integer, part: Part, state: State) -> none
+```
+
+Set the right inner padding, in pixels.
+
+**Parameters**
+
+- `pad` — Padding in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_pad_row" />
+```gust
+def Obj.set_pad_row(pad: integer, part: Part, state: State) -> none
+```
+
+Set the gap between rows of children in a layout, in pixels.
+
+**Parameters**
+
+- `pad` — Gap in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_pad_column" />
+```gust
+def Obj.set_pad_column(pad: integer, part: Part, state: State) -> none
+```
+
+Set the gap between columns of children in a layout, in pixels.
+
+**Parameters**
+
+- `pad` — Gap in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_min_width" />
+```gust
+def Obj.set_min_width(value: integer, part: Part, state: State) -> none
+```
+
+Set the minimum width this widget may shrink to, in pixels.
+
+**Parameters**
+
+- `value` — Minimum width in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_max_width" />
+```gust
+def Obj.set_max_width(value: integer, part: Part, state: State) -> none
+```
+
+Set the maximum width this widget may grow to, in pixels.
+
+**Parameters**
+
+- `value` — Maximum width in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_min_height" />
+```gust
+def Obj.set_min_height(value: integer, part: Part, state: State) -> none
+```
+
+Set the minimum height this widget may shrink to, in pixels.
+
+**Parameters**
+
+- `value` — Minimum height in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_max_height" />
+```gust
+def Obj.set_max_height(value: integer, part: Part, state: State) -> none
+```
+
+Set the maximum height this widget may grow to, in pixels.
+
+**Parameters**
+
+- `value` — Maximum height in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_shadow_width" />
+```gust
+def Obj.set_shadow_width(width: integer, part: Part, state: State) -> none
+```
+
+Set the blur radius of the drop shadow, in pixels (0 hides it).
+
+**Parameters**
+
+- `width` — Shadow blur radius in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_shadow_offset_x" />
+```gust
+def Obj.set_shadow_offset_x(offset: integer, part: Part, state: State) -> none
+```
+
+Set the horizontal offset of the drop shadow, in pixels.
+
+**Parameters**
+
+- `offset` — Horizontal shadow offset in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_shadow_offset_y" />
+```gust
+def Obj.set_shadow_offset_y(offset: integer, part: Part, state: State) -> none
+```
+
+Set the vertical offset of the drop shadow, in pixels.
+
+**Parameters**
+
+- `offset` — Vertical shadow offset in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_shadow_spread" />
+```gust
+def Obj.set_shadow_spread(spread: integer, part: Part, state: State) -> none
+```
+
+Grow the drop shadow outward by `spread` pixels before blurring.
+
+**Parameters**
+
+- `spread` — Shadow spread in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_line_width" />
+```gust
+def Obj.set_line_width(width: integer, part: Part, state: State) -> none
+```
+
+Set the stroke width of a line, chart series, or scale tick, in pixels.
+
+**Parameters**
+
+- `width` — Line width in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_arc_width" />
+```gust
+def Obj.set_arc_width(width: integer, part: Part, state: State) -> none
+```
+
+Set the stroke width of an arc or spinner, in pixels. Target
+`Part.indicator` for the value arc or `Part.main` for the background.
+
+**Parameters**
+
+- `width` — Arc width in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_text_align" />
+```gust
+def Obj.set_text_align(at: TextAlign, part: Part, state: State) -> none
+```
+
+Set the horizontal alignment of this widget's text.
+
+**Parameters**
+
+- `at` — Text alignment.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_text_font" />
+```gust
+def Obj.set_text_font(size: integer, part: Part, state: State) -> none
+```
+
+Set the point size of this widget's text. Rendering uses the largest
+built-in Montserrat font no larger than `size` that the installed LVGL has
+enabled — the sizes 14, 20, 28, and 48 are the intended steps. A build with
+only the default 14-point font enabled renders all sizes at 14, so enable
+the larger Montserrat fonts in `lv_conf.h` to see them.
+
+**Parameters**
+
+- `size` — Font size in points.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_text_letter_space" />
+```gust
+def Obj.set_text_letter_space(space: integer, part: Part, state: State) -> none
+```
+
+Set extra spacing between letters, in pixels.
+
+**Parameters**
+
+- `space` — Letter spacing in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_text_line_space" />
+```gust
+def Obj.set_text_line_space(space: integer, part: Part, state: State) -> none
+```
+
+Set extra spacing between lines of text, in pixels.
+
+**Parameters**
+
+- `space` — Line spacing in pixels.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_transform_scale" />
+```gust
+def Obj.set_transform_scale(percent: integer, part: Part, state: State) -> none
+```
+
+Scale this widget's rendering by a percentage, where 100 leaves it at its
+natural size. The scale pivots from the top-left corner, so the widget's
+position is preserved as it grows or shrinks. Useful to render text larger
+than the largest built-in font.
+
+**Parameters**
+
+- `percent` — Scale factor as a percentage; 100 is unscaled.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_bg_grad_dir" />
+```gust
+def Obj.set_bg_grad_dir(direction: GradDir, part: Part, state: State) -> none
+```
+
+Set the direction of the background gradient, from `set_bg_color` to
+`set_bg_grad_color`.
+
+**Parameters**
+
+- `direction` — Gradient direction.
+- `part` — Sub-component to style.
+- `state` — Interaction state to style.
+
+---
+
+<a id="Obj.set_flex_flow" />
+```gust
+def Obj.set_flex_flow(flow: FlexFlow) -> none
+```
+
+Lay this widget's children out with a flex layout in the given flow.
+
+**Parameters**
+
+- `flow` — Direction and wrapping of the layout.
+
+---
+
+<a id="Obj.set_flex_align" />
+```gust
+def Obj.set_flex_align(
+    main: FlexAlign,
+    cross: FlexAlign,
+    track: FlexAlign,
+) -> none
+```
+
+Set how a flex layout distributes children.
+
+**Parameters**
+
+- `main` — Placement along the flow direction.
+- `cross` — Placement of each child across the flow direction.
+- `track` — Placement of wrapped tracks.
+
+---
+
+<a id="Obj.set_flex_grow" />
+```gust
+def Obj.set_flex_grow(grow: integer) -> none
+```
+
+Set this widget's flex grow factor: how much of the parent's free space
+it claims relative to its siblings (0 disables growing).
+
+**Parameters**
+
+- `grow` — Grow factor.
+
+---
+
+<a id="Obj.on_click" />
+```gust
+def Obj.on_click(handler: Function()[none]) -> none
+```
+
+Call `handler` each time this widget is clicked or tapped. The handler
+runs on the main thread from within `run`.
+
+**Parameters**
+
+- `handler` — Function invoked on each click.
+
+---
+
+<a id="Obj.on_change" />
+```gust
+def Obj.on_change(handler: Function()[none]) -> none
+```
+
+Call `handler` whenever this widget's value changes — a slider dragged, a
+switch toggled, a dropdown selection made.
+
+**Parameters**
+
+- `handler` — Function invoked on each value change.
+
+---
+
+<a id="Obj.on_event" />
+```gust
+def Obj.on_event(code: EventCode, handler: Function()[none]) -> none
+```
+
+Call `handler` each time the given event fires on this widget.
+
+**Parameters**
+
+- `code` — Which event to listen for (`EventCode.every` for all).
+- `handler` — Function invoked when the event fires.
+
+---
+
+<a id="Obj.send_event" />
+```gust
+def Obj.send_event(code: EventCode) -> none
+```
+
+Send an event to this widget as though it had happened, running the
+handlers registered for it.
+
+**Parameters**
+
+- `code` — The event to deliver.
+
+## `Roller`
+
+<a id="Roller" />
+A spinning option wheel. Populate it with `set_options` (newline-
+separated), read the chosen index with `selected`, and set it with
+`set_selected`.
+
+```gust
+def Roller
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Roller.set_options" />
+```gust
+def Roller.set_options(options: string, mode: RollerMode) -> none
+```
+
+Replace the option list. Separate options with newlines.
+
+**Parameters**
+
+- `options` — Newline-separated option text.
+- `mode` — Whether the wheel wraps around endlessly.
+
+---
+
+<a id="Roller.set_selected" />
+```gust
+def Roller.set_selected(index: integer, animated: bool) -> none
+```
+
+Scroll the wheel to the option at `index` (0 is first).
+
+**Parameters**
+
+- `index` — Zero-based option index.
+- `animated` — Whether to animate the scroll.
+
+---
+
+<a id="Roller.selected" />
+```gust
+def Roller.selected() -> integer
+```
+
+The zero-based index of the currently selected option.
+
+---
+
+<a id="Roller.selected_text" />
+```gust
+def Roller.selected_text() -> string
+```
+
+The text of the currently selected option.
+
+---
+
+<a id="Roller.set_selected_text" />
+```gust
+def Roller.set_selected_text(option: string, animated: bool) -> bool
+```
+
+Scroll the wheel to the option with the given text, reporting whether
+such an option exists.
+
+**Parameters**
+
+- `option` — The option text to scroll to.
+- `animated` — Whether to animate the scroll.
+
+---
+
+<a id="Roller.options" />
+```gust
+def Roller.options() -> string
+```
+
+The option list as newline-separated text.
+
+---
+
+<a id="Roller.option_count" />
+```gust
+def Roller.option_count() -> integer
+```
+
+How many options the wheel holds.
+
+---
+
+<a id="Roller.set_visible_rows" />
+```gust
+def Roller.set_visible_rows(count: integer) -> none
+```
+
+Set how many option rows are visible at once.
+
+**Parameters**
+
+- `count` — Number of visible rows.
+
+## `Scale`
+
+<a id="Scale" />
+A ruler of ticks. `set_range` sets the value span, `set_total_ticks` how
+many ticks are drawn, and `set_major_tick_every` which of them are long and
+labeled.
+
+```gust
+def Scale
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Scale.set_range" />
+```gust
+def Scale.set_range(minimum: integer, maximum: integer) -> none
+```
+
+Set the value range mapped across the scale.
+
+**Parameters**
+
+- `minimum` — Value at the first tick.
+- `maximum` — Value at the last tick.
+
+---
+
+<a id="Scale.set_total_ticks" />
+```gust
+def Scale.set_total_ticks(count: integer) -> none
+```
+
+Set the total number of tick marks.
+
+**Parameters**
+
+- `count` — Number of ticks.
+
+---
+
+<a id="Scale.set_major_tick_every" />
+```gust
+def Scale.set_major_tick_every(nth: integer) -> none
+```
+
+Make every `nth` tick a long, labeled major tick.
+
+**Parameters**
+
+- `nth` — Interval between major ticks.
+
+---
+
+<a id="Scale.set_mode" />
+```gust
+def Scale.set_mode(mode: ScaleMode) -> none
+```
+
+Choose whether the scale is a straight ruler or a circular dial, and
+which side its ticks sit on.
+
+**Parameters**
+
+- `mode` — Ruler or dial placement.
+
+---
+
+<a id="Scale.mode" />
+```gust
+def Scale.mode() -> ScaleMode
+```
+
+Whether the scale is a ruler or a dial, and where its ticks sit.
+
+---
+
+<a id="Scale.set_angle_range" />
+```gust
+def Scale.set_angle_range(degrees: integer) -> none
+```
+
+Set how much of a circle a dial scale sweeps.
+
+**Parameters**
+
+- `degrees` — Sweep of the dial, in degrees.
+
+---
+
+<a id="Scale.angle_range" />
+```gust
+def Scale.angle_range() -> integer
+```
+
+How much of a circle a dial scale sweeps, in degrees.
+
+---
+
+<a id="Scale.set_rotation" />
+```gust
+def Scale.set_rotation(degrees: integer) -> none
+```
+
+Turn a dial scale, moving where its first tick sits.
+
+**Parameters**
+
+- `degrees` — Clockwise offset from the 3 o'clock position.
+
+---
+
+<a id="Scale.rotation" />
+```gust
+def Scale.rotation() -> integer
+```
+
+Where a dial scale's first tick sits, in degrees clockwise from the
+3 o'clock position.
+
+---
+
+<a id="Scale.set_label_show" />
+```gust
+def Scale.set_label_show(shown: bool) -> none
+```
+
+Show or hide the labels beside the major ticks.
+
+**Parameters**
+
+- `shown` — Whether major ticks are labeled.
+
+---
+
+<a id="Scale.is_label_shown" />
+```gust
+def Scale.is_label_shown() -> bool
+```
+
+Whether major ticks are labeled.
+
+---
+
+<a id="Scale.set_labels" />
+```gust
+def Scale.set_labels(labels: list[string]) -> none
+```
+
+Replace the major-tick labels with fixed text instead of the values they
+fall on. The labels are copied, so the list may be reused or discarded
+afterwards.
+
+**Parameters**
+
+- `labels` — One label per major tick, in order.
+
+---
+
+<a id="Scale.set_draw_ticks_on_top" />
+```gust
+def Scale.set_draw_ticks_on_top(enabled: bool) -> none
+```
+
+Draw the ticks over the scale's own background and sections rather than
+under them.
+
+**Parameters**
+
+- `enabled` — Whether ticks draw last.
+
+---
+
+<a id="Scale.total_ticks" />
+```gust
+def Scale.total_ticks() -> integer
+```
+
+How many tick marks are drawn.
+
+---
+
+<a id="Scale.major_tick_every" />
+```gust
+def Scale.major_tick_every() -> integer
+```
+
+The interval between long, labeled ticks.
+
+---
+
+<a id="Scale.minimum" />
+```gust
+def Scale.minimum() -> integer
+```
+
+The value at the first tick.
+
+---
+
+<a id="Scale.maximum" />
+```gust
+def Scale.maximum() -> integer
+```
+
+The value at the last tick.
+
+---
+
+<a id="Scale.add_section" />
+```gust
+def Scale.add_section(
+    minimum: integer,
+    maximum: integer,
+    rgb: integer,
+    width: integer,
+) -> none
+```
+
+Color the band of the scale between two values — the red zone of a gauge.
+The band's line, ticks, and labels all take `rgb`. Sections are released
+with the widget.
+
+**Parameters**
+
+- `minimum` — Value the band starts at.
+- `maximum` — Value the band ends at.
+- `rgb` — Band color as `0xRRGGBB`.
+- `width` — Line and tick thickness within the band, in pixels.
+
+---
+
+<a id="Scale.set_line_needle" />
+```gust
+def Scale.set_line_needle(needle: Line, length: integer, value: integer) -> none
+```
+
+Point a line at `value`, using it as the scale's needle. Call it again
+whenever the value changes. Only a dial scale — one of the round
+`ScaleMode` values, sized square — has a needle; on a ruler this does
+nothing.
+
+**Parameters**
+
+- `needle` — A `line` created against this scale, so its points are measured from the dial's own top-left corner.
+- `length` — The needle's length in pixels, measured from the dial's center; a negative length is taken inwards from the rim.
+- `value` — The value the needle points at.
+
+---
+
+<a id="Scale.set_image_needle" />
+```gust
+def Scale.set_image_needle(needle: Image, value: integer) -> none
+```
+
+Rotate an image to point at `value`, using it as the scale's needle. The
+image's pivot marks the point it turns about, and the artwork should point
+at 0° — the 3 o'clock position — before rotation. As with `set_line_needle`,
+only a dial scale has a needle.
+
+**Parameters**
+
+- `needle` — An `image` showing the needle artwork, created against this scale and positioned so its pivot sits at the dial's center.
+- `value` — The value the needle points at.
+
+## `Slider`
+
+<a id="Slider" />
+A slider. Its value spans the range set by `set_range` (0-100 by
+default); read the current value with `value` and react to changes with
+`on_change`.
+
+```gust
+def Slider
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Slider.set_value" />
+```gust
+def Slider.set_value(value: integer, animated: bool) -> none
+```
+
+Move the knob to `value`, clamped to the slider's range.
+
+**Parameters**
+
+- `value` — The new value.
+- `animated` — Whether to animate the movement.
+
+---
+
+<a id="Slider.set_range" />
+```gust
+def Slider.set_range(minimum: integer, maximum: integer) -> none
+```
+
+Set the inclusive value range the slider spans.
+
+**Parameters**
+
+- `minimum` — Lowest value (at the start of the track).
+- `maximum` — Highest value (at the end of the track).
+
+---
+
+<a id="Slider.value" />
+```gust
+def Slider.value() -> integer
+```
+
+The slider's current value.
+
+---
+
+<a id="Slider.set_start_value" />
+```gust
+def Slider.set_start_value(value: integer, animated: bool) -> none
+```
+
+Move the lower knob of a `SliderMode.range` slider. Ignored in the other
+modes, which have one knob.
+
+**Parameters**
+
+- `value` — The new lower value.
+- `animated` — Whether to animate the movement.
+
+---
+
+<a id="Slider.start_value" />
+```gust
+def Slider.start_value() -> integer
+```
+
+The lower knob's value in `SliderMode.range`.
+
+---
+
+<a id="Slider.minimum" />
+```gust
+def Slider.minimum() -> integer
+```
+
+The value at the start of the track.
+
+---
+
+<a id="Slider.maximum" />
+```gust
+def Slider.maximum() -> integer
+```
+
+The value at the end of the track.
+
+---
+
+<a id="Slider.set_mode" />
+```gust
+def Slider.set_mode(mode: SliderMode) -> none
+```
+
+Choose how the slider fills and how many knobs it has.
+
+**Parameters**
+
+- `mode` — Normal, symmetrical, or two-knob range.
+
+---
+
+<a id="Slider.mode" />
+```gust
+def Slider.mode() -> SliderMode
+```
+
+How the slider fills and how many knobs it has.
+
+---
+
+<a id="Slider.set_orientation" />
+```gust
+def Slider.set_orientation(orientation: Orientation) -> none
+```
+
+Choose which way the slider runs.
+
+**Parameters**
+
+- `orientation` — Follow the slider's proportions, or force one direction.
+
+---
+
+<a id="Slider.orientation" />
+```gust
+def Slider.orientation() -> Orientation
+```
+
+Which way the slider runs, as it was set.
+
+---
+
+<a id="Slider.is_dragged" />
+```gust
+def Slider.is_dragged() -> bool
+```
+
+Whether the knob is being dragged right now. Read this from an
+`on_change` handler to tell a drag from a programmatic change.
+
+---
+
+<a id="Slider.is_symmetrical" />
+```gust
+def Slider.is_symmetrical() -> bool
+```
+
+Whether the slider fills out from the zero point — true in
+`SliderMode.symmetrical` when the range spans zero.
+
+## `Span`
+
+<a id="Span" />
+One styled run inside a `SpanGroup`. Its text flows together with the
+runs around it, but carries its own color, size, and decoration.
+
+```gust
+def Span
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The engine's opaque pointer to the run, as an integer.
+
+**Methods**
+
+<a id="Span.set_text" />
+```gust
+def Span.set_text(text: string) -> none
+```
+
+Set this run's text.
+
+**Parameters**
+
+- `text` — The text of the run.
+
+---
+
+<a id="Span.text" />
+```gust
+def Span.text() -> string
+```
+
+This run's text.
+
+---
+
+<a id="Span.set_text_color" />
+```gust
+def Span.set_text_color(rgb: integer) -> none
+```
+
+Set this run's text color.
+
+**Parameters**
+
+- `rgb` — Color as `0xRRGGBB`.
+
+---
+
+<a id="Span.set_text_font" />
+```gust
+def Span.set_text_font(size: integer) -> none
+```
+
+Set this run's font size. The largest enabled built-in font no larger
+than `size` is used.
+
+**Parameters**
+
+- `size` — Requested font size in pixels.
+
+---
+
+<a id="Span.set_text_decor" />
+```gust
+def Span.set_text_decor(decor: TextDecor) -> none
+```
+
+Underline or strike through this run.
+
+**Parameters**
+
+- `decor` — Decoration to draw, combined with `|`.
+
+## `SpanGroup`
+
+<a id="SpanGroup" />
+A paragraph built from styled runs. `add_span` appends a run whose color,
+size, and decoration are set on the run itself, so one paragraph can mix
+them — a label can only style its text as a whole.
+
+```gust
+def SpanGroup
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="SpanGroup.add_span" />
+```gust
+def SpanGroup.add_span() -> Span
+```
+
+Append a run to the paragraph and return it, so its text and style can
+be set.
+
+---
+
+<a id="SpanGroup.remove_span" />
+```gust
+def SpanGroup.remove_span(run: Span) -> none
+```
+
+Remove a run from the paragraph.
+
+**Parameters**
+
+- `run` — The run to remove.
+
+---
+
+<a id="SpanGroup.span" />
+```gust
+def SpanGroup.span(index: integer) -> Span
+```
+
+The run at `index` (0 is first).
+
+**Parameters**
+
+- `index` — Zero-based run index.
+
+---
+
+<a id="SpanGroup.span_count" />
+```gust
+def SpanGroup.span_count() -> integer
+```
+
+How many runs the paragraph holds.
+
+---
+
+<a id="SpanGroup.set_align" />
+```gust
+def SpanGroup.set_align(align: TextAlign) -> none
+```
+
+Set the horizontal alignment of the whole paragraph.
+
+**Parameters**
+
+- `align` — Horizontal alignment.
+
+---
+
+<a id="SpanGroup.set_overflow" />
+```gust
+def SpanGroup.set_overflow(overflow: SpanOverflow) -> none
+```
+
+Choose what happens to text that does not fit.
+
+**Parameters**
+
+- `overflow` — Clip the text or truncate it with an ellipsis.
+
+---
+
+<a id="SpanGroup.set_indent" />
+```gust
+def SpanGroup.set_indent(indent: integer) -> none
+```
+
+Indent the paragraph's first line.
+
+**Parameters**
+
+- `indent` — First-line indent in pixels.
+
+---
+
+<a id="SpanGroup.set_mode" />
+```gust
+def SpanGroup.set_mode(mode: SpanMode) -> none
+```
+
+Choose how the widget sizes itself around the text.
+
+**Parameters**
+
+- `mode` — Keep the set size, expand to one line, or wrap and grow taller.
+
+---
+
+<a id="SpanGroup.set_max_lines" />
+```gust
+def SpanGroup.set_max_lines(lines: integer) -> none
+```
+
+Limit the paragraph to `lines` lines; -1 removes the limit.
+
+**Parameters**
+
+- `lines` — Maximum number of lines, or -1 for no limit.
+
+---
+
+<a id="SpanGroup.text_align" />
+```gust
+def SpanGroup.text_align() -> TextAlign
+```
+
+The horizontal alignment of the paragraph.
+
+---
+
+<a id="SpanGroup.overflow" />
+```gust
+def SpanGroup.overflow() -> SpanOverflow
+```
+
+What happens to text that does not fit.
+
+---
+
+<a id="SpanGroup.indent" />
+```gust
+def SpanGroup.indent() -> integer
+```
+
+The first line's indent in pixels.
+
+---
+
+<a id="SpanGroup.mode" />
+```gust
+def SpanGroup.mode() -> SpanMode
+```
+
+How the widget sizes itself around the text.
+
+---
+
+<a id="SpanGroup.max_lines" />
+```gust
+def SpanGroup.max_lines() -> integer
+```
+
+The line limit, or -1 when there is none.
+
+---
+
+<a id="SpanGroup.refresh" />
+```gust
+def SpanGroup.refresh() -> none
+```
+
+Re-lay out the paragraph. Needed after changing a run's style, which the
+group does not notice on its own.
+
+## `Spinbox`
+
+<a id="Spinbox" />
+A numeric input stepped by `increment` and `decrement`, or set directly
+with `set_value`. `set_step` controls the amount each step changes.
+
+```gust
+def Spinbox
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Spinbox.set_value" />
+```gust
+def Spinbox.set_value(value: integer) -> none
+```
+
+Set the current value, clamped to the spinbox's range.
+
+**Parameters**
+
+- `value` — The new value.
+
+---
+
+<a id="Spinbox.value" />
+```gust
+def Spinbox.value() -> integer
+```
+
+The spinbox's current value.
+
+---
+
+<a id="Spinbox.set_range" />
+```gust
+def Spinbox.set_range(minimum: integer, maximum: integer) -> none
+```
+
+Set the inclusive range the value is clamped to.
+
+**Parameters**
+
+- `minimum` — Lowest allowed value.
+- `maximum` — Highest allowed value.
+
+---
+
+<a id="Spinbox.set_step" />
+```gust
+def Spinbox.set_step(step: integer) -> none
+```
+
+Set the amount each `increment` or `decrement` changes the value.
+
+**Parameters**
+
+- `step` — Step size.
+
+---
+
+<a id="Spinbox.increment" />
+```gust
+def Spinbox.increment() -> none
+```
+
+Increase the value by one step.
+
+---
+
+<a id="Spinbox.decrement" />
+```gust
+def Spinbox.decrement() -> none
+```
+
+Decrease the value by one step.
+
+---
+
+<a id="Spinbox.step" />
+```gust
+def Spinbox.step() -> integer
+```
+
+The amount each `increment` or `decrement` changes the value.
+
+---
+
+<a id="Spinbox.set_digit_format" />
+```gust
+def Spinbox.set_digit_format(
+    digits: integer,
+    separator_position: integer,
+) -> none
+```
+
+Set how the number is written: how many digits are shown, and where the
+decimal separator falls among them. A `separator_position` of 0 writes a
+whole number.
+
+**Parameters**
+
+- `digits` — Total number of digits shown.
+- `separator_position` — How many digits sit left of the separator.
+
+---
+
+<a id="Spinbox.set_rollover" />
+```gust
+def Spinbox.set_rollover(enabled: bool) -> none
+```
+
+Wrap from the maximum back to the minimum instead of stopping there.
+
+**Parameters**
+
+- `enabled` — Whether stepping past an end wraps around.
+
+---
+
+<a id="Spinbox.has_rollover" />
+```gust
+def Spinbox.has_rollover() -> bool
+```
+
+Whether stepping past an end wraps around.
+
+---
+
+<a id="Spinbox.set_cursor_pos" />
+```gust
+def Spinbox.set_cursor_pos(position: integer) -> none
+```
+
+Put the cursor on one digit, making that digit the one a step changes.
+
+**Parameters**
+
+- `position` — Digit position, counted from the right.
+
+---
+
+<a id="Spinbox.step_next" />
+```gust
+def Spinbox.step_next() -> none
+```
+
+Move the cursor one digit right, so each step changes a smaller place.
+
+---
+
+<a id="Spinbox.step_prev" />
+```gust
+def Spinbox.step_prev() -> none
+```
+
+Move the cursor one digit left, so each step changes a larger place.
+
+---
+
+<a id="Spinbox.set_digit_step_direction" />
+```gust
+def Spinbox.set_digit_step_direction(direction: Dir) -> none
+```
+
+Choose which way `step_next` walks the cursor when the spinbox is driven
+by an encoder.
+
+**Parameters**
+
+- `direction` — `Dir.left` or `Dir.right`.
+
+## `Spinner`
+
+<a id="Spinner" />
+A spinning arc for indeterminate progress. `set_anim_params` tunes the
+rotation period and the length of the spinning segment.
+
+```gust
+def Spinner
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Spinner.set_anim_params" />
+```gust
+def Spinner.set_anim_params(period_ms: integer, arc_degrees: integer) -> none
+```
+
+Set the animation timing.
+
+**Parameters**
+
+- `period_ms` — Time for one full rotation, in milliseconds.
+- `arc_degrees` — Length of the spinning arc segment, in degrees.
+
+## `Switch`
+
+<a id="Switch" />
+An on/off toggle. Query it with `is_on` and set it with `set_on`; a user
+toggle fires the `on_change` handler.
+
+```gust
+def Switch
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Switch.set_on" />
+```gust
+def Switch.set_on(on: bool) -> none
+```
+
+Turn the switch on or off.
+
+**Parameters**
+
+- `on` — Whether the switch should be on.
+
+---
+
+<a id="Switch.is_on" />
+```gust
+def Switch.is_on() -> bool
+```
+
+Whether the switch is currently on.
+
+---
+
+<a id="Switch.set_orientation" />
+```gust
+def Switch.set_orientation(orientation: Orientation) -> none
+```
+
+Choose which way the switch slides.
+
+**Parameters**
+
+- `orientation` — Follow the switch's proportions, or force one direction.
+
+---
+
+<a id="Switch.orientation" />
+```gust
+def Switch.orientation() -> Orientation
+```
+
+Which way the switch slides, as it was set.
+
+## `Cell`
+
+<a id="Cell" />
+A table position: which row and column a cell sits at, both zero-based.
+
+```gust
+def Cell
+
+    row: integer
+    column: integer
+
+end
+```
+
+**Fields**
+
+- `row: integer` — Zero-based row index.
+- `column: integer` — Zero-based column index.
+
+## `Table`
+
+<a id="Table" />
+A grid of text cells. The grid grows automatically as cells are set;
+`set_row_count` and `set_column_count` size it explicitly, and
+`set_column_width` sets a column's pixel width.
+
+```gust
+def Table
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Table.set_cell" />
+```gust
+def Table.set_cell(row: integer, column: integer, text: string) -> none
+```
+
+Set the text of the cell at (`row`, `column`), zero-based.
+
+**Parameters**
+
+- `row` — Zero-based row index.
+- `column` — Zero-based column index.
+- `text` — The cell's text.
+
+---
+
+<a id="Table.set_row_count" />
+```gust
+def Table.set_row_count(count: integer) -> none
+```
+
+Set the number of rows.
+
+**Parameters**
+
+- `count` — Number of rows.
+
+---
+
+<a id="Table.set_column_count" />
+```gust
+def Table.set_column_count(count: integer) -> none
+```
+
+Set the number of columns.
+
+**Parameters**
+
+- `count` — Number of columns.
+
+---
+
+<a id="Table.set_column_width" />
+```gust
+def Table.set_column_width(column: integer, width: integer) -> none
+```
+
+Set the pixel width of a column.
+
+**Parameters**
+
+- `column` — Zero-based column index.
+- `width` — Column width in pixels.
+
+---
+
+<a id="Table.cell" />
+```gust
+def Table.cell(row: integer, column: integer) -> string
+```
+
+The text of the cell at (`row`, `column`), or "" when it is empty.
+
+**Parameters**
+
+- `row` — Zero-based row index.
+- `column` — Zero-based column index.
+
+---
+
+<a id="Table.row_count" />
+```gust
+def Table.row_count() -> integer
+```
+
+How many rows the grid holds.
+
+---
+
+<a id="Table.column_count" />
+```gust
+def Table.column_count() -> integer
+```
+
+How many columns the grid holds.
+
+---
+
+<a id="Table.column_width" />
+```gust
+def Table.column_width(column: integer) -> integer
+```
+
+The pixel width of a column.
+
+**Parameters**
+
+- `column` — Zero-based column index.
+
+---
+
+<a id="Table.add_cell_ctrl" />
+```gust
+def Table.add_cell_ctrl(row: integer, column: integer, ctrl: CellCtrl) -> none
+```
+
+Turn on drawing flags for one cell.
+
+**Parameters**
+
+- `row` — Zero-based row index.
+- `column` — Zero-based column index.
+- `ctrl` — Flags to set, combined with `|`.
+
+---
+
+<a id="Table.remove_cell_ctrl" />
+```gust
+def Table.remove_cell_ctrl(
+    row: integer,
+    column: integer,
+    ctrl: CellCtrl,
+) -> none
+```
+
+Turn off drawing flags for one cell.
+
+**Parameters**
+
+- `row` — Zero-based row index.
+- `column` — Zero-based column index.
+- `ctrl` — Flags to clear, combined with `|`.
+
+---
+
+<a id="Table.has_cell_ctrl" />
+```gust
+def Table.has_cell_ctrl(row: integer, column: integer, ctrl: CellCtrl) -> bool
+```
+
+Whether every flag in `ctrl` is set on one cell.
+
+**Parameters**
+
+- `row` — Zero-based row index.
+- `column` — Zero-based column index.
+- `ctrl` — Flags to test, combined with `|`.
+
+---
+
+<a id="Table.set_selected_cell" />
+```gust
+def Table.set_selected_cell(row: integer, column: integer) -> none
+```
+
+Move the selection to one cell.
+
+**Parameters**
+
+- `row` — Zero-based row index.
+- `column` — Zero-based column index.
+
+---
+
+<a id="Table.selected_cell" />
+```gust
+def Table.selected_cell() -> Cell
+```
+
+The cell the selection sits on. Read this from an `on_change` handler to
+tell which cell was pressed.
+
+## `Tabview`
+
+<a id="Tabview" />
+A container of tabbed pages. `add_tab` appends a page and returns its
+content area to fill with widgets; `set_active` switches the visible tab.
+
+```gust
+def Tabview
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Tabview.add_tab" />
+```gust
+def Tabview.add_tab(name: string) -> Obj
+```
+
+Append a tab with the given name and return its content area — the parent
+to create the tab's widgets against.
+
+**Parameters**
+
+- `name` — The tab's label.
+
+---
+
+<a id="Tabview.set_active" />
+```gust
+def Tabview.set_active(index: integer, animated: bool) -> none
+```
+
+Switch to the tab at `index` (0 is first).
+
+**Parameters**
+
+- `index` — Zero-based tab index.
+- `animated` — Whether to animate the switch.
+
+---
+
+<a id="Tabview.active" />
+```gust
+def Tabview.active() -> integer
+```
+
+The zero-based index of the currently active tab.
+
+---
+
+<a id="Tabview.tab_count" />
+```gust
+def Tabview.tab_count() -> integer
+```
+
+How many tabs the view holds.
+
+---
+
+<a id="Tabview.rename_tab" />
+```gust
+def Tabview.rename_tab(index: integer, name: string) -> none
+```
+
+Replace a tab's label.
+
+**Parameters**
+
+- `index` — Zero-based tab index.
+- `name` — The new label.
+
+---
+
+<a id="Tabview.set_tab_bar_position" />
+```gust
+def Tabview.set_tab_bar_position(direction: Dir) -> none
+```
+
+Move the tab bar to one edge of the view.
+
+**Parameters**
+
+- `direction` — Which edge the tab bar sits on.
+
+---
+
+<a id="Tabview.set_tab_bar_size" />
+```gust
+def Tabview.set_tab_bar_size(size: integer) -> none
+```
+
+Set the tab bar's thickness — its height along the top or bottom, its
+width along a side.
+
+**Parameters**
+
+- `size` — Thickness in pixels.
+
+---
+
+<a id="Tabview.tab_bar" />
+```gust
+def Tabview.tab_bar() -> Obj
+```
+
+The tab bar itself, for styling it.
+
+---
+
+<a id="Tabview.content" />
+```gust
+def Tabview.content() -> Obj
+```
+
+The container holding the tab pages, for styling it.
+
+## `TextArea`
+
+<a id="TextArea" />
+An editable text field. Read its content with `text`, set it with
+`set_text`, and configure single-line and password behavior.
+
+```gust
+def TextArea
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="TextArea.set_text" />
+```gust
+def TextArea.set_text(text: string) -> none
+```
+
+Replace the entire contents.
+
+**Parameters**
+
+- `text` — The new text.
+
+---
+
+<a id="TextArea.add_text" />
+```gust
+def TextArea.add_text(text: string) -> none
+```
+
+Insert text at the cursor position.
+
+**Parameters**
+
+- `text` — The text to insert.
+
+---
+
+<a id="TextArea.set_placeholder" />
+```gust
+def TextArea.set_placeholder(text: string) -> none
+```
+
+Set the faint hint shown while the field is empty.
+
+**Parameters**
+
+- `text` — The placeholder text.
+
+---
+
+<a id="TextArea.text" />
+```gust
+def TextArea.text() -> string
+```
+
+The current contents of the field.
+
+---
+
+<a id="TextArea.set_one_line" />
+```gust
+def TextArea.set_one_line(enabled: bool) -> none
+```
+
+Constrain the field to a single scrolling line.
+
+**Parameters**
+
+- `enabled` — Whether to restrict input to one line.
+
+---
+
+<a id="TextArea.set_password_mode" />
+```gust
+def TextArea.set_password_mode(enabled: bool) -> none
+```
+
+Mask the entered characters, revealing each briefly as it is typed.
+
+**Parameters**
+
+- `enabled` — Whether to obscure the text.
+
+---
+
+<a id="TextArea.add_char" />
+```gust
+def TextArea.add_char(codepoint: integer) -> none
+```
+
+Insert one character at the cursor position.
+
+**Parameters**
+
+- `codepoint` — The character's Unicode code point.
+
+---
+
+<a id="TextArea.delete_char" />
+```gust
+def TextArea.delete_char() -> none
+```
+
+Delete the character before the cursor.
+
+---
+
+<a id="TextArea.delete_char_forward" />
+```gust
+def TextArea.delete_char_forward() -> none
+```
+
+Delete the character after the cursor.
+
+---
+
+<a id="TextArea.placeholder" />
+```gust
+def TextArea.placeholder() -> string
+```
+
+The faint hint shown while the field is empty.
+
+---
+
+<a id="TextArea.set_cursor_pos" />
+```gust
+def TextArea.set_cursor_pos(position: integer) -> none
+```
+
+Move the cursor to a character position.
+
+**Parameters**
+
+- `position` — Zero-based character position.
+
+---
+
+<a id="TextArea.cursor_pos" />
+```gust
+def TextArea.cursor_pos() -> integer
+```
+
+The cursor's zero-based character position.
+
+---
+
+<a id="TextArea.cursor_left" />
+```gust
+def TextArea.cursor_left() -> none
+```
+
+Move the cursor one character left.
+
+---
+
+<a id="TextArea.cursor_right" />
+```gust
+def TextArea.cursor_right() -> none
+```
+
+Move the cursor one character right.
+
+---
+
+<a id="TextArea.cursor_up" />
+```gust
+def TextArea.cursor_up() -> none
+```
+
+Move the cursor one line up.
+
+---
+
+<a id="TextArea.cursor_down" />
+```gust
+def TextArea.cursor_down() -> none
+```
+
+Move the cursor one line down.
+
+---
+
+<a id="TextArea.set_cursor_click_pos" />
+```gust
+def TextArea.set_cursor_click_pos(enabled: bool) -> none
+```
+
+Move the cursor to where the field is clicked.
+
+**Parameters**
+
+- `enabled` — Whether a click repositions the cursor.
+
+---
+
+<a id="TextArea.set_text_selection" />
+```gust
+def TextArea.set_text_selection(enabled: bool) -> none
+```
+
+Allow dragging across the text to select it. Style the highlight through
+`Part.selected`.
+
+**Parameters**
+
+- `enabled` — Whether text can be selected.
+
+---
+
+<a id="TextArea.is_text_selected" />
+```gust
+def TextArea.is_text_selected() -> bool
+```
+
+Whether any text is currently selected.
+
+---
+
+<a id="TextArea.clear_selection" />
+```gust
+def TextArea.clear_selection() -> none
+```
+
+Drop the current selection, leaving the text unchanged.
+
+---
+
+<a id="TextArea.set_max_length" />
+```gust
+def TextArea.set_max_length(count: integer) -> none
+```
+
+Limit how many characters the field accepts.
+
+**Parameters**
+
+- `count` — Maximum number of characters.
+
+---
+
+<a id="TextArea.max_length" />
+```gust
+def TextArea.max_length() -> integer
+```
+
+How many characters the field accepts.
+
+---
+
+<a id="TextArea.set_accepted_chars" />
+```gust
+def TextArea.set_accepted_chars(chars: string) -> none
+```
+
+Accept only the characters listed, ignoring every other key. Pass "" to
+accept everything.
+
+**Parameters**
+
+- `chars` — The accepted characters, or "" for all of them.
+
+---
+
+<a id="TextArea.set_password_bullet" />
+```gust
+def TextArea.set_password_bullet(bullet: string) -> none
+```
+
+Set the glyph drawn in place of each character in password mode.
+
+**Parameters**
+
+- `bullet` — The masking glyph.
+
+---
+
+<a id="TextArea.set_password_show_time" />
+```gust
+def TextArea.set_password_show_time(milliseconds: integer) -> none
+```
+
+Set how long each typed character stays readable before it is masked.
+
+**Parameters**
+
+- `milliseconds` — Reveal time; 0 masks immediately.
+
+---
+
+<a id="TextArea.set_insert_replace" />
+```gust
+def TextArea.set_insert_replace(text: string) -> none
+```
+
+Replace the text about to be inserted. Call this from an `on_event`
+handler for `EventCode.value_changed` to filter or rewrite input as it is
+typed; passing "" drops the insertion.
+
+**Parameters**
+
+- `text` — The text to insert instead, or "" to insert nothing.
+
+---
+
+<a id="TextArea.set_align" />
+```gust
+def TextArea.set_align(align: TextAlign) -> none
+```
+
+Set the horizontal alignment of the field's text.
+
+**Parameters**
+
+- `align` — Horizontal alignment.
+
+---
+
+<a id="TextArea.is_one_line" />
+```gust
+def TextArea.is_one_line() -> bool
+```
+
+Whether input is restricted to a single line.
+
+---
+
+<a id="TextArea.is_password_mode" />
+```gust
+def TextArea.is_password_mode() -> bool
+```
+
+Whether the entered characters are masked.
+
+---
+
+<a id="TextArea.label" />
+```gust
+def TextArea.label() -> Label
+```
+
+The label drawing the field's text, for styling it.
+
+---
+
+<a id="TextArea.accepted_chars" />
+```gust
+def TextArea.accepted_chars() -> string
+```
+
+The characters the field accepts, or "" when it accepts everything.
+
+---
+
+<a id="TextArea.password_bullet" />
+```gust
+def TextArea.password_bullet() -> string
+```
+
+The glyph drawn in place of each character in password mode.
+
+---
+
+<a id="TextArea.password_show_time" />
+```gust
+def TextArea.password_show_time() -> integer
+```
+
+How long each typed character stays readable, in milliseconds.
+
+---
+
+<a id="TextArea.has_cursor_click_pos" />
+```gust
+def TextArea.has_cursor_click_pos() -> bool
+```
+
+Whether a click repositions the cursor.
+
+---
+
+<a id="TextArea.has_text_selection" />
+```gust
+def TextArea.has_text_selection() -> bool
+```
+
+Whether dragging across the text selects it.
+
+---
+
+<a id="TextArea.current_char" />
+```gust
+def TextArea.current_char() -> integer
+```
+
+The Unicode code point of the character before the cursor, or 0 at the
+start of the text.
+
+## `TileView`
+
+<a id="TileView" />
+A grid of screen-filling tiles. `add_tile` places one at a grid cell and
+says which neighbors it can be swiped to; `set_tile` moves to a cell.
+
+```gust
+def TileView
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="TileView.add_tile" />
+```gust
+def TileView.add_tile(column: integer, row: integer, swipe: Dir) -> Obj
+```
+
+Add a tile at the given grid cell and return it — the parent to create
+the tile's widgets against.
+
+**Parameters**
+
+- `column` — Zero-based grid column.
+- `row` — Zero-based grid row.
+- `swipe` — Which neighboring cells this tile can be swiped to, combined with `|`.
+
+---
+
+<a id="TileView.set_tile" />
+```gust
+def TileView.set_tile(column: integer, row: integer, animated: bool) -> none
+```
+
+Move to the tile at the given grid cell.
+
+**Parameters**
+
+- `column` — Zero-based grid column.
+- `row` — Zero-based grid row.
+- `animated` — Whether to slide to it.
+
+---
+
+<a id="TileView.active" />
+```gust
+def TileView.active() -> Obj
+```
+
+The tile currently on display.
+
+---
+
+<a id="TileView.show_tile" />
+```gust
+def TileView.show_tile(tile: Obj, animated: bool) -> none
+```
+
+Move to a tile returned by `add_tile`.
+
+**Parameters**
+
+- `tile` — The tile to show.
+- `animated` — Whether to slide to it.
+
+## `Timer`
+
+<a id="Timer" />
+A periodic call into the program, identified by its opaque engine
+handle. Create one with `timer`.
+
+```gust
+def Timer
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer` — The engine's opaque pointer to the timer, as an integer.
+
+**Methods**
+
+<a id="Timer.set_period" />
+```gust
+def Timer.set_period(ms: integer) -> none
+```
+
+Change the interval between calls. The change takes effect after the
+period currently being counted; `reset` starts it over at once.
+
+**Parameters**
+
+- `ms` — Milliseconds between calls.
+
+---
+
+<a id="Timer.set_repeat_count" />
+```gust
+def Timer.set_repeat_count(count: integer) -> none
+```
+
+Run the timer only `count` more times, then stop. The timer itself
+stays, so `set_repeat_count` again puts it back to work and `delete` still
+has something to release. A count of -1 restores running without end.
+
+**Parameters**
+
+- `count` — How many more times the handler runs, or -1 for no limit.
+
+---
+
+<a id="Timer.pause" />
+```gust
+def Timer.pause() -> none
+```
+
+Hold the timer without deleting it. The period restarts from `resume`.
+
+---
+
+<a id="Timer.resume" />
+```gust
+def Timer.resume() -> none
+```
+
+Start the timer running again after `pause`.
+
+---
+
+<a id="Timer.is_paused" />
+```gust
+def Timer.is_paused() -> bool
+```
+
+Whether the timer is being held.
+
+---
+
+<a id="Timer.ready" />
+```gust
+def Timer.ready() -> none
+```
+
+Run the handler at the next loop iteration rather than waiting out the
+rest of the period, then carry on as before.
+
+---
+
+<a id="Timer.reset" />
+```gust
+def Timer.reset() -> none
+```
+
+Start the current period over, putting the next call a full period
+away.
+
+---
+
+<a id="Timer.delete" />
+```gust
+def Timer.delete() -> none
+```
+
+Stop the timer and release it. The handler never runs again, and the
+handle is no longer valid.
+
+## `Win`
+
+<a id="Win" />
+A window with a header and a body. `add_title` places a title in the
+header; `content` returns the body area to fill with widgets.
+
+```gust
+def Win
+
+    handle: integer
+
+end
+```
+
+**Fields**
+
+- `handle: integer`
+
+**Methods**
+
+<a id="Win.add_title" />
+```gust
+def Win.add_title(text: string) -> Obj
+```
+
+Add a title to the window's header bar and return it.
+
+**Parameters**
+
+- `text` — The window title.
+
+---
+
+<a id="Win.add_button" />
+```gust
+def Win.add_button(icon: string, width: integer) -> Button
+```
+
+Add a button to the window's header bar and return it, so an `on_click`
+handler can be attached.
+
+**Parameters**
+
+- `icon` — The button's glyph, usually one of the `ICON_*` constants.
+- `width` — The button's width in pixels.
+
+---
+
+<a id="Win.content" />
+```gust
+def Win.content() -> Obj
+```
+
+The window's content area — the parent to create the window's widgets
+against.
+
+---
+
+<a id="Win.header" />
+```gust
+def Win.header() -> Obj
+```
+
+The window's header bar, for styling it.
+
+## `St7789`
+
+<a id="St7789" />
+<Note>
+Only available on the ESP32.
+</Note>
+
+The wiring and geometry of an ST7789 panel on an SPI bus.
+
+```gust
+def St7789
+
+    width: integer
+    height: integer
+    sck: integer
+    mosi: integer
+    cs: integer
+    dc: integer
+    reset: integer
+    backlight: integer
+    bus: integer
+    baud_hz: integer
+    x_offset: integer
+    y_offset: integer
+    invert: bool
+    mirror_x: bool
+    mirror_y: bool
+    swap_xy: bool
+    bgr: bool
+    buffer_lines: integer
+
+end
+```
+
+**Fields**
+
+- `width: integer` — Visible width in pixels.
+- `height: integer` — Visible height in pixels.
+- `sck: integer` — GPIO driving the bus clock line.
+- `mosi: integer` — GPIO driving the data line into the panel.
+- `cs: integer` — GPIO driving the panel's chip-select line.
+- `dc: integer` — GPIO driving the data/command line, which tells the controller whether the bytes arriving are a command or its payload.
+- `reset: integer` — GPIO driving the panel's reset line, or -1 when the module ties it high. Given the line, the panel starts from a known state regardless of what left it running.
+- `backlight: integer` — GPIO switching the backlight on, or -1 when the module has no such line.
+- `bus: integer` — SPI bus index the panel is wired to.
+- `baud_hz: integer` — Bus clock in hertz. Modules are typically specified up to 80 MHz, and tolerate less the longer the leads.
+- `x_offset: integer` — Column of controller memory the visible area begins at.
+- `y_offset: integer` — Row of controller memory the visible area begins at. A panel shorter or narrower than the controller's own 240x320 memory shows a window into it, and the module's datasheet gives where that window starts.
+- `invert: bool` — Invert the panel's colors. The IPS modules this controller is usually paired with need it on to show true colors.
+- `mirror_x: bool` — Read controller memory right to left.
+- `mirror_y: bool` — Read controller memory bottom to top.
+- `swap_xy: bool` — Exchange rows and columns, turning the image a quarter turn. `width` and `height` describe the panel as LVGL draws it, after the exchange.
+- `bgr: bool` — The panel's subpixels run blue, green, red.
+- `buffer_lines: integer` — Rows of pixels in each of the two draw buffers, trading `width * buffer_lines * 2` bytes twice for fewer transfers per refresh.
+
+## Functions
+
+<a id="lvgl.animate" />
+```gust
+def animate(target: Obj, property: AnimProp) -> Anim
+```
+
+Describe an animation of one of a widget's properties. Nothing moves
+until `start` is called, and an animation with no values or duration set
+holds still at 0 for 500 milliseconds.
+
+**Parameters**
+
+- `target: Obj` — The widget the animation changes and belongs to.
+- `property: AnimProp` — Which of its properties to move.
+
+---
+
+<a id="lvgl.animate_custom" />
+```gust
+def animate_custom(target: Obj, step: Function(integer)[none]) -> Anim
+```
+
+Describe an animation that calls `step` with the value for each frame
+instead of setting a property. Use it to animate what no `AnimProp` names:
+several widgets together, a number rendered into a label, a computed color.
+
+**Parameters**
+
+- `target: Obj` — The widget the animation belongs to and is released with. It need not be one the animation changes.
+- `step: Function(integer)[none]` — Called on every frame with the current value.
+
+---
+
+<a id="lvgl.stop_animations" />
+```gust
+def stop_animations(target: Obj) -> bool
+```
+
+Stop every animation running on a widget, reporting whether any were.
+Each stops where it stands: the property keeps the value of the last frame
+rather than jumping to the end.
+
+**Parameters**
+
+- `target: Obj` — The widget whose animations end.
+
+---
+
+<a id="lvgl.stop_all_animations" />
+```gust
+def stop_all_animations() -> none
+```
+
+Stop every animation the engine is running, wherever it belongs.
+
+---
+
+<a id="lvgl.running_animations" />
+```gust
+def running_animations() -> integer
+```
+
+How many animations the engine is running.
+
+---
+
+<a id="lvgl.duration_for_speed" />
+```gust
+def duration_for_speed(
+    speed: integer,
+    from_value: integer,
+    to_value: integer,
+) -> integer
+```
+
+Milliseconds an animation between two values takes at a given speed, for
+setting a duration by how fast the value should move rather than by how
+long the whole animation should last. A distance of 200 at a speed of 100
+units per second takes 2000 milliseconds.
+
+**Parameters**
+
+- `speed: integer` — Units of value per second.
+- `from_value: integer` — The animation's start value.
+- `to_value: integer` — The animation's end value.
+
+---
+
+<a id="lvgl.anim_image" />
+```gust
+def anim_image(parent: Obj) -> AnimImage
+```
+
+Create an animated image as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.arc" />
+```gust
+def arc(parent: Obj) -> Arc
+```
+
+Create an arc as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.bar" />
+```gust
+def bar(parent: Obj) -> Bar
+```
+
+Create a bar as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.button" />
+```gust
+def button(parent: Obj) -> Button
+```
+
+Create a button as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.button_matrix" />
+```gust
+def button_matrix(parent: Obj) -> ButtonMatrix
+```
+
+Create a button matrix as a child of `parent`. React to presses with
+`on_change` and read which button fired with `selected`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.calendar" />
+```gust
+def calendar(parent: Obj) -> Calendar
+```
+
+Create a calendar as a child of `parent`. React to day presses with
+`on_change`, reading the day from `pressed`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.canvas" />
+```gust
+def canvas(parent: Obj) -> Canvas
+```
+
+Create a canvas as a child of `parent`. Give it a drawing surface with
+`set_buffer` before painting.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.chart" />
+```gust
+def chart(parent: Obj) -> Chart
+```
+
+Create a chart as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.checkbox" />
+```gust
+def checkbox(parent: Obj) -> Checkbox
+```
+
+Create a checkbox as a child of `parent`. React to toggles with
+`on_change`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.dropdown" />
+```gust
+def dropdown(parent: Obj) -> Dropdown
+```
+
+Create a dropdown as a child of `parent`. React to selection with
+`on_change`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.event_code" />
+```gust
+def event_code() -> EventCode
+```
+
+Which event is being handled. A handler registered for a single code
+already knows; one registered with `EventCode.every` asks.
+
+---
+
+<a id="lvgl.event_target" />
+```gust
+def event_target() -> Obj
+```
+
+The widget the event happened on. With `Flag.event_bubble` set, an event
+on a child reaches the parent's handler and this stays the child.
+
+---
+
+<a id="lvgl.event_receiver" />
+```gust
+def event_receiver() -> Obj
+```
+
+The widget whose handler is running. It is the same as `event_target`
+unless the event bubbled up, in which case this is the ancestor that
+received it.
+
+---
+
+<a id="lvgl.event_key" />
+```gust
+def event_key() -> integer
+```
+
+The key that arrived, for an `EventCode.key` event: a `Key` member, or
+the character code of a printable character. Any other event reports 0.
+
+---
+
+<a id="lvgl.stop_event_bubbling" />
+```gust
+def stop_event_bubbling() -> none
+```
+
+Keep the event from travelling any further up the widget tree, so no
+ancestor's handler sees it. Applies to the event being handled.
+
+---
+
+<a id="lvgl.group" />
+```gust
+def group() -> Group
+```
+
+Create an empty focus group. Fill it with `add`, then attach it to a
+device with `Keypad.set_group` or `Encoder.set_group`.
+
+---
+
+<a id="lvgl.set_default_group" />
+```gust
+def set_default_group(group: Group) -> none
+```
+
+Make `group` the one widgets join when a widget type adds itself to a
+group on creation.
+
+**Parameters**
+
+- `group: Group` — The group to receive them.
+
+---
+
+<a id="lvgl.image" />
+```gust
+def image(parent: Obj) -> Image
+```
+
+Create an image widget as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.image_button" />
+```gust
+def image_button(parent: Obj) -> ImageButton
+```
+
+Create an image button as a child of `parent`. React to presses with
+`on_click`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.pointer" />
+```gust
+def pointer() -> Pointer
+```
+
+Create a pointer device — a touch panel, a mouse, or anything else that
+reports a coordinate and whether it is pressed. Feed it with `set_position`
+and `set_pressed`.
+
+---
+
+<a id="lvgl.keypad" />
+```gust
+def keypad() -> Keypad
+```
+
+Create a keypad device, which moves focus through a `Group` and types
+into the focused widget. Attach a group with `set_group`, then feed keys
+with `press_key` or `send_key`.
+
+---
+
+<a id="lvgl.encoder" />
+```gust
+def encoder() -> Encoder
+```
+
+Create an encoder device — a rotary knob with a push button, which steps
+focus through a `Group` and edits the focused widget. Attach a group with
+`set_group`, then feed it with `turn` and `set_pressed`.
+
+---
+
+<a id="lvgl.keyboard" />
+```gust
+def keyboard(parent: Obj) -> Keyboard
+```
+
+Create an on-screen keyboard as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.label" />
+```gust
+def label(parent: Obj) -> Label
+```
+
+Create a text label as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.led" />
+```gust
+def led(parent: Obj) -> Led
+```
+
+Create an LED indicator as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.line" />
+```gust
+def foreign line(parent: Obj) -> Line
+```
+
+Create a line as a child of `parent`. Style its stroke with
+`set_line_color` and `set_line_width`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.list_view" />
+```gust
+def list_view(parent: Obj) -> List
+```
+
+Create a scrolling list as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.start" />
+```gust
+def start(card_index: integer) -> bool
+```
+
+<Note>
+Only available on native builds.
+</Note>
+
+Initialize LVGL and acquire `/dev/dri/card<index>` as the display.
+Returns false when the card cannot be driven — the node is absent, cannot
+be opened, exposes no connected display (a render-only node such as a bare
+GPU card has none), or is already held by another DRM master such as a
+running compositor — so a caller can try the next card index in turn.
+
+**Parameters**
+
+- `card_index: integer` — DRM card index (0 for `/dev/dri/card0`).
+
+---
+
+<a id="lvgl.start_offscreen" />
+```gust
+def start_offscreen(width: integer, height: integer) -> bool
+```
+
+Initialize LVGL against a display of the given size that is never
+scanned out, reporting whether it was created. No device is opened and no
+DRM master is taken, so an interface can be built and captured with
+`screenshot` on a machine with no panel of its own.
+
+**Parameters**
+
+- `width: integer` — Display width in pixels.
+- `height: integer` — Display height in pixels.
+
+<Note>
+Nothing is ever drawn to such a display, and it is drawing a frame that
+assigns widgets their positions. Measuring a widget or hitting it with
+an input device therefore needs `Obj.update_layout` first; `screenshot`
+computes the layout itself.
+</Note>
+
+---
+
+<a id="lvgl.screen" />
+```gust
+def screen() -> Obj
+```
+
+The active screen — the root widget every top-level widget is created
+against.
+
+---
+
+<a id="lvgl.load_screen" />
+```gust
+def load_screen(screen: Obj) -> none
+```
+
+Put a screen up, replacing whichever one is showing. The screen that
+leaves stays alive with its widgets, ready to be shown again.
+
+**Parameters**
+
+- `screen: Obj` — A screen from `create_screen`.
+
+---
+
+<a id="lvgl.load_screen_animated" />
+```gust
+def load_screen_animated(
+    screen: Obj,
+    effect: ScreenAnim,
+    duration: integer,
+    delay: integer,
+    delete_old: bool,
+) -> none
+```
+
+Put a screen up with a transition. The animation runs over the following
+frames, so the render loop must keep turning for it to finish.
+
+**Parameters**
+
+- `screen: Obj` — A screen from `create_screen`.
+- `effect: ScreenAnim` — How the new screen arrives and the old one leaves.
+- `duration: integer` — Length of the transition in milliseconds.
+- `delay: integer` — Milliseconds to wait before it starts.
+- `delete_old: bool` — Whether the outgoing screen is deleted once it is gone.
+
+---
+
+<a id="lvgl.top_layer" />
+```gust
+def top_layer() -> Obj
+```
+
+The layer above every screen, for what should stay put as screens
+change — a status bar, a toast, a modal backdrop.
+
+---
+
+<a id="lvgl.bottom_layer" />
+```gust
+def bottom_layer() -> Obj
+```
+
+The layer behind every screen, for a wallpaper or a background that
+outlives the screen in front of it.
+
+---
+
+<a id="lvgl.system_layer" />
+```gust
+def system_layer() -> Obj
+```
+
+The layer above the top layer, which stays visible through a modal. The
+mouse cursor is drawn here.
+
+---
+
+<a id="lvgl.set_rotation" />
+```gust
+def set_rotation(degrees: integer) -> bool
+```
+
+Turn everything drawn on the display clockwise by 0, 90, 180 or 270
+degrees, reporting whether it was turned. A quarter turn swaps what
+`screen` measures, so a widget placed against the screen's own size follows
+the rotation.
+
+Only an off-screen display can be turned. A display bound to a card scans
+out through the DRM backend, which renders straight into the scanout buffer
+and never reads the rotation: a quarter turn would leave the engine drawing
+a frame of the swapped size into a buffer laid out for the original one,
+which runs off the end of it. A panel mounted on its side is turned by
+whatever puts the mode on it — the kernel's `video=...,rotate=90` option,
+for instance — and this package draws to the mode it is given. An ST7789
+panel is turned the same way, at the panel: `St7789`'s `swap_xy` and
+`mirror_x` / `mirror_y` set the controller's own readout direction.
+
+**Parameters**
+
+- `degrees: integer` — Clockwise rotation: 0, 90, 180 or 270.
+
+---
+
+<a id="lvgl.run" />
+```gust
+def run() -> none
+```
+
+Enter the render/event loop: process input, run animations and timers,
+and repaint the display on a fixed 5-millisecond cadence. Does not return —
+the UI runs until the process exits.
+
+---
+
+<a id="lvgl.run_once" />
+```gust
+def run_once() -> none
+```
+
+Run one iteration of the render/event loop: service timers, then sleep
+for the frame interval, keeping the engine's clock in step with elapsed
+time. Call this in a custom loop when the program must do other work
+between frames rather than handing control to `run`.
+
+---
+
+<a id="lvgl.screenshot" />
+```gust
+def screenshot(path: string) -> bool
+```
+
+<Note>
+Only available on native builds.
+</Note>
+
+Render the current UI to an image file at `path`, returning whether it
+succeeded. The active screen and its widgets are drawn into an off-screen
+buffer, so this captures the interface without a display device or a
+foreground console. The output format is taken from the `path` extension
+(`.png`, `.jpg`, `.bmp`, `.tga`); a screen that cannot be rendered yields
+false.
+
+**Parameters**
+
+- `path: string` — Destination path; its extension selects the image format.
+
+<Note>
+Off-screen rendering is an optional part of LVGL. Against a build
+configured with `LV_USE_SNAPSHOT` disabled this always returns false;
+the rest of the package is unaffected.
+</Note>
+
+---
+
+<a id="lvgl.tick" />
+```gust
+def tick(ms: integer) -> none
+```
+
+Advance LVGL's millisecond clock by `ms`, so animations and timeouts
+progress. `run` and `run_once` call this automatically; use it only when
+driving the engine's timing manually.
+
+**Parameters**
+
+- `ms: integer` — Milliseconds elapsed since the previous tick.
+
+---
+
+<a id="lvgl.menu" />
+```gust
+def menu(parent: Obj) -> Menu
+```
+
+Create a menu as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.msgbox" />
+```gust
+def msgbox(parent: Obj) -> Msgbox
+```
+
+Create a message box as a child of `parent` (pass `screen()` for a modal
+dialog centered on the display).
+
+**Parameters**
+
+- `parent: Obj` — The containing widget.
+
+---
+
+<a id="lvgl.container" />
+```gust
+def container(parent: Obj) -> Obj
+```
+
+Create a generic container as a child of `parent`. A container groups and
+clips its children and is the base for panels, cards, and flex layouts.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.create_screen" />
+```gust
+def create_screen() -> Obj
+```
+
+Create a screen: a root widget with no parent, filling the display and
+holding a page of interface. Build it while another is showing, then put it
+up with `load_screen`.
+
+---
+
+<a id="lvgl.roller" />
+```gust
+def roller(parent: Obj) -> Roller
+```
+
+Create a roller as a child of `parent`. React to selection with
+`on_change`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.scale" />
+```gust
+def scale(parent: Obj) -> Scale
+```
+
+Create a scale as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.slider" />
+```gust
+def slider(parent: Obj) -> Slider
+```
+
+Create a slider as a child of `parent`. Listen for drags with `on_change`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.span_group" />
+```gust
+def span_group(parent: Obj) -> SpanGroup
+```
+
+Create a span group as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.spinbox" />
+```gust
+def spinbox(parent: Obj) -> Spinbox
+```
+
+Create a spinbox as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.spinner" />
+```gust
+def spinner(parent: Obj) -> Spinner
+```
+
+Create a spinner as a child of `parent`. It animates on its own once
+created.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.switch" />
+```gust
+def switch(parent: Obj) -> Switch
+```
+
+Create a switch as a child of `parent`. React to toggles with
+`on_change`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.table" />
+```gust
+def table(parent: Obj) -> Table
+```
+
+Create a table as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.tabview" />
+```gust
+def tabview(parent: Obj) -> Tabview
+```
+
+Create a tabbed view as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.textarea" />
+```gust
+def textarea(parent: Obj) -> TextArea
+```
+
+Create a text area as a child of `parent`. Pair it with a `keyboard` for
+on-screen input.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.tileview" />
+```gust
+def tileview(parent: Obj) -> TileView
+```
+
+Create a tile view as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.timer" />
+```gust
+def timer(period_ms: integer, handler: Function()[none]) -> Timer
+```
+
+Call `handler` every `period_ms` milliseconds, starting one period from
+now. The timer runs as soon as it is created; `pause` holds it and `delete`
+ends it.
+
+**Parameters**
+
+- `period_ms: integer` — Milliseconds between calls.
+- `handler: Function()[none]` — Function invoked on each period.
+
+---
+
+<a id="lvgl.call_soon" />
+```gust
+def call_soon(handler: Function()[none]) -> none
+```
+
+Call `handler` once, at the next turn of the render loop rather than
+now. It is how a handler asks for something that must not happen inside
+it — deleting the widget the event arrived on, or loading a screen from a
+button on the screen being replaced.
+
+**Parameters**
+
+- `handler: Function()[none]` — Function invoked on the next loop iteration.
+
+---
+
+<a id="lvgl.enable_timers" />
+```gust
+def enable_timers(enabled: bool) -> none
+```
+
+Stop or resume every timer at once, without touching any of them
+individually. Nothing runs while they are disabled, including the engine's
+own timers for animation and input, so the interface holds still.
+
+**Parameters**
+
+- `enabled: bool` — Whether timers run.
+
+---
+
+<a id="lvgl.idle_percent" />
+```gust
+def idle_percent() -> integer
+```
+
+The share of the last few seconds the engine spent doing nothing, from 0
+(fully occupied) to 100 (idle). A number that stays low means the interface
+is asking for more work per frame than there is time for.
+
+---
+
+<a id="lvgl.time_until_next_timer" />
+```gust
+def time_until_next_timer() -> integer
+```
+
+Milliseconds until the next timer is due, which is how long a custom
+loop may sleep before it has to call `run_once` again. Reports 4294967295
+when nothing is scheduled: every timer is paused, or there are none.
+
+---
+
+<a id="lvgl.win" />
+```gust
+def win(parent: Obj) -> Win
+```
+
+Create a window as a child of `parent`.
+
+**Parameters**
+
+- `parent: Obj` — The containing widget (e.g. `screen()`).
+
+---
+
+<a id="lvgl.start_st7789" />
+```gust
+def start_st7789(panel: St7789) -> bool
+```
+
+<Note>
+Only available on the ESP32.
+</Note>
+
+Initialize LVGL and bring up `panel` as its display, reporting whether
+the panel came up.
+
+Returns false when the wiring is incomplete (`sck`, `mosi`, `cs` and `dc`
+are all required) or the geometry is empty, when a control line or the bus
+cannot be claimed, or when there is not enough memory left for the draw
+buffers.
+
+**Parameters**
+
+- `panel: St7789` — Wiring and geometry of the attached display.

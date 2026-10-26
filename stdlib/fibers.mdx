@@ -1,0 +1,83 @@
+---
+title: fibers
+description: "Userspace fibers: lightweight cooperative tasks scheduled per thread"
+---
+
+```gust
+use fibers
+```
+
+Userspace fibers: lightweight cooperative tasks scheduled per thread.
+
+A thread that calls `enter()` becomes a *scheduler thread*: from then on,
+`spawn` on that thread creates a fiber — a stackful task costing pages of
+memory and nanoseconds to switch — instead of an operating-system thread, and
+socket operations park the calling fiber while the data is in flight instead
+of blocking the whole thread. Parked fibers cost nothing until their socket
+becomes ready, so one scheduler thread comfortably multiplexes thousands of
+concurrent connections.
+
+Fibers are pinned to the thread that spawned them and are scheduled
+cooperatively: a fiber runs until it blocks on a socket operation or ends. A
+long computation that never touches a socket therefore delays the other
+fibers on its thread — spread such work across scheduler threads (one per
+CPU, as `http.Server.run` does) or keep it off scheduler threads entirely.
+
+`enter()` is one-way: the calling thread remains a scheduler thread until it
+ends. Threads that never call it are unaffected — `spawn` keeps creating
+real threads there, and blocking calls block only that thread.
+
+Setting the `GUST_NO_FIBERS` environment variable disables `enter()`
+process-wide (it becomes a no-op), restoring thread-per-`spawn` behavior
+everywhere — an escape hatch for debugging and for tools that do not
+understand userspace stack switching.
+
+**Examples**
+
+```gust
+use fibers
+use socket
+
+def main() -> none
+    fibers.enter()
+    listener := socket.listen(9000)
+    while true
+        conn := listener.accept()
+        spawn handle(conn)
+    end
+end
+```
+
+**On this page:** [`enter`](#fibers.enter) · [`active`](#fibers.active) · [`ncpus`](#fibers.ncpus)
+
+## Functions
+
+<a id="fibers.enter" />
+```gust
+def foreign enter() -> none
+```
+
+Turn the calling thread into a fiber scheduler thread. Idempotent —
+entering twice is a no-op, and a no-op everywhere fibers are unavailable
+(freestanding targets, or when `GUST_NO_FIBERS` is set), where `spawn`
+keeps its thread-per-call behavior.
+
+---
+
+<a id="fibers.active" />
+```gust
+def foreign active() -> bool
+```
+
+Whether the calling thread is a fiber scheduler thread (a prior
+`enter()` on this thread took effect).
+
+---
+
+<a id="fibers.ncpus" />
+```gust
+def foreign ncpus() -> integer
+```
+
+The number of CPUs online, and so the natural number of scheduler
+threads for a program that wants one per CPU. Always at least 1.

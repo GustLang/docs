@@ -1,0 +1,1411 @@
+---
+title: bluetooth.classic
+description: "The classic Bluetooth radio: BR/EDR, which is the radio a serial port, a printer, a headset or a keyboard speaks, and what a phone means when it offers to pair with something"
+---
+
+```gust
+use bluetooth.classic
+```
+
+The classic Bluetooth radio: BR/EDR, which is the radio a serial port, a
+printer, a headset or a keyboard speaks, and what a phone means when it offers
+to pair with something.
+
+This is a different radio from the low-energy one the `bluetooth` package
+serves, not a different protocol over the same one, and above the antenna the
+two have almost nothing in common. A low-energy peripheral publishes attributes
+another device reads, writes and subscribes to. A classic device opens a
+*channel*: a stream of bytes running in both directions, whose contents are the
+profile's business rather than this package's. They are separate packages for
+that reason, and because a program that wants one should not pay for the other
+— on a board the classic stack is tens of kilobytes of code a low-energy program
+has no use for.
+
+RFCOMM is the protocol that carries those byte streams. A channel is a number
+from 1 to 30 that the *serving* device assigns, so it cannot be predicted from
+the profile: ask the device with `rfcomm_channel`, which reads it out of the
+device's own service record, and hand the answer to `rfcomm_connect`.
+`rfcomm_listen` serves one.
+
+Linux and the Raspberry Pi Pico 2 W both carry the whole surface, and a program
+written against either builds for the other. What differs is what each has to do
+for itself: a Linux host has a system Bluetooth daemon that owns discovery, the
+service record and the device name, and a board has none — so `discover`, and
+the `name` argument to `rfcomm_listen`, exist on the board and not on the host.
+Every other target has no classic backend, so importing this package there is a
+compile error rather than a misleading no-op.
+
+UUIDs come from the `bluetooth` package, since a UUID means the same thing on
+both radios, and the service classes worth naming are in `ServiceClass`.
+
+Example — connect to a device's serial port profile and exchange a line:
+```gust
+use bluetooth
+
+use bluetooth.classic
+
+use ServiceClass from bluetooth.enums.uuids
+
+def main() -> none
+    address := "AA:BB:CC:DD:EE:FF"
+    channel := classic.rfcomm_channel(
+        address,
+        bluetooth.UUID(value: ServiceClass.SerialPort),
+    )
+    with classic.rfcomm_connect(address, channel) as port
+        port.send(b"AT\r")
+        print(port.receive() as string)
+    end
+end
+```
+
+<Note>
+Only available where `os == "linux" or has("bt-classic")`.
+</Note>
+
+**On this page:** [`AvcCode`](#AvcCode) · [`AvcOpcode`](#AvcOpcode) · [`AvrcpPdu`](#AvrcpPdu) · [`AvrcpNotification`](#AvrcpNotification) · [`AvrcpRejection`](#AvrcpRejection) · [`AvdtpSignal`](#AvdtpSignal) · [`AvdtpMessageKind`](#AvdtpMessageKind) · [`AvdtpCapability`](#AvdtpCapability) · [`AvdtpError`](#AvdtpError) · [`AvrcpKey`](#AvrcpKey) · [`PlaybackState`](#PlaybackState) · [`AvrcpEventKind`](#AvrcpEventKind) · [`SdpOpcode`](#SdpOpcode) · [`ElementKind`](#ElementKind) · [`SdpError`](#SdpError) · [`A2dpSink`](#A2dpSink) · [`A2dpStream`](#A2dpStream) · [`Track`](#Track) · [`AvrcpEvent`](#AvrcpEvent) · [`AvrcpListener`](#AvrcpListener) · [`AvrcpRemote`](#AvrcpRemote) · [`HfpConnection`](#HfpConnection) · [`RfcommListener`](#RfcommListener) · [`RfcommConnection`](#RfcommConnection) · [`ClassicDevice`](#ClassicDevice) · [`a2dp_sink`](#bluetooth.classic.a2dp_sink) · [`sink_class_of_device`](#bluetooth.classic.sink_class_of_device) · [`avrcp_connect`](#bluetooth.classic.avrcp_connect) · [`avrcp_listen`](#bluetooth.classic.avrcp_listen) · [`hfp_connect`](#bluetooth.classic.hfp_connect) · [`rfcomm_channel`](#bluetooth.classic.rfcomm_channel) · [`rfcomm_connect`](#bluetooth.classic.rfcomm_connect) · [`rfcomm_listen`](#bluetooth.classic.rfcomm_listen) · [`discover`](#bluetooth.classic.discover)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `AVCTP_PSM` | `integer` | `23` |
+| `AVRCP_PROFILE_ID` | `integer` | defined in C |
+| `AVRCP_MAX_VOLUME` | `integer` | `127` |
+| `AVDTP_PSM` | `integer` | `25` |
+| `AVDTP_SINK_SEID` | `integer` | `1` |
+| `AVDTP_MEDIA_AUDIO` | `integer` | `0` |
+| `AVDTP_CODEC_SBC` | `integer` | `0` |
+| `MAX_VOLUME_PERCENT` | `integer` | `100` |
+| `RFCOMM_FIRST_CHANNEL` | `integer` | `1` |
+| `RFCOMM_LAST_CHANNEL` | `integer` | `30` |
+| `ANY_CHANNEL` | `integer` | `0` |
+| `RFCOMM_RECEIVE_MAX` | `integer` | `4096` |
+| `DEFAULT_TIMEOUT_MS` | `integer` | `5000` |
+| `HFP_AUDIO_GATEWAY` | `integer` | defined in C |
+| `HF_INDICATORS_SUPPORTED` | `integer` | `256` |
+| `AG_HF_INDICATORS_SUPPORTED` | `integer` | `1024` |
+| `BATTERY_INDICATOR` | `integer` | `2` |
+| `VENDOR_BATTERY_SUPPORTED` | `integer` | `2` |
+| `VENDOR_CHARGING_SUPPORTED` | `integer` | `4` |
+| `VENDOR_BATTERY_KEY` | `integer` | `1` |
+| `VENDOR_CHARGING_KEY` | `integer` | `2` |
+| `VENDOR_BATTERY_STEPS` | `integer` | `10` |
+| `DEFAULT_IDENTITY` | `string` | `"0000-0000-0100"` |
+| `MAX_BATTERY_PERCENT` | `integer` | `100` |
+| `BLUETOOTH_DOMAIN` | `integer` | `31` |
+| `L2CAP_PROTOCOL` | `integer` | `0` |
+| `RFCOMM_PROTOCOL` | `integer` | `3` |
+| `ADDRESS_BREDR` | `integer` | `0` |
+| `ANY_ADDRESS` | `bytes` | defined in C |
+| `RFCOMM_BACKLOG` | `integer` | `4` |
+| `SBC_SYNCWORD` | `integer` | `156` |
+| `SBC_MONO` | `integer` | `0` |
+| `SBC_DUAL_CHANNEL` | `integer` | `1` |
+| `SBC_STEREO` | `integer` | `2` |
+| `SBC_JOINT_STEREO` | `integer` | `3` |
+| `SBC_LOUDNESS` | `integer` | `0` |
+| `SBC_SNR` | `integer` | `1` |
+| `SBC_SAMPLE_RATES` | `list[integer]` | `[16000, 32000, 44100, 48000]` |
+| `SBC_BLOCK_COUNTS` | `list[integer]` | `[4, 8, 12, 16]` |
+| `SBC_SUBBAND_COUNTS` | `list[integer]` | `[4, 8]` |
+| `SDP_PSM` | `integer` | `1` |
+| `PROTOCOL_DESCRIPTOR_LIST` | `integer` | `4` |
+| `SDP_MAX_ATTRIBUTE_BYTES` | `integer` | `512` |
+| `DISCOVER_MS` | `integer` | `8000` |
+| `RSSI_UNKNOWN` | `integer` | `-32768` |
+| `DEFAULT_NAME` | `string` | `"gust"` |
+| `BLUETOOTH_DOMAIN` | `integer` | `31` |
+| `L2CAP_PROTOCOL` | `integer` | `0` |
+| `ADDRESS_BREDR` | `integer` | `0` |
+| `ANY_ADDRESS` | `bytes` | defined in C |
+| `DEFAULT_TIMEOUT_MS` | `integer` | `5000` |
+
+## `AvcCode`
+
+<a id="AvcCode" />
+```gust
+enum AvcCode: integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+What a command frame is, which is a command kind in a command and a
+response kind in an answer — the field is one and the same.
+
+**Variants**
+
+- `control = 0` — Asks the device to do something.
+- `status = 1` — Asks the device something.
+- `notify = 3` — Asks the device to say when something changes.
+- `not_implemented = 8` — Answers that the device does not know the command.
+- `accepted = 9` — Answers that it did what was asked.
+- `rejected = 10` — Answers that it would not.
+- `stable = 12` — Answers a question, with the answer.
+- `changed = 13` — Answers a subscription, because the thing changed.
+- `interim = 15` — Answers a subscription to say it is registered, with the value as it stands. The real answer follows whenever it changes.
+
+## `AvcOpcode`
+
+<a id="AvcOpcode" />
+```gust
+enum AvcOpcode: integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+What a command frame carries.
+
+**Variants**
+
+- `vendor_dependent = 0` — A message defined by whoever the frame names, which for everything here is the body that defines this profile.
+- `unit_info = 48` — Asks what the device is.
+- `subunit_info = 49` — Asks what parts it has.
+- `pass_through = 124` — One key of a transport control, pressed or released.
+
+## `AvrcpPdu`
+
+<a id="AvrcpPdu" />
+```gust
+enum AvrcpPdu: integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+The metadata messages this package sends or answers.
+
+**Variants**
+
+- `get_capabilities = 16` — Asks which of these messages the device knows, and which changes it will report.
+- `get_element_attributes = 32` — Asks what is playing — its title, who made it, and the rest.
+- `get_play_status = 48` — Asks whether the device is playing, and how far through.
+- `register_notification = 49` — Subscribes to one kind of change.
+- `set_absolute_volume = 80` — Sets how loud the other device should be.
+
+## `AvrcpNotification`
+
+<a id="AvrcpNotification" />
+```gust
+enum AvrcpNotification: integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+The changes a device can be asked to report.
+
+**Variants**
+
+- `playback_changed = 1` — The device started, stopped or paused.
+- `track_changed = 2` — What is playing is now something else.
+- `position_changed = 5` — The playing position passed the interval that was asked for.
+- `volume_changed = 13` — The volume was moved at the other end.
+
+## `AvrcpRejection`
+
+<a id="AvrcpRejection" />
+```gust
+enum AvrcpRejection: integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+The reasons a device gives for refusing a metadata message. The values
+are the protocol's own.
+
+**Variants**
+
+- `invalid_command = 0` — The message is not a well-formed one.
+- `invalid_parameter = 1` — The message asks for something the protocol does not define.
+- `parameter_not_found = 2` — The message asks for something this device has not got.
+- `internal_error = 3` — The device could not answer.
+
+## `AvdtpSignal`
+
+<a id="AvdtpSignal" />
+```gust
+enum AvdtpSignal: integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+The messages the protocol carries. The values are the protocol's own
+identifiers, so a received packet's signal compares against these directly.
+
+**Variants**
+
+- `discover = 1` — Asks what stream endpoints the device has.
+- `get_capabilities = 2` — Asks what one endpoint can manage.
+- `set_configuration = 3` — Chooses what one endpoint will carry.
+- `get_configuration = 4` — Asks what was chosen.
+- `reconfigure = 5` — Changes that choice while the stream is open.
+- `open = 6` — Readies an endpoint for its audio channel.
+- `start = 7` — Begins the audio.
+- `close = 8` — Ends the audio and gives the endpoint back.
+- `suspend = 9` — Pauses the audio without giving the endpoint back.
+- `abort = 10` — Ends everything at once, however wedged the endpoint is.
+- `security_control = 11` — Carries content protection, which this package does not offer.
+- `get_all_capabilities = 12` — Asks what one endpoint can manage, including the capabilities added after the first version of the protocol.
+- `delay_report = 13` — Tells the sending device how far behind the audio is.
+
+## `AvdtpMessageKind`
+
+<a id="AvdtpMessageKind" />
+```gust
+enum AvdtpMessageKind: integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+Whether a packet asks something or answers it.
+
+**Variants**
+
+- `command = 0` — Asks.
+- `general_reject = 1` — Answers that the signal is not one the device knows.
+- `accept = 2` — Answers that the command was carried out.
+- `reject = 3` — Answers that it was not, and says why.
+
+## `AvdtpCapability`
+
+<a id="AvdtpCapability" />
+```gust
+enum AvdtpCapability: integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+The kinds of capability an endpoint declares. Only the two a plain audio
+stream needs are named.
+
+**Variants**
+
+- `media_transport = 1` — That the endpoint can carry audio at all, which every endpoint declares and which carries no parameters.
+- `media_codec = 7` — How the audio is coded, whose parameters are the codec's own.
+- `delay_reporting = 8` — That the endpoint reports how far behind it is.
+
+## `AvdtpError`
+
+<a id="AvdtpError" />
+```gust
+enum AvdtpError: integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+The reasons a device gives for refusing a command. The values are the
+protocol's own error codes.
+
+**Variants**
+
+- `bad_length = 17` — The command's length does not match its contents.
+- `bad_acp_seid = 18` — The command named an endpoint the device has not got.
+- `sep_in_use = 19` — The endpoint named is already carrying a stream.
+- `bad_state = 49` — The command is not one the endpoint can obey right now.
+- `unsupported_configuration = 41` — The configuration offered is not one the endpoint can manage.
+- `invalid_codec_type = 194` — The coding offered is not one the endpoint knows.
+
+## `AvrcpKey`
+
+<a id="AvrcpKey" />
+```gust
+enum AvrcpKey: integer
+```
+
+A key of a transport control, as a remote control would carry. The values
+are the protocol's own operation identifiers.
+
+**Variants**
+
+- `play = 68` — Start playing.
+- `pause = 70` — Hold what is playing.
+- `stop = 69` — Stop playing.
+- `next_track = 75` — Skip to what comes after.
+- `previous_track = 76` — Skip to what came before.
+- `fast_forward = 73` — Wind on while held.
+- `rewind = 72` — Wind back while held.
+- `volume_up = 65` — One step louder.
+- `volume_down = 66` — One step quieter.
+- `mute = 67` — Silence, or unsilence.
+
+## `PlaybackState`
+
+<a id="PlaybackState" />
+```gust
+enum PlaybackState: integer
+```
+
+What a device is doing with what is playing. The values are the
+protocol's own.
+
+**Variants**
+
+- `stopped = 0` — Nothing is playing.
+- `playing = 1` — Something is.
+- `paused = 2` — Something is, but held.
+- `seeking_forward = 3` — Winding on.
+- `seeking_backward = 4` — Winding back.
+- `unknown = 255` — The device would not say.
+
+## `AvrcpEventKind`
+
+<a id="AvrcpEventKind" />
+```gust
+enum AvrcpEventKind: integer
+```
+
+What a device said without being asked.
+
+**Variants**
+
+- `track_changed = 0` — What is playing is now something else, so anything read from `track` is stale.
+- `playback_changed = 1` — The device started, stopped or paused.
+- `position_changed = 2` — The playing position moved on.
+- `volume_changed = 3` — The other end set this device's volume.
+
+## `SdpOpcode`
+
+<a id="SdpOpcode" />
+```gust
+enum SdpOpcode: integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+The service discovery packets this package sends and expects back. The
+values are the protocol's own identifiers, so a received packet's first
+byte compares against these directly.
+
+**Variants**
+
+- `error_response = 1` — The device refused the request and says why.
+- `service_search_attribute_request = 6` — Asks for named attributes of every record matching a service.
+- `service_search_attribute_response = 7` — Carries those attributes, possibly as one of several answers.
+
+## `ElementKind`
+
+<a id="ElementKind" />
+```gust
+enum ElementKind: integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+What a data element holds, from the type half of its header byte.
+
+**Variants**
+
+- `empty = 0` — No value at all.
+- `unsigned_integer = 1` — An unsigned number, as wide as the header says.
+- `signed_integer = 2` — A two's-complement number.
+- `uuid = 3` — A 16-, 32- or 128-bit UUID.
+- `text = 4` — A text string, whose encoding the record declares elsewhere.
+- `boolean = 5` — A single true or false byte.
+- `sequence = 6` — Further elements, all of which belong to the sequence.
+- `alternative = 7` — Further elements, of which one may be chosen.
+- `url = 8` — A URL, encoded as text.
+
+## `SdpError`
+
+<a id="SdpError" />
+```gust
+enum SdpError: integer
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+The reasons a device gives for refusing a request. The values are the
+protocol's own error codes.
+
+**Variants**
+
+- `unsupported_version = 1` — The device speaks no version the request offered.
+- `invalid_record_handle = 2` — The request named a record the device has not got.
+- `invalid_syntax = 3` — The request is not a well-formed one.
+- `invalid_size = 4` — The request's length does not match its contents.
+- `invalid_continuation = 5` — The continuation offered is not one the device issued, which a device also reports once it has forgotten a partial answer.
+- `insufficient_resources = 6` — The device cannot answer right now.
+
+## `A2dpSink`
+
+<a id="A2dpSink" />
+The channel audio arrives on. `a2dp_sink` returns one; `close`, or
+leaving the `with` block holding it, gives the channel back.
+
+```gust
+def A2dpSink
+
+    _handle: integer
+    _open: ref[bool]
+
+end
+```
+
+**Fields**
+
+- `_handle: integer` — What the backend identifies the served channel by.
+- `_open: ref[bool]` — False once the sink has been closed.
+
+**Methods**
+
+<a id="A2dpSink.accept" />
+```gust
+def A2dpSink.accept(timeout_ms: integer) -> A2dpStream
+```
+
+Wait for a device to connect and start sending audio, and return the
+stream it is sending.
+
+A device that is not yet paired pairs as it connects. Agreeing the coding
+takes several exchanges after that, and this returns only once audio is
+actually flowing, so the stream handed back is ready to be read.
+
+**Parameters**
+
+- `timeout_ms` — Milliseconds to wait for a device, or 0 to wait indefinitely. The stream returned carries the same bound for its own reads.
+
+**Raises**
+
+- `IOError` — If the sink is closed, no device starts sending within `timeout_ms`, or the device and this package cannot agree a coding.
+
+---
+
+<a id="A2dpSink.is_open" />
+```gust
+def A2dpSink.is_open() -> bool
+```
+
+True until the sink is closed.
+
+---
+
+<a id="A2dpSink.close" />
+```gust
+def A2dpSink.close() -> none
+```
+
+Give the channel back. Streams already accepted stay open, since each one
+is closed on its own. Idempotent, so closing twice is harmless and a `with`
+block may be left early.
+
+## `A2dpStream`
+
+<a id="A2dpStream" />
+Audio a device is sending. `A2dpSink.accept` returns one; `close`, or
+leaving the `with` block holding it, ends the stream.
+
+The shape of the audio is fixed for the stream's life: it is what the two
+devices agreed before the first sample arrived, and a device that wants to
+change it starts a new stream.
+
+```gust
+def A2dpStream
+
+    address: string
+    sample_rate: integer
+    channels: integer
+    timeout_ms: integer
+    _handle: integer
+    _decoder: SbcDecoder
+    _open: ref[bool]
+
+end
+```
+
+**Fields**
+
+- `address: string` — The sending device's address, as "AA:BB:CC:DD:EE:FF".
+- `sample_rate: integer` — Samples per second, one of 16000, 32000, 44100 or 48000.
+- `channels: integer` — 1 for mono audio, 2 for stereo.
+- `timeout_ms: integer` — How long one read may wait before it raises. 0 waits indefinitely.
+- `_handle: integer` — What the backend identifies the stream by.
+- `_decoder: SbcDecoder` — Holds what the coding needs remembered between packets.
+- `_open: ref[bool]` — False once the stream has been closed locally.
+
+**Methods**
+
+<a id="A2dpStream.receive" />
+```gust
+def A2dpStream.receive() -> bytes
+```
+
+The next packet of audio, as 16-bit signed samples, least-significant
+byte first, with the channels interleaved.
+
+Waits for a packet and returns as soon as one has arrived. How much audio
+one packet carries is the sending device's choice and varies, so a program
+playing this should hand whatever it gets to the sound device rather than
+expect a fixed amount.
+
+Empty `bytes` means the device stopped sending.
+
+**Raises**
+
+- `IOError` — If the stream is closed, the link fails, or nothing arrives within the stream's timeout.
+
+---
+
+<a id="A2dpStream.is_open" />
+```gust
+def A2dpStream.is_open() -> bool
+```
+
+True until the stream is closed locally. A device that stops sending is
+noticed at the next `receive`, which returns empty `bytes`.
+
+---
+
+<a id="A2dpStream.close" />
+```gust
+def A2dpStream.close() -> none
+```
+
+End the stream. Idempotent, so closing twice is harmless and a `with`
+block may be left early.
+
+## `Track`
+
+<a id="Track" />
+What a device says is playing.
+
+A device gives what it has. Anything it does not know is "" for the text and
+0 for the numbers, which is also what every field reads as when nothing is
+playing at all.
+
+```gust
+def Track
+
+    title: string
+    artist: string
+    album: string
+    genre: string
+    number: integer
+    total: integer
+    duration_ms: integer
+
+end
+```
+
+**Fields**
+
+- `title: string` — What the track is called.
+- `artist: string` — Who made it.
+- `album: string` — What it is from.
+- `genre: string` — What kind of thing it is.
+- `number: integer` — Its place on the album.
+- `total: integer` — How many places the album has.
+- `duration_ms: integer` — How long the track runs, in milliseconds.
+
+## `AvrcpEvent`
+
+<a id="AvrcpEvent" />
+Something a device said without being asked.
+
+Only the field belonging to `kind` carries anything; the rest read as 0.
+
+```gust
+def AvrcpEvent
+
+    kind: AvrcpEventKind
+    playback: PlaybackState
+    volume: integer
+    position_ms: integer
+
+end
+```
+
+**Fields**
+
+- `kind: AvrcpEventKind` — What the device said.
+- `playback: PlaybackState` — What it is doing now, when `kind` is `playback_changed`.
+- `volume: integer` — How loud this device should be as a percentage, when `kind` is `volume_changed`.
+- `position_ms: integer` — How far into the track it is, when `kind` is `position_changed`.
+
+## `AvrcpListener`
+
+<a id="AvrcpListener" />
+The channel transport controls arrive on. `avrcp_listen` returns one;
+`close`, or leaving the `with` block holding it, gives the channel back.
+
+```gust
+def AvrcpListener
+
+    _handle: integer
+    _open: ref[bool]
+
+end
+```
+
+**Fields**
+
+- `_handle: integer` — What the backend identifies the served channel by.
+- `_open: ref[bool]` — False once the listener has been closed.
+
+**Methods**
+
+<a id="AvrcpListener.accept" />
+```gust
+def AvrcpListener.accept(timeout_ms: integer) -> AvrcpRemote
+```
+
+Wait for a device to take the transport controls, and return it.
+
+**Parameters**
+
+- `timeout_ms` — Milliseconds to wait for a device, or 0 to wait indefinitely. The connection returned carries the same bound for its own exchanges.
+
+**Raises**
+
+- `IOError` — If the listener is closed, no device connects within `timeout_ms`, or the accept fails.
+
+---
+
+<a id="AvrcpListener.is_open" />
+```gust
+def AvrcpListener.is_open() -> bool
+```
+
+True until the listener is closed.
+
+---
+
+<a id="AvrcpListener.close" />
+```gust
+def AvrcpListener.close() -> none
+```
+
+Give the channel back. Connections already accepted stay open, since each
+one is closed on its own. Idempotent, so closing twice is harmless and a
+`with` block may be left early.
+
+## `AvrcpRemote`
+
+<a id="AvrcpRemote" />
+An open control connection, from either end. `avrcp_connect` returns one
+for a device this program took the controls of; `AvrcpListener.accept`
+returns one for a device that took this program's.
+
+Which end opened it makes no difference to what can be done over it: the
+protocol runs both ways at once, so a connection a phone opened is still one
+this program can send a key press down.
+
+```gust
+def AvrcpRemote
+
+    address: string
+    timeout_ms: integer
+    _handle: AvrcpLink
+    _open: ref[bool]
+
+end
+```
+
+**Fields**
+
+- `address: string` — The other end's address, as "AA:BB:CC:DD:EE:FF".
+- `timeout_ms: integer` — How long one exchange may wait before it raises. 0 waits indefinitely.
+- `_handle: AvrcpLink` — The backend's own record of the connection.
+- `_open: ref[bool]` — False once the connection has been closed locally.
+
+**Methods**
+
+<a id="AvrcpRemote.press" />
+```gust
+def AvrcpRemote.press(key: AvrcpKey) -> none
+```
+
+Press and release one key of the other device's transport controls.
+
+The key is released as well as pressed, so a device is never left holding
+one down. `fast_forward` and `rewind` therefore move by one step per call
+rather than winding while something is held.
+
+**Parameters**
+
+- `key` — Which key to press.
+
+**Raises**
+
+- `IOError` — If the connection is closed, the device refuses the key, or it does not answer within the connection's timeout.
+
+---
+
+<a id="AvrcpRemote.track" />
+```gust
+def AvrcpRemote.track() -> Track
+```
+
+What the other device says is playing.
+
+**Raises**
+
+- `IOError` — If the connection is closed, or the device does not answer within the connection's timeout.
+
+---
+
+<a id="AvrcpRemote.playback" />
+```gust
+def AvrcpRemote.playback() -> PlaybackState
+```
+
+What the other device is doing with what is playing.
+
+**Raises**
+
+- `IOError` — If the connection is closed, or the device does not answer within the connection's timeout.
+
+---
+
+<a id="AvrcpRemote.position" />
+```gust
+def AvrcpRemote.position() -> integer
+```
+
+How far into what is playing the other device is, in milliseconds, or -1
+when it will not say.
+
+**Raises**
+
+- `IOError` — If the connection is closed, or the device does not answer within the connection's timeout.
+
+---
+
+<a id="AvrcpRemote.volume" />
+```gust
+def AvrcpRemote.volume() -> integer
+```
+
+How loud the other device last asked this one to be, as a percentage.
+
+This is what was asked for, not what this program did about it — turning the
+audio down is the program's own to do. 100 until the other device asks for
+anything else, since a device that never asks expects to be heard in full.
+
+---
+
+<a id="AvrcpRemote.set_volume" />
+```gust
+def AvrcpRemote.set_volume(percent: integer) -> none
+```
+
+Tell the other device this one's volume changed, so its own display
+follows.
+
+This says nothing about how loud the other device plays; it is this device's
+volume being reported. A device that never asked to be told is not told, and
+the call is then harmless rather than an error.
+
+**Parameters**
+
+- `percent` — How loud this device now is, from 0 to `MAX_VOLUME_PERCENT`.
+
+**Raises**
+
+- `IOError` — If the connection is closed, or the link fails.
+- `ValueError` — If `percent` is outside 0 to `MAX_VOLUME_PERCENT`.
+
+---
+
+<a id="AvrcpRemote.next_event" />
+```gust
+def AvrcpRemote.next_event(timeout_ms: integer) -> AvrcpEvent | none
+```
+
+The next thing the other device said without being asked, or `none` if it
+has said nothing within `timeout_ms`.
+
+A device says something here when what it is playing changes, when it starts
+or stops, as the playing position moves on, and when it sets this device's
+volume. Nothing is remembered but the most recent of each, so a program that
+stops asking and comes back later sees where things stand rather than
+everything it missed.
+
+**Parameters**
+
+- `timeout_ms` — Milliseconds to wait, or 0 to return at once with whatever has already arrived.
+
+**Raises**
+
+- `IOError` — If the connection is closed, or the link fails.
+
+---
+
+<a id="AvrcpRemote.is_open" />
+```gust
+def AvrcpRemote.is_open() -> bool
+```
+
+True until the connection is closed locally.
+
+---
+
+<a id="AvrcpRemote.close" />
+```gust
+def AvrcpRemote.close() -> none
+```
+
+Give the connection up. Idempotent, so closing twice is harmless and a
+`with` block may be left early.
+
+## `HfpConnection`
+
+<a id="HfpConnection" />
+An open control channel to a phone. `hfp_connect` returns one; `close`,
+or leaving the `with` block holding it, gives it up.
+
+```gust
+def HfpConnection
+
+    address: string
+    _link: RfcommConnection
+    _pending: bytes
+    _indicator: ref[bool]
+    _vendor: ref[integer]
+
+end
+```
+
+**Fields**
+
+- `address: string` — The phone's address, as "AA:BB:CC:DD:EE:FF".
+- `_link: RfcommConnection` — The serial connection the commands travel over.
+- `_pending: bytes` — What has arrived from the phone and not been read as a line yet. Lines are taken from the front of this buffer object, which a copy of the connection shares, so reading through either advances both.
+- `_indicator: ref[bool]` — Whether the phone turned on the profile's own battery reporting.
+- `_vendor: ref[integer]` — Which of the phone maker's own reports it accepted, as the bits it answered with.
+
+**Methods**
+
+<a id="HfpConnection.reports_battery" />
+```gust
+def HfpConnection.reports_battery() -> bool
+```
+
+True if the phone took a way of being told the battery level, which is
+what says whether `report_battery` will do anything.
+
+---
+
+<a id="HfpConnection.reports_charging" />
+```gust
+def HfpConnection.reports_charging() -> bool
+```
+
+True if the phone took a way of being told whether this device is
+charging. Only the phone maker's own reporting carries this, so a phone that
+reports the battery may still not take charging.
+
+---
+
+<a id="HfpConnection.report_battery" />
+```gust
+def HfpConnection.report_battery(percent: integer) -> none
+```
+
+Tell the phone this device's battery level, as a percentage.
+
+The level is sent in every form the phone took, since a phone that took two
+may display either.
+
+A phone taking only its maker's own reporting is told the level in tenths:
+what it displays is the nearest ten, and a level below 5% still displays as
+10% because that reporting cannot express less.
+
+**Parameters**
+
+- `percent` — The battery level, from 0 to 100.
+
+**Raises**
+
+- `IOError` — If the channel is closed, the phone took no way of being told the battery level, or the channel fails.
+- `ValueError` — If `percent` is outside 0 to 100.
+
+---
+
+<a id="HfpConnection.report_charging" />
+```gust
+def HfpConnection.report_charging(charging: bool) -> none
+```
+
+Tell the phone whether this device is charging.
+
+**Parameters**
+
+- `charging` — True while this device is taking power.
+
+**Raises**
+
+- `IOError` — If the channel is closed, the phone took no way of being told about charging, or the channel fails.
+
+---
+
+<a id="HfpConnection.is_open" />
+```gust
+def HfpConnection.is_open() -> bool
+```
+
+True until the channel is closed locally. A phone that drops the link is
+noticed at the next report, which raises.
+
+---
+
+<a id="HfpConnection.close" />
+```gust
+def HfpConnection.close() -> none
+```
+
+Give the channel up. Idempotent, so closing twice is harmless and a
+`with` block may be left early.
+
+## `RfcommListener`
+
+<a id="RfcommListener" />
+A channel this program serves. `rfcomm_listen` returns one; `close`, or
+leaving the `with` block holding it, gives the channel back.
+
+```gust
+def RfcommListener
+
+    channel: integer
+    _handle: integer
+    _open: ref[bool]
+
+end
+```
+
+**Fields**
+
+- `channel: integer` — The channel being served, which is the one that was chosen when `rfcomm_listen` was left to pick.
+- `_handle: integer` — What the backend identifies the served channel by.
+- `_open: ref[bool]` — False once the listener has been closed.
+
+**Methods**
+
+<a id="RfcommListener.accept" />
+```gust
+def RfcommListener.accept(timeout_ms: integer) -> RfcommConnection
+```
+
+Wait for the next device to open a connection to this channel, and
+return it.
+
+**Parameters**
+
+- `timeout_ms` — Milliseconds to wait for a device, or 0 to wait indefinitely. The connection returned carries the same bound for its own sends and receives.
+
+**Raises**
+
+- `IOError` — If the listener is closed, no device connects within `timeout_ms`, or the accept fails.
+
+---
+
+<a id="RfcommListener.is_open" />
+```gust
+def RfcommListener.is_open() -> bool
+```
+
+True until the listener is closed.
+
+---
+
+<a id="RfcommListener.close" />
+```gust
+def RfcommListener.close() -> none
+```
+
+Give the channel back. Connections already accepted stay open, since each
+one is closed on its own. Idempotent, so closing twice is harmless and a
+`with` block may be left early.
+
+## `RfcommConnection`
+
+<a id="RfcommConnection" />
+An open serial connection over the classic radio, from either end.
+`rfcomm_connect` returns one for a device this program reached;
+`RfcommListener.accept` returns one for a device that reached this program.
+
+The connection carries bytes, not messages: what one `send` writes may
+arrive across several `receive` calls, and several sends may arrive
+together. A protocol spoken over it has to say where its own messages end.
+
+```gust
+def RfcommConnection
+
+    address: string
+    channel: integer
+    timeout_ms: integer
+    _handle: integer
+    _open: ref[bool]
+
+end
+```
+
+**Fields**
+
+- `address: string` — The other end's address, as "AA:BB:CC:DD:EE:FF".
+- `channel: integer` — The RFCOMM channel the connection runs on.
+- `timeout_ms: integer` — How long one send or receive may wait before it raises. 0 waits indefinitely.
+- `_handle: integer` — What the backend identifies the open channel by.
+- `_open: ref[bool]` — False once the connection has been closed locally.
+
+**Methods**
+
+<a id="RfcommConnection.send" />
+```gust
+def RfcommConnection.send(data: bytes) -> none
+```
+
+Send every byte of `data` to the other end.
+
+A payload larger than one packet blocks until all of it has left.
+
+**Parameters**
+
+- `data` — The payload to send.
+
+**Raises**
+
+- `IOError` — If the connection is closed or the link fails mid-send.
+
+---
+
+<a id="RfcommConnection.receive" />
+```gust
+def RfcommConnection.receive(max: integer) -> bytes
+```
+
+Whatever the other end has sent that this end has not read yet, up to
+`max` bytes.
+
+Waits for the first byte and returns as soon as anything has arrived, so a
+reply longer than one packet takes more than one call to read. Empty `bytes`
+means the other end closed the connection.
+
+**Parameters**
+
+- `max` — Most bytes to return from this call.
+
+**Raises**
+
+- `IOError` — If the connection is closed, the link fails, or nothing arrives within the connection's timeout.
+
+---
+
+<a id="RfcommConnection.is_open" />
+```gust
+def RfcommConnection.is_open() -> bool
+```
+
+True until the connection is closed locally. An other end that drops the
+link is noticed at the next `receive`, which returns empty `bytes`.
+
+---
+
+<a id="RfcommConnection.close" />
+```gust
+def RfcommConnection.close() -> none
+```
+
+End the connection. Idempotent, so closing twice is harmless and a `with`
+block may be left early.
+
+## `ClassicDevice`
+
+<a id="ClassicDevice" />
+<Note>
+Only available where `has("bt-classic")`.
+</Note>
+
+One classic device an inquiry found. Its `address` is what
+`rfcomm_channel` and `rfcomm_connect` take.
+
+A classic address is burned into the device and does not rotate, so it is a
+durable identity — unlike the address a low-energy device advertises.
+
+```gust
+def ClassicDevice
+
+    address: string
+    name: string
+    device_class: integer
+    rssi: integer | none
+
+end
+```
+
+**Fields**
+
+- `address: string` — The device's address, as "AA:BB:CC:DD:EE:FF".
+- `name: string` — The name the device gave, or "" if it would not give one.
+- `device_class: integer` — The assigned class-of-device code, which says what kind of thing the device is — a phone, a headset, a computer.
+- `rssi: integer | none` — Signal strength in dBm of the device's answer, negative and closer to zero when nearer, or `none` when the controller did not measure one.
+
+## Functions
+
+<a id="bluetooth.classic.a2dp_sink" />
+```gust
+def a2dp_sink() -> A2dpSink
+```
+
+Take the channel audio arrives on and start accepting devices that want
+to stream to it.
+
+Hold the result in a `with` block, which gives the channel back on every
+exit path.
+
+Nothing here publishes a service record. A phone looking for something to
+play through will not find this program, so it has to be pointed at the
+adapter some other way — registering a record is the system Bluetooth
+daemon's to do, and this package does not ask it to. For the same reason the
+channel has to be free: a host already running an audio service holds it, and
+taking it back means stopping that service.
+
+**Raises**
+
+- `IOError` — If the channel is already taken, or the adapter cannot serve one.
+
+---
+
+<a id="bluetooth.classic.sink_class_of_device" />
+```gust
+def sink_class_of_device(device: bluetooth.enums.core.CodDeviceClassAudioVideoMinor) -> integer
+```
+
+The assigned class-of-device code for an audio sink of kind `device`.
+
+A class of device is what a device publishes to say what it is, and what
+`ClassicDevice.device_class` reports for a device that was found. `a2dp_sink`
+composes this for the board it serves, so a program that only wants a speaker
+on the air has no need to call it; it is here for a program that reads a code
+off one device and wants to say how another compares.
+
+The code is three fields in one number: the services the device offers, a
+bit each; the major class, five bits from bit 8; and the minor class, six
+bits from bit 2, which the major class gives the meaning of.
+
+Every sink offers the same two services, and the pair is what says which end
+of the audio the device is — audio alone says it deals in sound, and
+rendering alongside it says sound ends here rather than starts here.
+
+**Parameters**
+
+- `device: bluetooth.enums.core.CodDeviceClassAudioVideoMinor` — What kind of audio device is being published.
+
+---
+
+<a id="bluetooth.classic.avrcp_connect" />
+```gust
+def avrcp_connect(address: string, timeout_ms: integer) -> AvrcpRemote
+```
+
+Take the transport controls of the device at `address`.
+
+Hold the result in a `with` block, which gives the connection up on every
+exit path. A device that is not yet paired pairs as the connection is made.
+
+Most devices open this connection themselves once audio is playing, so a
+speaker usually waits with `avrcp_listen` rather than reaching out. Use this
+to take the controls of a device that will not.
+
+**Parameters**
+
+- `address: string` — The device's address, as "AA:BB:CC:DD:EE:FF".
+- `timeout_ms: integer` — Milliseconds to wait for the connection, and the bound on every exchange over it afterwards.
+
+**Raises**
+
+- `IOError` — If the device cannot be reached, refuses the connection, or does not answer within `timeout_ms`.
+- `ValueError` — If `address` is malformed.
+
+---
+
+<a id="bluetooth.classic.avrcp_listen" />
+```gust
+def avrcp_listen() -> AvrcpListener
+```
+
+Take the channel transport controls arrive on and start accepting devices
+that want to use them.
+
+Hold the result in a `with` block, which gives the channel back on every
+exit path.
+
+Nothing here publishes a service record, for the reason
+`bluetooth.classic.a2dp_sink` gives, and the channel has to be free of the
+system's own audio service in the same way.
+
+**Raises**
+
+- `IOError` — If the channel is already taken, or the adapter cannot serve one.
+
+---
+
+<a id="bluetooth.classic.hfp_connect" />
+```gust
+def hfp_connect(
+    address: string,
+    identity: string,
+    timeout_ms: integer,
+) -> HfpConnection
+```
+
+Open the control channel of the phone at `address` and agree how this
+device's battery will be reported over it.
+
+Everything the channel needs agreed is agreed here, so a connection comes
+back ready to report or ready to say it cannot — `reports_battery` is what
+asks which. A phone that is not yet paired pairs as the connection is made,
+so the first connection to one may take as long as that takes.
+
+Hold the result in a `with` block, which closes the channel on every exit
+path.
+
+**Parameters**
+
+- `address: string` — The phone's address, as "AA:BB:CC:DD:EE:FF".
+- `identity: string` — What this device calls itself to a phone whose battery reporting is its maker's rather than the profile's, as "vendor-product-version". The default identifies nothing in particular, which is what a device with no assigned vendor has to send.
+- `timeout_ms: integer` — Milliseconds to wait for the connection, and the bound on every exchange over it afterwards.
+
+**Raises**
+
+- `IOError` — If the phone cannot be reached, serves no hands-free channel, refuses the connection, or abandons the channel while it is being agreed.
+- `ValueError` — If `address` is malformed.
+
+---
+
+<a id="bluetooth.classic.rfcomm_channel" />
+```gust
+def rfcomm_channel(
+    address: string,
+    service: bluetooth.UUID,
+    timeout_ms: integer,
+) -> integer
+```
+
+The RFCOMM channel the device at `address` serves `service` on, or 0 if
+it serves that service on no channel.
+
+This asks the device for the record it publishes under `service` and reads
+the channel out of it, which needs the device to be in range but not paired
+or connected. A device that serves the same service more than once answers
+with the first channel found.
+
+**Parameters**
+
+- `address: string` — The device's address, as "AA:BB:CC:DD:EE:FF".
+- `service: bluetooth.UUID` — The service class to look for, e.g. `bluetooth.UUID(value: ServiceClass.SerialPort)`.
+- `timeout_ms: integer` — Milliseconds to wait for the device's answer.
+
+**Raises**
+
+- `IOError` — If the device cannot be reached, refuses the request, or does not answer within `timeout_ms`.
+- `ValueError` — If `address` or `service` is malformed.
+
+---
+
+<a id="bluetooth.classic.rfcomm_connect" />
+```gust
+def rfcomm_connect(
+    address: string,
+    channel: integer,
+    timeout_ms: integer,
+) -> RfcommConnection
+```
+
+Open a serial connection to channel `channel` of the device at
+`address`.
+
+Hold the result in a `with` block, which closes the connection on every exit
+path. A device that is not yet paired pairs as the connection is made, so
+the first connection to one may take as long as that takes.
+
+**Parameters**
+
+- `address: string` — The device's address, as "AA:BB:CC:DD:EE:FF".
+- `channel: integer` — The channel to reach, from 1 to 30 — `rfcomm_channel` is what asks the device which one to use.
+- `timeout_ms: integer` — Milliseconds to wait for the connection, and the bound on every send and receive over it afterwards.
+
+**Raises**
+
+- `IOError` — If the device cannot be reached, refuses the channel, or does not answer within `timeout_ms`.
+- `ValueError` — If `address` is malformed or `channel` is out of range.
+
+---
+
+<a id="bluetooth.classic.rfcomm_listen" />
+```gust
+def rfcomm_listen(channel: integer) -> RfcommListener
+```
+
+Take a channel on the local adapter and start accepting serial
+connections on it.
+
+Hold the result in a `with` block, which gives the channel back on every
+exit path.
+
+Nothing here publishes a service record. A device discovering what this
+program serves will not find the channel, so the other end has to be told
+which channel to open by some other means — registering a record is the
+system Bluetooth daemon's to do, and this package does not ask it to.
+
+**Parameters**
+
+- `channel: integer` — The channel to serve, from 1 to 30, or `ANY_CHANNEL` to be given the first free one — `RfcommListener.channel` then says which one that was.
+
+**Raises**
+
+- `IOError` — If the channel is already taken, or the adapter cannot serve one.
+- `ValueError` — If `channel` is neither `ANY_CHANNEL` nor 1 to 30.
+
+---
+
+<a id="bluetooth.classic.discover" />
+```gust
+def discover(timeout_ms: integer) -> list[ClassicDevice]
+```
+
+<Note>
+Only available where `has("bt-classic")`.
+</Note>
+
+Ask every classic device in range to answer, for `timeout_ms`, and return
+each one that did.
+
+Only devices currently willing to be found answer: a phone answers while its
+Bluetooth settings screen is open and often not otherwise.
+
+An inquiry runs in steps of 1.28 seconds and always finishes the step it is
+in, so it takes a little longer than asked, and anything under one step is
+rounded up to one. A device that answers without giving a name is then asked
+for one directly, which takes a moment more; one that does not answer that
+promptly is left unnamed rather than holding up the rest.
+
+**Parameters**
+
+- `timeout_ms: integer` — Milliseconds to keep asking for.
+
+**Raises**
+
+- `IOError` — If the radio cannot be brought up.

@@ -1,0 +1,202 @@
+---
+title: machine.pio
+description: "Programmable I/O (PIO) on the Raspberry Pi Pico (RP2040 / RP2350)"
+---
+
+```gust
+use machine.pio
+```
+
+Programmable I/O (PIO) on the Raspberry Pi Pico (RP2040 / RP2350).
+
+A PIO block runs small hand-written programs on independent state machines,
+driving pins or moving data with cycle-precise timing that the processor cannot
+match. A program is a list of 16-bit instruction words (as produced by the PIO
+assembler).
+
+`block(n)` names one of the two PIO blocks (0 and 1); loading a program into it
+yields a `Program` that remembers where it landed and how long it is, and
+running that program on one of the block's four state machines (0-3) yields a
+`StateMachine` that carries the FIFOs. Nothing downstream has to be told the
+block, the offset, or the length again.
+
+Example — run a program that echoes each word from the TX FIFO to the RX FIFO:
+```gust
+use machine.pio
+
+def main() -> none
+    instructions := [0x80a0, 0xa0c7, 0x8020]   # pull; mov isr, osr; push
+    program := pio.block(0).load(instructions)
+    echo := program.run_on(0)
+    echo.enable()
+    echo.put(12345)
+    print(echo.get())                          # 12345
+end
+```
+
+<Note>
+Only available where `has("pio")`.
+</Note>
+
+**On this page:** [`Block`](#Block) · [`Program`](#Program) · [`StateMachine`](#StateMachine) · [`block`](#machine.pio.block)
+
+## `Block`
+
+<a id="Block" />
+One of the chip's PIO blocks: an instruction memory plus four state
+machines.
+
+```gust
+def Block
+
+    index: integer
+
+end
+```
+
+**Fields**
+
+- `index: integer` — PIO block number, 0 or 1.
+
+**Methods**
+
+<a id="Block.load" />
+```gust
+def Block.load(instructions: list[integer]) -> Program
+```
+
+Load `instructions` into this block's instruction memory.
+
+A program that does not fit yields a `Program` whose `ok` is false rather
+than raising.
+
+**Parameters**
+
+- `instructions` — 16-bit instruction words.
+
+## `Program`
+
+<a id="Program" />
+A program resident in a PIO block's instruction memory.
+
+```gust
+def Program
+
+    block: integer
+    offset: integer
+    length: integer
+
+end
+```
+
+**Fields**
+
+- `block: integer` — PIO block the program lives in.
+- `offset: integer` — Instruction-memory offset it was loaded at, or -1 if it did not fit.
+- `length: integer` — Number of instructions in the program.
+
+**Methods**
+
+<a id="Program.ok" />
+```gust
+def Program.ok() -> bool
+```
+
+Whether the program fitted in the block's instruction memory.
+
+---
+
+<a id="Program.run_on" />
+```gust
+def Program.run_on(sm: integer) -> StateMachine
+```
+
+Initialize state machine `sm` to run this program, wrapping from the
+last instruction back to the first. The state machine comes back stopped —
+call `enable` to start it.
+
+**Parameters**
+
+- `sm` — State machine index, 0-3.
+
+## `StateMachine`
+
+<a id="StateMachine" />
+One of a PIO block's four state machines, loaded with a program.
+
+```gust
+def StateMachine
+
+    block: integer
+    index: integer
+
+end
+```
+
+**Fields**
+
+- `block: integer` — PIO block the state machine belongs to.
+- `index: integer` — State machine index 0-3, or -1 when the program it would have run did not load.
+
+**Methods**
+
+<a id="StateMachine.ok" />
+```gust
+def StateMachine.ok() -> bool
+```
+
+Whether the state machine was initialized with a loaded program.
+
+---
+
+<a id="StateMachine.enable" />
+```gust
+def StateMachine.enable() -> none
+```
+
+Start the state machine.
+
+---
+
+<a id="StateMachine.disable" />
+```gust
+def StateMachine.disable() -> none
+```
+
+Stop the state machine.
+
+---
+
+<a id="StateMachine.put" />
+```gust
+def StateMachine.put(value: integer) -> none
+```
+
+Push a 32-bit word into the TX FIFO, blocking while the FIFO is full.
+
+**Parameters**
+
+- `value` — The word to send (low 32 bits).
+
+---
+
+<a id="StateMachine.get" />
+```gust
+def StateMachine.get() -> integer
+```
+
+Pull a 32-bit word from the RX FIFO, blocking until one is available.
+Returns 0 without blocking when the state machine never started.
+
+## Functions
+
+<a id="machine.pio.block" />
+```gust
+def block(index: integer) -> Block
+```
+
+Name one of the chip's PIO blocks.
+
+**Parameters**
+
+- `index: integer` — PIO block, 0 or 1.

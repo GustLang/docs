@@ -1,0 +1,146 @@
+---
+title: "Pico: Join a WiFi network"
+description: Bring up the CYW43 radio, connect to your access point, and report the IP
+---
+
+The Pico 2 W's headline feature is its onboard CYW43 radio. This tutorial
+connects the board to your WiFi network, blinks the onboard LED while it
+associates, and prints the IP address the router hands it — the foundation for
+anything that talks to the network.
+
+## What you need
+
+- A Raspberry Pi Pico 2 W and a USB cable.
+- The **SSID** and **password** of a 2.4 GHz WiFi network (the CYW43 is
+  2.4 GHz only).
+
+## The program
+
+Create a project:
+
+```bash
+$ gust init joinwifi
+$ cd joinwifi
+```
+
+Replace `src/main.g` with your network's credentials:
+
+```gust title="src/main.g"
+use board
+use pin
+use time
+use wifi
+
+def main() -> none
+    wifi.init()
+    led := pin.output(board.LED_CHIP, board.LED)
+
+    # Lit while we try to associate.
+    led.write(true)
+    ok := wifi.connect("YOUR_SSID", "YOUR_PASSWORD", 20000)
+    led.write(false)
+
+    if not ok
+        print("connect failed")
+        return
+    end
+
+    print(f"connected — ip {wifi.ip()}  rssi {wifi.rssi()} dBm")
+
+    # Solid LED to signal success, then idle.
+    led.write(true)
+    while true
+        time.sleep(1000)
+    end
+end
+```
+
+What each call does:
+
+- `wifi.init()` powers up the radio, which `connect` would otherwise do itself.
+- `pin.output(board.LED_CHIP, board.LED)` claims the onboard LED. On this
+  board it is a line on the CYW43 rather than a GPIO, which is exactly why the
+  program names it through [`board`](/tutorials/pico-blink#the-board-package)
+  instead of writing a number.
+- `wifi.connect(ssid, password, timeout_ms)` associates using WPA2 and waits up
+  to `timeout_ms` for a DHCP lease, returning `true` on success.
+- `wifi.ip()` returns the assigned IPv4 address as a string; `wifi.rssi()`
+  returns the signal strength in dBm.
+
+## Build and flash
+
+Plug the board in and, from the project folder:
+
+```bash
+$ gust build --target pico2_w --flash
+```
+
+Naming the board rather than the chip is what gives the program the Pico 2 W's
+pin map, and with it the LED that lives on the radio.
+
+Watch the serial console for the result:
+
+```bash
+$ sudo cat /dev/ttyACM0
+connected — ip 192.168.1.47  rssi -52 dBm
+```
+
+The onboard LED goes solid once the board has an address.
+
+## Handle failure and other auth modes
+
+`connect` assumes WPA2-mixed, the common case. For an open or WPA3 network, pass
+an explicit auth mode with `connect_with`:
+
+```gust
+ok := wifi.connect_with("Cafe-Guest", "", wifi.AUTH_OPEN, 20000)
+```
+
+The `AUTH_*` constants cover open, WPA/WPA2/WPA3, and mixed modes — see the
+[`wifi` reference](/stdlib/wifi). When a connection fails, `wifi.link_status()`
+tells you *why*: a negative value is `LINK_FAIL`, `LINK_NONET` (SSID not found),
+or `LINK_BADAUTH` (wrong password).
+
+```gust
+if not ok
+    status := wifi.link_status()
+    if status == wifi.LINK_BADAUTH
+        print("wrong password")
+    else if status == wifi.LINK_NONET
+        print("network not found")
+    else
+        print(f"connect failed (status {status})")
+    end
+end
+```
+
+## Scan for networks
+
+Before connecting, you can list what's in range. `scan` blocks, returns a
+list of the networks it found:
+
+```gust title="src/main.g"
+use wifi
+
+def main() -> none
+    wifi.init()
+
+    found := wifi.scan()
+    print(f"{found.length} networks:")
+    for network in found
+        print(f"  {network}")
+    end
+end
+```
+
+Each entry is a `Network` carrying `ssid`, `rssi`, `channel`, and `auth`, with
+`is_open()` and `is_hidden()` for the two questions worth asking about it.
+
+## Where to next?
+
+- [`wifi` reference](/stdlib/wifi) — station mode, access-point mode, power
+  saving, and the full scan API.
+- [`socket` reference](/stdlib/socket) — open a TCP connection now that you're
+  online.
+- [Read the temperature](/tutorials/pico-temperature) — pair the two to build a
+  networked sensor.

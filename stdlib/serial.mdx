@@ -1,0 +1,348 @@
+---
+title: serial
+description: "Serial-port (UART / USB-CDC) communication over the host's tty devices — opening a port such as `/dev/ttyACM0` at a chosen baud rate and line format, then reading and writing bytes with a per-read timeout so a call never blocks the program forever"
+---
+
+```gust
+use serial
+```
+
+Serial-port (UART / USB-CDC) communication over the host's tty devices —
+opening a port such as `/dev/ttyACM0` at a chosen baud rate and line format,
+then reading and writing bytes with a per-read timeout so a call never blocks
+the program forever.
+
+`open` configures the port for raw, unbuffered transfer (no echo, no line
+editing, no CR/LF translation) and returns a `Port`. Reads take a timeout and
+report the three outcomes a stream can have — bytes arrived, the deadline
+elapsed, or the port closed — through `ReadResult`/`LineResult`. Writes send
+every byte. `list_ports` enumerates the tty devices most likely to be a serial
+adapter.
+
+This package drives the operating system's serial devices directly, so it is
+native-only (Linux and macOS).
+
+A `with` block is the safest way to hold a port: it closes the underlying
+device on every exit path, so a forgotten `close` cannot leak the descriptor.
+
+The usual shape is a long-lived port with a read loop. A blocking read (the
+default `timeout_ms` of -1) sleeps until a line arrives; a positive timeout
+keeps the loop responsive so it can do other work or stop when the device goes
+quiet.
+
+Example — stream lines from a device until it stays idle:
+```gust
+use serial
+
+def main() -> none
+    with serial.open("/dev/ttyACM0", baud: 115200) as port
+        while true
+            line := port.read_line(timeout_ms: 1000)
+            if line.eof
+                break
+            end
+            if line.timed_out
+                continue
+            end
+            print(line.line)
+        end
+    end
+end
+```
+
+<Note>
+Only available on Linux and macOS.
+</Note>
+
+**On this page:** [`Parity`](#Parity) · [`FlowControl`](#FlowControl) · [`ReadResult`](#ReadResult) · [`LineResult`](#LineResult) · [`Port`](#Port) · [`open`](#serial.open) · [`list_ports`](#serial.list_ports)
+
+## `Parity`
+
+<a id="Parity" />
+```gust
+enum Parity: integer
+```
+
+Parity-bit scheme for a `Port`, selected in `open`.
+
+**Variants**
+
+- `off = 0` — No parity bit (the common "8N1" default).
+- `even = 1` — Parity bit set so the total number of 1-bits is even.
+- `odd = 2` — Parity bit set so the total number of 1-bits is odd.
+
+## `FlowControl`
+
+<a id="FlowControl" />
+```gust
+enum FlowControl: integer
+```
+
+Flow-control scheme for a `Port`, selected in `open`.
+
+**Variants**
+
+- `off = 0` — No flow control.
+- `hardware = 1` — RTS/CTS hardware handshaking.
+- `software = 2` — XON/XOFF in-band software handshaking.
+
+## `ReadResult`
+
+<a id="ReadResult" />
+The outcome of a single `Port.read`.
+
+Exactly one of three states holds: bytes arrived (`data` non-empty, both
+flags false), the read deadline elapsed with nothing available
+(`timed_out` true), or the port closed (`eof` true).
+
+```gust
+def ReadResult
+
+    data: bytes
+    eof: bool
+    timed_out: bool
+
+end
+```
+
+**Fields**
+
+- `data: bytes` — Bytes read from the port; empty on timeout or EOF.
+- `eof: bool` — True once the port has closed and no more data will arrive.
+- `timed_out: bool` — True when the timeout elapsed before any data appeared.
+
+## `LineResult`
+
+<a id="LineResult" />
+The outcome of a single `Port.read_line`, with the same three states as
+`ReadResult` but carrying decoded text.
+
+```gust
+def LineResult
+
+    line: string
+    eof: bool
+    timed_out: bool
+
+end
+```
+
+**Fields**
+
+- `line: string` — The line read, without its trailing newline (a trailing carriage return is stripped too); empty on timeout or EOF.
+- `eof: bool` — True once the port has closed and no complete line remains.
+- `timed_out: bool` — True when the timeout elapsed before a full line arrived.
+
+## `Port`
+
+<a id="Port" />
+An open serial port. Construct one with `open`, then interleave reads and
+writes freely; each read takes a timeout so it never blocks indefinitely.
+Release the port with `close` when done — an abandoned handle keeps the
+device open. Using a handle after `close` is undefined.
+
+```gust
+def Port
+
+    _fd: integer
+    _open: bool
+    _buf: string
+
+end
+```
+
+**Fields**
+
+- `_fd: integer` — The underlying tty file descriptor.
+- `_open: bool` — False once `close` has run locally.
+- `_buf: string` — Bytes read past the last newline by `read_line`, held until the next line completes.
+
+**Methods**
+
+<a id="Port.write" />
+```gust
+def Port.write(data: string | bytes) -> integer
+```
+
+Write `data` to the port in full, returning the number of bytes written.
+Blocks until the operating system has accepted every byte. A `string` is
+sent as its raw bytes; pass `bytes` for binary data that may contain NULs.
+
+**Parameters**
+
+- `data` — The text or raw bytes to send.
+
+**Raises**
+
+- `IOError` — If the write fails (e.g. the device was unplugged).
+
+---
+
+<a id="Port.read" />
+```gust
+def Port.read(max_bytes: integer, timeout_ms: integer) -> ReadResult
+```
+
+Read whatever bytes are available now, up to `max_bytes`, waiting at most
+`timeout_ms` milliseconds for the first byte to appear.
+
+**Parameters**
+
+- `max_bytes` — Maximum number of bytes to return in one read.
+- `timeout_ms` — Milliseconds to wait; negative blocks until data or EOF, zero polls and returns immediately.
+
+**Raises**
+
+- `IOError` — On a port error while waiting.
+
+---
+
+<a id="Port.read_line" />
+```gust
+def Port.read_line(timeout_ms: integer) -> LineResult
+```
+
+Read the next newline-delimited line, with the trailing newline (and any
+carriage return before it) stripped. Bytes are buffered across calls, so a
+partial line is never lost. When the port closes, any final unterminated
+line is returned once, then subsequent calls report EOF.
+
+**Parameters**
+
+- `timeout_ms` — Milliseconds to wait for a complete line; negative blocks, zero polls and returns immediately.
+
+**Raises**
+
+- `IOError` — On a port error while waiting.
+
+---
+
+<a id="Port.bytes_available" />
+```gust
+def Port.bytes_available() -> integer
+```
+
+Number of bytes waiting in the input buffer, readable without blocking.
+
+**Raises**
+
+- `IOError` — If the port cannot be queried.
+
+---
+
+<a id="Port.flush" />
+```gust
+def Port.flush() -> none
+```
+
+Discard all buffered data not yet read or transmitted, clearing both the
+input and output queues.
+
+---
+
+<a id="Port.drain" />
+```gust
+def Port.drain() -> none
+```
+
+Block until every byte written so far has been transmitted.
+
+---
+
+<a id="Port.set_dtr" />
+```gust
+def Port.set_dtr(level: bool) -> none
+```
+
+Drive the DTR modem control line high (`true`) or low (`false`). Toggling
+DTR resets many microcontroller boards.
+
+**Parameters**
+
+- `level` — True to assert DTR, false to clear it.
+
+---
+
+<a id="Port.set_rts" />
+```gust
+def Port.set_rts(level: bool) -> none
+```
+
+Drive the RTS modem control line high (`true`) or low (`false`).
+
+**Parameters**
+
+- `level` — True to assert RTS, false to clear it.
+
+---
+
+<a id="Port.is_open" />
+```gust
+def Port.is_open() -> bool
+```
+
+True while the port has not been closed locally.
+
+---
+
+<a id="Port.fd" />
+```gust
+def Port.fd() -> integer
+```
+
+The raw file descriptor, for callers that need to poll it directly.
+
+---
+
+<a id="Port.close" />
+```gust
+def Port.close() -> none
+```
+
+Close the port. Idempotent — closing an already-closed port is a no-op.
+
+## Functions
+
+<a id="serial.open" />
+```gust
+def open(
+    path: string,
+    baud: integer,
+    data_bits: integer,
+    parity: Parity,
+    stop_bits: integer,
+    flow: FlowControl,
+) -> Port
+```
+
+Open the serial device at `path` and configure it for raw transfer.
+
+The defaults are the near-universal "8N1" format at 115200 baud with no
+flow control, which is what a USB-CDC device such as a Raspberry Pi Pico
+presents.
+
+**Parameters**
+
+- `path: string` — The tty device path, e.g. "/dev/ttyACM0".
+- `baud: integer` — Bit rate. Standard rates (9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, …) are supported.
+- `data_bits: integer` — Bits per character, 5 through 8.
+- `parity: Parity` — Parity scheme.
+- `stop_bits: integer` — Stop bits, 1 or 2.
+- `flow: FlowControl` — Flow-control scheme.
+
+**Raises**
+
+- `IOError` — If the device cannot be opened or configured.
+
+---
+
+<a id="serial.list_ports" />
+```gust
+def list_ports() -> list[string]
+```
+
+List the tty devices most likely to be a serial adapter — USB-CDC and
+USB-serial devices first, then on-board UARTs — as device paths.
+
+The result is a best-effort scan of the conventional device names; a path
+appearing here means the device node exists, not that anything is attached.

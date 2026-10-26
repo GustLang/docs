@@ -1,0 +1,228 @@
+---
+title: machine.pwm
+description: "Pulse-width-modulation output on the Raspberry Pi Pico (RP2040 / RP2350)"
+---
+
+```gust
+use machine.pwm
+```
+
+Pulse-width-modulation output on the Raspberry Pi Pico (RP2040 / RP2350).
+
+Each PWM output drives a GPIO from a free-running counter. The counter resets
+to zero after it reaches the wrap value, and the pin is high while the counter
+is below the channel's level — so `level / (wrap + 1)` is the duty cycle. The
+counting rate is the system clock divided by `set_clock_divider`.
+
+Open a GPIO, set its wrap and clock divider to pick a frequency, set a level to
+pick a duty cycle, then enable it. `set_duty_cycle` handles the level for a
+fractional duty; `set_frequency` picks a wrap for a target frequency and
+returns it.
+
+A driver that has to modulate something — a servo, a backlight, a motor — takes
+a `Channel` rather than a GPIO number, so the same driver runs against a
+hardware PWM slice on one board and against whatever else implements the
+interface on the next.
+
+Example — drive a servo (50 Hz, ~1.5 ms pulse) on GP15:
+```gust
+use machine.pwm
+
+def main() -> none
+    servo := pwm.output(15)
+    wrap := servo.set_frequency(50.0)
+    servo.set_duty_cycle(wrap, 0.075)   # 1.5 ms of a 20 ms period
+    servo.enable()
+end
+```
+
+<Note>
+Only available where `has("pwm")`.
+</Note>
+
+**On this page:** [`Output`](#Output) · [`Channel`](#Channel) · [`output`](#machine.pwm.output)
+
+## Constants
+
+| Name | Type | Value |
+|------|------|-------|
+| `SYS_CLOCK_HZ` | `integer` | `150000000` |
+| `MAX_WRAP` | `integer` | `65535` |
+
+## `Output`
+
+<a id="Output" />
+A GPIO routed to a hardware PWM slice.
+
+**Implements:** [`Channel`](#Channel)
+
+```gust
+def Output implements Channel
+
+    gpio: integer
+
+end
+```
+
+**Fields**
+
+- `gpio: integer` — The GPIO number being driven, or -1 if it could not be routed.
+
+**Methods**
+
+<a id="Output.ok" />
+```gust
+def Output.ok() -> bool
+```
+
+Whether the GPIO was routed to a slice successfully.
+
+---
+
+<a id="Output.set_wrap" />
+```gust
+def Output.set_wrap(wrap: integer) -> none
+```
+
+Set the counter top for this output's slice. The counter runs 0..`wrap`
+inclusive, so the period is `wrap + 1` counts.
+
+**Parameters**
+
+- `wrap` — Counter top, 0-65535.
+
+---
+
+<a id="Output.set_clock_divider" />
+```gust
+def Output.set_clock_divider(divider: float) -> none
+```
+
+Divide the system clock feeding this output's slice. A larger divider
+counts more slowly, allowing lower frequencies. Range 1.0-255.9375.
+
+**Parameters**
+
+- `divider` — Clock divider.
+
+---
+
+<a id="Output.set_level" />
+```gust
+def Output.set_level(level: integer) -> none
+```
+
+Set the compare level. The pin is high while the counter is below
+`level`, so the duty cycle is `level / (wrap + 1)`.
+
+**Parameters**
+
+- `level` — Compare level, 0..wrap+1.
+
+---
+
+<a id="Output.set_frequency" />
+```gust
+def Output.set_frequency(hz: float) -> integer
+```
+
+Configure this output's slice for output frequency `hz` and return the
+wrap value chosen. Picks the smallest clock divider that keeps the wrap
+within the 16-bit counter, giving the finest duty-cycle resolution the
+frequency allows.
+
+**Parameters**
+
+- `hz` — Target frequency in hertz.
+
+---
+
+<a id="Output.set_duty_cycle" />
+```gust
+def Output.set_duty_cycle(wrap: integer, fraction: float) -> none
+```
+
+Set the duty cycle to `fraction` (0.0-1.0) of the period defined by
+`wrap`.
+
+**Parameters**
+
+- `wrap` — The wrap value in effect (from `set_frequency` or `set_wrap`).
+- `fraction` — Duty cycle, 0.0 (always low) to 1.0 (always high).
+
+---
+
+<a id="Output.enable" />
+```gust
+def Output.enable() -> none
+```
+
+Start this output's PWM slice running.
+
+---
+
+<a id="Output.disable" />
+```gust
+def Output.disable() -> none
+```
+
+Stop this output's PWM slice, leaving the pin low.
+
+## `Channel`
+
+<a id="Channel" />
+Something that can emit a modulated square wave.
+
+A driver names this as the type of the output it modulates — a servo
+signal, a backlight, a motor drive — instead of naming a GPIO number.
+`Output` is the implementation backed by a hardware PWM slice.
+
+`set_duty_cycle` takes the wrap in force rather than remembering it,
+so a channel holds no state a caller has to keep in step.
+
+**Implemented by:** [`Output`](#Output)
+
+**Methods**
+
+<a id="Channel.set_frequency" />
+```gust
+def Channel.set_frequency(hz: float) -> integer
+```
+
+---
+
+<a id="Channel.set_duty_cycle" />
+```gust
+def Channel.set_duty_cycle(wrap: integer, fraction: float) -> none
+```
+
+---
+
+<a id="Channel.enable" />
+```gust
+def Channel.enable() -> none
+```
+
+---
+
+<a id="Channel.disable" />
+```gust
+def Channel.disable() -> none
+```
+
+## Functions
+
+<a id="machine.pwm.output" />
+```gust
+def output(gpio: integer) -> Output
+```
+
+Route `gpio` to its PWM slice and return it as an output.
+
+Check `ok` before driving it: a GPIO that has no slice is returned closed
+rather than raising, so a program can fall back. Call `enable` after
+configuring wrap, divider, and level.
+
+**Parameters**
+
+- `gpio: integer` — GPIO number to drive.

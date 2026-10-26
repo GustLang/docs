@@ -1,0 +1,145 @@
+---
+title: drivers.sht41
+description: "Sensirion SHT4x temperature and relative-humidity sensor"
+---
+
+```gust
+use drivers.sht41
+```
+
+Sensirion SHT4x temperature and relative-humidity sensor.
+
+The sensor answers on a fixed 7-bit I2C address. One command starts a
+high-precision conversion; six bytes come back a few milliseconds later, two
+16-bit readings each followed by a CRC over its own pair. `Sht41.read` runs
+that exchange and returns a decoded `Reading`.
+
+The driver holds an `i2c.Bus`, not a controller index, so it is written once
+and runs against whatever provides the bus — a Linux `/dev/i2c-*` node, a
+Pico's `hardware_i2c` block, a bus multiplexer, or a stand-in a test supplies.
+Nothing in here names a chip or a pin.
+
+`decode` and `crc8` are pure, so the wire format is checked on a host with no
+sensor attached.
+
+**Examples**
+
+```gust
+use i2c
+
+use drivers.sht41
+
+def main() -> none
+    bus := i2c.controller(1)
+    if not bus.ok()
+        return
+    end
+    sensor := sht41.on(bus)
+    r := sensor.read()
+    if r.ok
+        print(f"{r.temperature_c} C, {r.humidity_percent} %")
+    end
+    bus.close()
+end
+```
+
+<Note>
+Only available where `os == "linux" or has("i2c")`.
+</Note>
+
+**On this page:** [`Reading`](#Reading) · [`Sht41`](#Sht41) · [`on`](#drivers.sht41.on) · [`crc8`](#drivers.sht41.crc8) · [`decode`](#drivers.sht41.decode)
+
+## `Reading`
+
+<a id="Reading" />
+One temperature and humidity measurement.
+
+```gust
+def Reading
+
+    temperature_c: float
+    humidity_percent: float
+    ok: bool
+
+end
+```
+
+**Fields**
+
+- `temperature_c: float` — Temperature in degrees Celsius.
+- `humidity_percent: float` — Relative humidity, 0-100 %.
+- `ok: bool` — False when the measurement did not arrive intact — a short read or a CRC that does not match the word it covers.
+
+## `Sht41`
+
+<a id="Sht41" />
+An SHT4x sensor on an I2C bus.
+
+```gust
+def Sht41
+
+    bus: i2c.Bus
+
+end
+```
+
+**Fields**
+
+- `bus: i2c.Bus` — The bus the sensor is reached over.
+
+**Methods**
+
+<a id="Sht41.read" />
+```gust
+def Sht41.read() -> Reading
+```
+
+Run one high-precision measurement: send the command, wait out the
+conversion, read the result back and decode it.
+
+A `Reading` whose `ok` is false means the command was not acknowledged,
+nothing came back, or a CRC failed.
+
+## Functions
+
+<a id="drivers.sht41.on" />
+```gust
+def on(bus: i2c.Bus) -> Sht41
+```
+
+The sensor as reached over `bus`.
+
+**Parameters**
+
+- `bus: i2c.Bus` — The I2C bus the sensor is wired to.
+
+---
+
+<a id="drivers.sht41.crc8" />
+```gust
+def crc8(high: integer, low: integer) -> integer
+```
+
+The Sensirion CRC-8 the sensor appends to each 16-bit word.
+
+**Parameters**
+
+- `high: integer` — The word's high byte.
+- `low: integer` — The word's low byte.
+
+---
+
+<a id="drivers.sht41.decode" />
+```gust
+def decode(data: list[integer]) -> Reading
+```
+
+Decode one six-byte measurement.
+
+`ok` is false when `data` is the wrong length or either CRC disagrees with
+the word it covers; the readings are still returned so a caller can log
+what arrived.
+
+**Parameters**
+
+- `data: list[integer]` — The bytes read from the sensor, in wire order: temperature high, temperature low, temperature CRC, humidity high, humidity low, humidity CRC.

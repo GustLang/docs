@@ -1,0 +1,198 @@
+---
+title: "Pico: Blink an LED"
+description: Drive a GPIO pin to flash an LED — the embedded hello, world
+---
+
+The shortest interesting thing a microcontroller can do: turn a light on and
+off. This tutorial wires one LED to a GPIO pin and flashes it from a Gust
+program running bare-metal on the Pico 2 W.
+
+## What you need
+
+- A Raspberry Pi Pico 2 W and a USB cable.
+- One LED and a current-limiting resistor (about 330 Ω).
+- A breadboard and two jumper wires.
+
+## Wire it up
+
+Connect the LED through the resistor to **GP15** and back to any ground pin:
+
+```
+GP15 ──[ 330 Ω ]──▶|── GND
+                    LED
+```
+
+The resistor can sit on either leg. The LED's long leg (anode) faces GP15; the
+short leg (cathode) faces ground. Get the polarity backwards and it simply
+won't light — no harm done.
+
+## The program
+
+Create a project:
+
+```bash
+$ gust init blink
+$ cd blink
+```
+
+Replace `src/main.g` with:
+
+```gust title="src/main.g"
+use pin
+use time
+
+def main() -> none
+    led := pin.output(0, 15)
+
+    while true
+        led.write(true)
+        time.sleep(500)
+        led.write(false)
+        time.sleep(500)
+    end
+end
+```
+
+That is the whole program. Walking through it:
+
+- `pin.output(0, 15)` requests **GP15** as an output and returns the object the
+  rest of the calls go through. The first argument is the GPIO *controller*: `0`
+  is the chip's own bank, which is where every GP pin lives, and the second
+  argument is the pin number within it.
+- `led.write(true)` drives the pin high (3.3 V), lighting the LED; `false`
+  drives it low.
+- `time.sleep(500)` blocks for 500 milliseconds.
+- The `while true` loop never returns — an embedded program is expected to run
+  forever, not fall off the end of `main`.
+
+## Build and flash
+
+Plug the board in and, from the project folder:
+
+```bash
+$ gust build --target rp2350 --flash
+```
+
+The LED starts blinking once per second the moment the flash completes.
+
+## Change the rhythm
+
+Everything is ordinary Gust, so the loop is yours to shape. A short pulse with
+a long gap:
+
+```gust
+while true
+    led.write(true)
+    time.sleep(50)
+    led.write(false)
+    time.sleep(950)
+end
+```
+
+Or drive the pin from a list of on/off durations — a reusable blink pattern:
+
+```gust title="src/main.g"
+use pin
+use time
+
+def play(led: pin.DigitalOut, pattern: list[integer]) -> none
+    on := true
+    for ms in pattern
+        led.write(on)
+        time.sleep(ms)
+        on = not on
+    end
+end
+
+def main() -> none
+    led := pin.output(0, 15)
+
+    # on 100, off 100, on 100, off 700 — a double-blink heartbeat
+    while true
+        play(led, [100, 100, 100, 700])
+    end
+end
+```
+
+`play` walks the list, alternating the pin between high and low, so any rhythm
+is just a different list of millisecond durations. It takes a `pin.DigitalOut`,
+the interface `pin.Output` implements, rather than a chip and a line number, so
+it drives whatever line it is handed.
+
+## The onboard LED
+
+Every Pico has an LED soldered to it, so you can blink one with no breadboard at
+all. Which line drives it is a property of the board, not of your program, and
+`use board` is how you say that:
+
+```gust title="src/main.g"
+use board
+use pin
+use time
+
+def main() -> none
+    led := pin.output(board.LED_CHIP, board.LED)
+
+    while true
+        led.write(true)
+        time.sleep(500)
+        led.write(false)
+        time.sleep(500)
+    end
+end
+```
+
+No external components, and no setup beyond the `pin.output` call: on a board
+whose LED hangs off the radio chip, requesting the line powers that chip up.
+
+Flash it by naming the board rather than the chip:
+
+```bash
+$ gust build --target pico2_w --flash
+```
+
+`--target rp2350` builds for a plain `pico2`, whose LED is on GPIO 25 — right
+for that board, dark on a Pico 2 W. The pin map comes from whichever target you
+name.
+
+## The `board` package
+
+`board` is not a package shipped with the standard library — it is built for the
+target you are compiling for, out of the pin map in that board's
+[target descriptor](/tooling/targets). Every pin the descriptor documents gives
+you two constants:
+
+| Constant | What it is |
+| --- | --- |
+| `board.LED` | The line number. |
+| `board.LED_CHIP` | The GPIO controller that line sits on. |
+
+Pass both, as the program above does, and you address the pin wherever the board
+put it. On a **Pico** and a **Pico 2** the LED is GPIO 25 on the chip's own bank,
+so `LED_CHIP` is `0`. On a **Pico W** and a **Pico 2 W** the board routes no GPIO
+to it at all — it hangs off the CYW43 wireless chip, which is controller `1`.
+Those are four different pieces of hardware and one unchanged program.
+
+The same holds for the rest of the pinout: `board.I2C0_SDA`, `board.UART0_TX`,
+`board.SPI0_SCK`. To see what a board offers before you write against it:
+
+```bash
+$ gust targets show pico2_w
+```
+
+Two things follow from the package being generated rather than written:
+
+- **A pin the board does not document does not exist.** Naming `board.BUTTON` on
+  a board whose descriptor has no `BUTTON` fails to compile: `package 'board'
+  has no 'BUTTON'`. A wrong pin is caught where you wrote it, not a light that
+  never comes on.
+- **It is a device-only package.** A desktop build routes no pins, so `use board`
+  there reports that `board` is not available for this target.
+
+## Where to next?
+
+- [Read the temperature sensor](/tutorials/pico-temperature) — get data *out*
+  of the board.
+- [`pin` reference](/stdlib/pin) — inputs, pull-ups, and reading buttons.
+- [Targets](/tooling/targets) — the descriptor `board` is generated from, and
+  how to add one for a board that has none.

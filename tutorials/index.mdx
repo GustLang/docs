@@ -1,0 +1,58 @@
+---
+title: Tutorials
+description: End-to-end, hands-on projects that build something real with Gust
+---
+
+Where the [language reference](/lang/overview) explains one feature at a time,
+tutorials walk a complete project from an empty folder to working hardware.
+Each one is self-contained: copy the code, run the commands, and you have a
+thing that does something.
+
+## Raspberry Pi Pico
+
+Gust compiles to native code for the **Raspberry Pi Pico 2 W** (RP2350) with no
+operating system underneath — the same language and standard library you use on
+the desktop, cross-compiled to a `.uf2` you flash over USB. These three start
+from nothing and end with a board doing work.
+
+<Columns cols={3}>
+  <Card title="Blink an LED" icon="lightbulb" href="/tutorials/pico-blink">
+    Wire an LED, drive a GPIO pin, and make it flash. The embedded "hello,
+    world".
+  </Card>
+  <Card title="Read the temperature" icon="thermometer" href="/tutorials/pico-temperature">
+    Read the RP2350's on-die temperature sensor through the ADC and stream
+    readings to your terminal over USB.
+  </Card>
+  <Card title="Join a WiFi network" icon="wifi" href="/tutorials/pico-wifi">
+    Bring up the CYW43 radio, connect to your access point, and report the IP
+    address the board was handed.
+  </Card>
+</Columns>
+
+## Before you start
+
+Every Pico tutorial assumes you have:
+
+- A **Raspberry Pi Pico 2 W** and a USB cable.
+- Gust installed, with the Pico toolchain available. See
+  [installation](/start/install).
+- Comfort with the basics — if `gust run hello.g` is new to you, read
+  [Hello, Gust](/start/hello-world) first.
+
+You flash a program with a single command from its project folder:
+
+```bash
+$ gust build --target rp2350 --flash
+```
+
+That cross-compiles for the RP2350, produces a `.uf2`, resets the board, and
+uploads. The board does not need to be in BOOTSEL mode — a running Gust
+firmware is reset automatically over USB. To build without flashing, drop
+`--flash`; to flash a `.uf2` you already built, run `gust flash`.
+
+Several tutorials print to the USB serial console. Read it with:
+
+```bash
+$ sudo cat /dev/ttyACM0
+```

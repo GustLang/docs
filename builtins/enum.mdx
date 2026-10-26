@@ -1,0 +1,54 @@
+---
+title: enum
+description: "A type declared with `enum Name`"
+---
+
+A type declared with `enum Name`. In its simplest form it is a closed set
+of named members (`case red`); a member may instead carry payload fields,
+making the enum a sum type whose values are inspected with `match` / `case`.
+A backed enum (`enum Name: integer`) assigns each member an underlying
+primitive value.
+
+An enum answers to the reflection properties below, which the compiler
+resolves to literals at compile time. Its members are reported by
+`dir(Name)` and are the names a `case` pattern matches.
+
+## Dunders
+
+<a id="enum.__NAME__" />
+```gust
+def enum.__NAME__() -> string
+```
+
+The enum's own name, e.g. `"Color"`. Read as a property without parentheses
+(`Color.__NAME__`), off either the type or a value of it.
+
+---
+
+<a id="enum.__DOC__" />
+```gust
+def enum.__DOC__() -> string
+```
+
+The enum's docstring, or `""` when it has none. Read as a property without
+parentheses (`Color.__DOC__`).
+
+---
+
+<a id="enum.__FILE__" />
+```gust
+def enum.__FILE__() -> string
+```
+
+Path to the source file the enum is declared in. Read as a property without
+parentheses (`Color.__FILE__`).
+
+---
+
+<a id="enum.__LINE__" />
+```gust
+def enum.__LINE__() -> integer
+```
+
+1-based line of `__FILE__` the enum declaration begins on. Read as a property
+without parentheses (`Color.__LINE__`).

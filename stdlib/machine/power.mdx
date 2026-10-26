@@ -1,0 +1,54 @@
+---
+title: machine.power
+description: "Core voltage regulator control on the Raspberry Pi Pico (RP2040 / RP2350)"
+---
+
+```gust
+use machine.power
+```
+
+Core voltage regulator control on the Raspberry Pi Pico (RP2040 / RP2350).
+
+Read or set the on-chip regulator that powers the processor core. Setting is
+constrained to the manufacturer's safe range (0.85-1.30 V); values outside it
+are clamped. Raising the core voltage is normally only needed to support
+overclocking the system clock, and a wrong voltage can destabilize the chip.
+
+**Examples**
+
+```gust
+use machine.power
+
+def main() -> none
+    print(power.voltage_mv())        # e.g. 1100
+end
+```
+
+<Note>
+Only available where `has("power")`.
+</Note>
+
+**On this page:** [`voltage_mv`](#machine.power.voltage_mv) · [`set_voltage_mv`](#machine.power.set_voltage_mv)
+
+## Functions
+
+<a id="machine.power.voltage_mv" />
+```gust
+def foreign voltage_mv() -> integer
+```
+
+The current core voltage in millivolts.
+
+---
+
+<a id="machine.power.set_voltage_mv" />
+```gust
+def foreign set_voltage_mv(mv: integer) -> integer
+```
+
+Set the core voltage to the supported step nearest `mv`, clamped to the
+safe range 850-1300 mV. Returns the millivolts actually applied.
+
+**Parameters**
+
+- `mv: integer` — Desired core voltage in millivolts.

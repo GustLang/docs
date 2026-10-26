@@ -1,0 +1,48 @@
+---
+title: machine.interp
+description: "Hardware interpolators on the Raspberry Pi Pico (RP2040 / RP2350)"
+---
+
+```gust
+use machine.interp
+```
+
+Hardware interpolators on the Raspberry Pi Pico (RP2040 / RP2350).
+
+The interpolators are small fixed-function units that perform common integer
+operations in a single cycle. `clamp` constrains a value to a range using the
+clamping interpolator, without a branch.
+
+**Examples**
+
+```gust
+use machine.interp
+
+def main() -> none
+    print(interp.clamp(150, 0, 100))   # 100
+    print(interp.clamp(-5, 0, 100))    # 0
+end
+```
+
+<Note>
+Only available where `has("interp")`.
+</Note>
+
+**On this page:** [`clamp`](#machine.interp.clamp)
+
+## Functions
+
+<a id="machine.interp.clamp" />
+```gust
+def foreign clamp(value: integer, lo: integer, hi: integer) -> integer
+```
+
+Constrain `value` to the inclusive range `[lo, hi]` using the clamping
+interpolator. Returns `lo` if below the range, `hi` if above, otherwise
+`value` unchanged.
+
+**Parameters**
+
+- `value: integer` — The value to clamp.
+- `lo: integer` — Lower bound.
+- `hi: integer` — Upper bound.

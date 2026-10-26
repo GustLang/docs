@@ -1,0 +1,757 @@
+---
+title: usb
+description: "Talking to attached USB devices — enumerating what is plugged in, reading a device's descriptor tree, and driving its endpoints with control, bulk and interrupt transfers"
+---
+
+```gust
+use usb
+```
+
+Talking to attached USB devices — enumerating what is plugged in, reading a
+device's descriptor tree, and driving its endpoints with control, bulk and
+interrupt transfers. One handle-based API over a backend per platform:
+
+- Linux: the kernel's USB device filesystem, `/dev/bus/usb`.
+- Raspberry Pi Pico (freestanding / Pico SDK): the TinyUSB host stack.
+- ESP32-S2 / S3 / P4 (ESP-IDF): the USB Host Library on the OTG peripheral.
+
+`devices` lists everything currently attached; each `DeviceInfo` carries the
+identifiers you match on plus the manufacturer, product and serial strings the
+device reports. `open` turns one of those entries into a `Device`, the handle
+every transfer goes through.
+
+Talking to a device follows a fixed order: read `configurations` to find the
+interface and endpoints you want, `claim_interface` that interface, then
+transfer.
+
+Every target here acts as a USB *host*, driving devices that are plugged into
+it. A microcontroller acting as a USB *device* — presenting itself to a host as
+a serial port, a keyboard or a drive — is a different role this package does not
+cover. Targets with no USB host controller have no `usb` package: an import
+there resolves to nothing and every reference is a compile error. That excludes
+the classic ESP32 and the C-series chips, which have no host-capable USB
+peripheral.
+
+A `with` block is the safest way to hold a device — it closes the handle on
+every exit path, and closing releases every interface the program claimed.
+
+Example — read from the first bulk IN endpoint of a vendor device:
+```gust
+use usb
+
+def main() -> none
+    for info in usb.find(vendor_id: 0x0483, product_id: 0x5740)
+        with usb.open(info) as device
+            device.claim_interface(0)
+            data := device.read(0x81, 64, timeout_ms: 500)
+            print(data.length)
+        end
+    end
+end
+```
+
+<Note>
+Only available where `os == "linux" or has("usb-host")`.
+</Note>
+
+**On this page:** [`Speed`](#Speed) · [`Direction`](#Direction) · [`TransferType`](#TransferType) · [`RequestKind`](#RequestKind) · [`Recipient`](#Recipient) · [`Endpoint`](#Endpoint) · [`Interface`](#Interface) · [`Configuration`](#Configuration) · [`Device`](#Device) · [`DeviceInfo`](#DeviceInfo) · [`devices`](#usb.devices) · [`open`](#usb.open) · [`node_path`](#usb.node_path) · [`find`](#usb.find)
+
+## `Speed`
+
+<a id="Speed" />
+```gust
+enum Speed: integer
+```
+
+How fast a device negotiated with its host controller.
+
+**Variants**
+
+- `unknown = 0` — The rate could not be determined.
+- `low = 1` — Low Speed, 1.5 Mbit/s.
+- `full = 2` — Full Speed, 12 Mbit/s.
+- `high = 3` — High Speed, 480 Mbit/s.
+- `super_speed = 4` — SuperSpeed, 5 Gbit/s.
+- `super_speed_plus = 5` — SuperSpeed+, 10 Gbit/s or faster.
+
+## `Direction`
+
+<a id="Direction" />
+```gust
+enum Direction: integer
+```
+
+Which way data flows on an endpoint or in a control request. The values
+are the direction bit of an endpoint address and of `bmRequestType`.
+
+**Variants**
+
+- `host_to_device = 0` — An OUT transfer — the host sends.
+- `device_to_host = 128` — An IN transfer — the device sends.
+
+## `TransferType`
+
+<a id="TransferType" />
+```gust
+enum TransferType: integer
+```
+
+The transfer model an endpoint is configured for.
+
+**Variants**
+
+- `control = 0` — Bidirectional request/response, used for configuration.
+- `isochronous = 1` — Guaranteed-bandwidth streaming with no delivery guarantee.
+- `bulk = 2` — Reliable bulk data with no timing guarantee.
+- `interrupt = 3` — Small, latency-bounded transfers polled at a fixed interval.
+
+## `RequestKind`
+
+<a id="RequestKind" />
+```gust
+enum RequestKind: integer
+```
+
+Which request vocabulary a control transfer speaks. The values are the
+type field of `bmRequestType`.
+
+**Variants**
+
+- `standard = 0` — A request defined by the USB specification itself.
+- `class = 32` — A request defined by a device class specification.
+- `vendor = 64` — A request defined by the device's vendor.
+
+## `Recipient`
+
+<a id="Recipient" />
+```gust
+enum Recipient: integer
+```
+
+What part of the device a control transfer addresses. The values are the
+recipient field of `bmRequestType`.
+
+**Variants**
+
+- `device = 0` — The device as a whole.
+- `iface = 1` — One interface, named by the request's index.
+- `endpoint = 2` — One endpoint, named by the request's index.
+- `other = 3` — Anything else the device defines.
+
+## `Endpoint`
+
+<a id="Endpoint" />
+One endpoint of an interface — a single, one-directional pipe. Pass
+`address` straight to `Device.read` or `Device.write`; it already carries
+the direction bit those calls need.
+
+```gust
+def Endpoint
+
+    address: integer
+    attributes: integer
+    max_packet_size: integer
+    interval: integer
+
+end
+```
+
+**Fields**
+
+- `address: integer` — The endpoint address, direction bit included.
+- `attributes: integer` — The raw `bmAttributes` byte; `transfer_type` decodes the part of it every endpoint uses.
+- `max_packet_size: integer` — The largest payload one packet on this endpoint carries, in bytes.
+- `interval: integer` — The polling interval the device asks for, in the units its speed defines. Meaningful for interrupt and isochronous endpoints.
+
+**Methods**
+
+<a id="Endpoint.number" />
+```gust
+def Endpoint.number() -> integer
+```
+
+The endpoint number without its direction bit, 0 through 15.
+
+---
+
+<a id="Endpoint.direction" />
+```gust
+def Endpoint.direction() -> Direction
+```
+
+Which way this endpoint carries data.
+
+---
+
+<a id="Endpoint.transfer_type" />
+```gust
+def Endpoint.transfer_type() -> TransferType
+```
+
+The transfer model this endpoint is configured for.
+
+## `Interface`
+
+<a id="Interface" />
+One alternate setting of one interface: a group of endpoints that
+together provide a single function, plus the class triplet naming what that
+function is.
+
+```gust
+def Interface
+
+    number: integer
+    alternate_setting: integer
+    interface_class: integer
+    interface_subclass: integer
+    interface_protocol: integer
+    endpoints: list[Endpoint]
+
+end
+```
+
+**Fields**
+
+- `number: integer` — The interface number, which is what `Device.claim_interface` and the interface-recipient control requests take.
+- `alternate_setting: integer` — Which alternate setting of that interface this entry describes. Setting 0 is in force after claiming.
+- `interface_class: integer` — The USB-IF class code, e.g. 3 for HID or 8 for mass storage.
+- `interface_subclass: integer` — The subclass code, interpreted by the class.
+- `interface_protocol: integer` — The protocol code, interpreted by the subclass.
+- `endpoints: list[Endpoint]` — The endpoints this setting exposes, in descriptor order. Empty for an interface that uses only the default control endpoint.
+
+## `Configuration`
+
+<a id="Configuration" />
+One configuration of a device — a complete set of interfaces the device
+can operate under. Most devices publish exactly one, already selected;
+switch between them with `Device.set_configuration`.
+
+```gust
+def Configuration
+
+    value: integer
+    attributes: integer
+    max_power_ma: integer
+    interfaces: list[Interface]
+
+end
+```
+
+**Fields**
+
+- `value: integer` — The identifier `Device.set_configuration` selects this configuration by. Not an index — read it, do not count.
+- `attributes: integer` — The raw `bmAttributes` byte: bit 6 marks a self-powered device, bit 5 one that can signal remote wakeup.
+- `max_power_ma: integer` — The bus current this configuration draws at most, in milliamps.
+- `interfaces: list[Interface]` — Every interface alternate setting this configuration declares, in descriptor order.
+
+## `Device`
+
+<a id="Device" />
+<Note>
+Only available on Linux.
+</Note>
+
+An open USB device. Create one with `open`, read its layout with
+`configurations`, `claim_interface` the interface you intend to drive, then
+transfer. Release the device with `close` when done — an abandoned handle
+keeps the device node open and its interfaces claimed. Using a handle after
+`close` is undefined.
+
+The kernel enforces exclusive ownership of an interface: `claim_interface`
+fails while a kernel driver or another program holds it. `close` releases
+everything this handle claimed.
+
+```gust
+def Device
+
+    _fd: integer
+    _open: bool
+    _bus: integer
+    _address: integer
+    _path: string
+    _descriptors: bytes
+
+end
+```
+
+**Fields**
+
+- `_fd: integer` — The open device node's file descriptor.
+- `_open: bool` — False once `close` has run locally.
+- `_bus: integer` — The bus the device is attached to.
+- `_address: integer` — The device's address on that bus.
+- `_path: string` — The device node path, used to name the device in errors.
+- `_descriptors: bytes` — The descriptor bytes read from the node at open, parsed on demand by `configurations`.
+
+**Methods**
+
+<a id="Device.configurations" />
+```gust
+def Device.configurations() -> list[Configuration]
+```
+
+The device's configurations, each with its interfaces and their
+endpoints. Parsed from the descriptors read when the device was opened, so
+this neither talks to the device nor can fail.
+
+---
+
+<a id="Device.set_configuration" />
+```gust
+def Device.set_configuration(value: integer) -> none
+```
+
+Activate the configuration identified by `value`, taken from a
+`Configuration.value`. Most devices publish a single configuration that is
+already active, so this is only needed for the few that offer a choice.
+
+Activating a configuration invalidates every claim on the previous one, so
+call this before claiming interfaces.
+
+**Parameters**
+
+- `value` — The configuration identifier to select.
+
+**Raises**
+
+- `IOError` — If the device rejects the configuration, or an interface is still claimed.
+
+---
+
+<a id="Device.claim_interface" />
+```gust
+def Device.claim_interface(number: integer) -> none
+```
+
+Take exclusive ownership of interface `number`, which every transfer on
+that interface's endpoints requires.
+
+The claim fails while a kernel driver is bound to the interface; call
+`detach_kernel_driver` first when `kernel_driver` reports one.
+
+**Parameters**
+
+- `number` — The interface number, from `Interface.number`.
+
+**Raises**
+
+- `IOError` — If the interface does not exist, is held by a kernel driver or another program, or the device node is not writable.
+
+---
+
+<a id="Device.release_interface" />
+```gust
+def Device.release_interface(number: integer) -> none
+```
+
+Give up ownership of interface `number`. `close` does this for every
+claimed interface, so an explicit release is only needed to hand an
+interface back while keeping the device open.
+
+**Parameters**
+
+- `number` — The interface number to release.
+
+**Raises**
+
+- `IOError` — If the interface is not claimed by this handle.
+
+---
+
+<a id="Device.set_alternate_setting" />
+```gust
+def Device.set_alternate_setting(number: integer, alternate: integer) -> none
+```
+
+Switch claimed interface `number` to its alternate setting `alternate`.
+An interface starts on setting 0; the others exist to offer different
+endpoint layouts or bandwidth reservations for the same function.
+
+**Parameters**
+
+- `number` — The interface number, which must already be claimed.
+- `alternate` — The alternate setting to activate, from `Interface.alternate_setting`.
+
+**Raises**
+
+- `IOError` — If the setting does not exist or the interface is not claimed.
+
+---
+
+<a id="Device.control_read" />
+```gust
+def Device.control_read(
+    kind: RequestKind,
+    recipient: Recipient,
+    request: integer,
+    length: integer,
+    value: integer,
+    index: integer,
+    timeout_ms: integer,
+) -> bytes
+```
+
+Run a control transfer that reads from the device, returning the bytes
+it sent. The result may be shorter than `length` — a device answers with
+however much it has.
+
+Control transfers go to the default endpoint, which needs no claim, but a
+request addressed to an interface or one of its endpoints still requires
+that interface to be claimed.
+
+**Parameters**
+
+- `kind` — Which request vocabulary `request` belongs to.
+- `recipient` — What part of the device the request addresses.
+- `request` — The request code, interpreted according to `kind`.
+- `length` — Maximum number of bytes to read.
+- `value` — The request's 16-bit value field.
+- `index` — The request's 16-bit index field — the interface or endpoint number when `recipient` names one.
+- `timeout_ms` — Milliseconds to wait; zero or less waits indefinitely.
+
+**Raises**
+
+- `IOError` — If the device stalls the request, is unplugged, or the transfer times out.
+
+---
+
+<a id="Device.control_write" />
+```gust
+def Device.control_write(
+    kind: RequestKind,
+    recipient: Recipient,
+    request: integer,
+    data: bytes,
+    value: integer,
+    index: integer,
+    timeout_ms: integer,
+) -> integer
+```
+
+Run a control transfer that writes to the device, returning the number
+of bytes it accepted. Pass no `data` for a request that carries none.
+
+**Parameters**
+
+- `kind` — Which request vocabulary `request` belongs to.
+- `recipient` — What part of the device the request addresses.
+- `request` — The request code, interpreted according to `kind`.
+- `data` — Payload to send after the request, empty for none.
+- `value` — The request's 16-bit value field.
+- `index` — The request's 16-bit index field — the interface or endpoint number when `recipient` names one.
+- `timeout_ms` — Milliseconds to wait; zero or less waits indefinitely.
+
+**Raises**
+
+- `IOError` — If the device stalls the request, is unplugged, or the transfer times out.
+
+---
+
+<a id="Device.read" />
+```gust
+def Device.read(
+    endpoint: integer,
+    max_bytes: integer,
+    timeout_ms: integer,
+) -> bytes
+```
+
+Read up to `max_bytes` from a bulk or interrupt IN endpoint, returning
+what arrived. A short result is normal: one transfer returns one device
+response, not a filled buffer.
+
+**Parameters**
+
+- `endpoint` — The endpoint address, from `Endpoint.address`. Its direction bit must be set — a bulk IN endpoint is 0x81, 0x82, and so on.
+- `max_bytes` — Size of the read, which the device may under-fill.
+- `timeout_ms` — Milliseconds to wait; zero or less waits indefinitely.
+
+**Raises**
+
+- `IOError` — If the endpoint stalls, the interface is not claimed, the device is unplugged, or the transfer times out.
+
+---
+
+<a id="Device.write" />
+```gust
+def Device.write(endpoint: integer, data: bytes, timeout_ms: integer) -> integer
+```
+
+Write `data` to a bulk or interrupt OUT endpoint, returning the number of
+bytes the device accepted. A device that accepts less than was offered
+leaves the remainder for a further call.
+
+**Parameters**
+
+- `endpoint` — The endpoint address, from `Endpoint.address`. Its direction bit must be clear — a bulk OUT endpoint is 0x01, 0x02, and so on.
+- `data` — The payload to send.
+- `timeout_ms` — Milliseconds to wait; zero or less waits indefinitely.
+
+**Raises**
+
+- `IOError` — If the endpoint stalls, the interface is not claimed, the device is unplugged, or the transfer times out.
+
+---
+
+<a id="Device.clear_halt" />
+```gust
+def Device.clear_halt(endpoint: integer) -> none
+```
+
+Clear a stalled endpoint and reset its data toggle, which is what a
+device expects after it stalls a transfer. Until this runs, every further
+transfer on that endpoint fails.
+
+**Parameters**
+
+- `endpoint` — The endpoint address that stalled.
+
+**Raises**
+
+- `IOError` — If the endpoint does not exist or the device is unplugged.
+
+---
+
+<a id="Device.reset" />
+```gust
+def Device.reset() -> none
+```
+
+Reset the device on its port, as if it had been unplugged and plugged
+back in. Claims survive when the device re-enumerates unchanged; if it comes
+back describing itself differently, the handle is stale and the device must
+be found and opened again.
+
+**Raises**
+
+- `IOError` — If the reset fails or the device does not come back.
+
+---
+
+<a id="Device.kernel_driver" />
+```gust
+def Device.kernel_driver(number: integer) -> string
+```
+
+The name of the kernel driver bound to interface `number`, or "" when no
+driver holds it. Check this before `claim_interface`: a bound driver owns
+the interface and the claim fails until it is detached.
+
+**Parameters**
+
+- `number` — The interface number to query.
+
+---
+
+<a id="Device.detach_kernel_driver" />
+```gust
+def Device.detach_kernel_driver(number: integer) -> none
+```
+
+Unbind the kernel driver currently holding interface `number`, freeing it
+to be claimed. The driver stays detached until `attach_kernel_driver` runs
+or the device is replugged, so the kernel's own support for the device is
+unavailable in the meantime.
+
+**Parameters**
+
+- `number` — The interface number to take from the kernel.
+
+**Raises**
+
+- `IOError` — If no driver holds the interface, or the device node is not writable.
+
+---
+
+<a id="Device.attach_kernel_driver" />
+```gust
+def Device.attach_kernel_driver(number: integer) -> none
+```
+
+Give interface `number` back to the kernel, rebinding whichever driver
+matches it. Release the interface first — the kernel driver cannot bind
+while this handle holds the claim.
+
+**Parameters**
+
+- `number` — The interface number to return to the kernel.
+
+**Raises**
+
+- `IOError` — If no kernel driver matches the interface, or it is still claimed.
+
+---
+
+<a id="Device.bus" />
+```gust
+def Device.bus() -> integer
+```
+
+The bus this device is attached to.
+
+---
+
+<a id="Device.address" />
+```gust
+def Device.address() -> integer
+```
+
+This device's address on its bus.
+
+---
+
+<a id="Device.path" />
+```gust
+def Device.path() -> string
+```
+
+The device node this handle was opened on.
+
+---
+
+<a id="Device.fd" />
+```gust
+def Device.fd() -> integer
+```
+
+The raw file descriptor, for callers that need to poll it directly.
+
+---
+
+<a id="Device.is_open" />
+```gust
+def Device.is_open() -> bool
+```
+
+True while the device has not been closed locally.
+
+---
+
+<a id="Device.close" />
+```gust
+def Device.close() -> none
+```
+
+Close the device, releasing every interface it claimed. Idempotent —
+closing an already-closed device is a no-op.
+
+## `DeviceInfo`
+
+<a id="DeviceInfo" />
+One attached USB device, as reported by the host controller before
+anything is opened. Pass it to `open` to start talking to the device.
+
+The class triplet is meaningful only when `device_class` is non-zero; a
+device that defers classification to its interfaces reports zero here and
+describes itself through each `Interface` instead.
+
+```gust
+def DeviceInfo
+
+    bus: integer
+    address: integer
+    vendor_id: integer
+    product_id: integer
+    version: integer
+    device_class: integer
+    device_subclass: integer
+    device_protocol: integer
+    manufacturer: string
+    product: string
+    serial: string
+    speed: Speed
+
+end
+```
+
+**Fields**
+
+- `bus: integer` — The bus the device is attached to. Embedded targets have a single root port and always report 1.
+- `address: integer` — The device's address on that bus.
+- `vendor_id: integer` — The 16-bit USB-IF vendor identifier.
+- `product_id: integer` — The 16-bit vendor-assigned product identifier.
+- `version: integer` — The device release number, as the binary-coded decimal the device reports (0x0100 is version 1.00).
+- `device_class: integer` — The device-wide class code, or 0 when per-interface.
+- `device_subclass: integer` — The device-wide subclass code.
+- `device_protocol: integer` — The device-wide protocol code.
+- `manufacturer: string` — The manufacturer string, or "" when the device has none.
+- `product: string` — The product string, or "" when the device has none.
+- `serial: string` — The serial-number string, or "" when the device has none.
+- `speed: Speed` — The rate the device negotiated.
+
+## Functions
+
+<a id="usb.devices" />
+```gust
+def devices() -> list[DeviceInfo]
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+List every USB device currently attached, root hubs included.
+
+Reading this list opens nothing and needs no privileges. The result is a
+snapshot: a device unplugged after the call still appears, and `open` on it
+then fails.
+
+---
+
+<a id="usb.open" />
+```gust
+def open(info: DeviceInfo) -> Device
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+Open the device `info` names and read its descriptors.
+
+The node is opened for reading and writing, which is what transfers and
+`claim_interface` require; a device the user may only enumerate fails here
+with a permission error.
+
+**Parameters**
+
+- `info: DeviceInfo` — An entry from `devices` or `find`.
+
+**Raises**
+
+- `IOError` — If the device node cannot be opened — it was unplugged, or the user lacks write access to it.
+
+---
+
+<a id="usb.node_path" />
+```gust
+def node_path(bus: integer, address: integer) -> string
+```
+
+<Note>
+Only available on Linux.
+</Note>
+
+The device node a bus and address is reachable at, zero-padded the way
+the kernel names it, e.g. "/dev/bus/usb/001/004".
+
+**Parameters**
+
+- `bus: integer` — Bus number, from `DeviceInfo.bus`.
+- `address: integer` — Device address on that bus, from `DeviceInfo.address`.
+
+---
+
+<a id="usb.find" />
+```gust
+def find(vendor_id: integer, product_id: integer) -> list[DeviceInfo]
+```
+
+List attached devices matching a vendor and product identifier. A
+negative identifier matches anything, so `find(vendor_id: 0x1234)` returns
+every device from that vendor.
+
+**Parameters**
+
+- `vendor_id: integer` — Vendor identifier to match, or -1 for any.
+- `product_id: integer` — Product identifier to match, or -1 for any.

@@ -1,0 +1,382 @@
+---
+title: In Gust
+description: The Gust-side spellings for crossing the C boundary — @c_name, @c_shim, def foreign, foreign constants, @manual and @raw, the unsafe package, and dynamic loading with dl
+---
+
+This page covers everything you write on the Gust side of a C boundary. For the C side — accessors, refcount rules, worked examples — see [In C](/lang/ffi-c). For the representation each Gust type takes in C, see the [introduction](/lang/ffi-intro#how-gust-values-look-in-c).
+
+## `@c_name` — bind to an existing C symbol
+
+`@c_name("sym")` attaches a bodyless `def foreign` declaration to a fixed C symbol. Use it when a libc, OS, or runtime function's signature already lines up with Gust's C type mapping — most commonly a `float`/`float`, `integer`/`int`, or no-argument function:
+
+```gust
+@c_name("sqrt")
+def foreign sqrt(x: float) -> float
+    """Square root. Returns NaN for negative input."""
+end
+
+@c_name("exit")
+def foreign exit(status: integer) -> none
+end
+```
+
+`float` compiles to `double`, so `sqrt` here links directly against libm's `sqrt(double)`. Without `@c_name`, a `foreign` symbol is mangled (see [`def foreign`](#def-foreign-a-bodyless-declaration-backed-by-c) below); the decorator forces the literal C name so it resolves against the intended external symbol.
+
+`@c_name` does **not** change how a parameter is represented in C — a `string` parameter is still emitted as `GStr *` in the generated prototype. It only works when the target C symbol's real signature matches Gust's own type mapping exactly (as `sqrt`, `exit`, and `_Exit` do). For a C library whose header declares `char *`, `void *`, `int32_t`, or a struct pointer, use [`@c_shim`](#c_shim-export-a-gust-body-under-a-fixed-abi) instead.
+
+## `@c_shim` — export a Gust body under a fixed ABI
+
+`@c_shim("c_symbol", "ret_type", "arg_types"...)` marks a Gust function that **has a real body** to be compiled and exported under a fixed C symbol with an explicit, hand-specified C ABI signature — return type first, then one C type spelling per parameter. This is the direction for binding a third-party C library whose functions take `void *` handles, `int32_t`s, or other types that don't match Gust's native C representation: write the logic in Gust using `integer` as an opaque pointer-sized handle, and let the shim do the narrowing/widening casts.
+
+```gust
+@c_shim("g_bytes_len", "int64_t", "const GBytes*")
+def bytes_len(b: integer) -> integer
+    """Current octet count."""
+    return unsafe.load64(b, _byt_length_offset())
+end
+```
+
+The Gust-side signature always uses `integer` for anything that is a pointer on the C side. The shim generates two things:
+
+- A definition under the exact symbol/ABI given (`int64_t g_bytes_len(const GBytes* b)`), so hand-written C — or a header a library ships — can call it exactly as declared.
+- On the *import* side (a bodyless `def foreign` with a matching `@c_shim`), a typed prototype plus a `static` `_shim_<sym>` adapter that narrows each `integer` argument to the declared C type (`(T)(intptr_t)` for a pointer) and widens the result back.
+
+### Binding a C library
+
+Here is LVGL's progress bar, from the `lvgl` stdlib package:
+
+```gust
+def bar(parent: Obj) -> Bar
+    return Bar(handle: raw_bar_create(parent.handle))
+end
+
+def Bar.set_value(value: integer, animated: bool = true) -> none
+    raw_bar_set_value(handle, value, animated)
+end
+
+@c_shim("lv_bar_create", "void *", "void *")
+def private foreign raw_bar_create(parent: integer) -> integer
+end
+
+@c_shim("lv_bar_set_value", "void", "void *", "int32_t", "int32_t")
+def private foreign raw_bar_set_value(
+    obj: integer,
+    value: integer,
+    animated: bool,
+) -> none
+end
+```
+
+`Bar` and its public methods are ordinary Gust, working with `integer` handles internally; `raw_bar_create` and `raw_bar_set_value` are the only two declarations that know LVGL's real C signatures, and only their `@c_shim` argument strings do — the Gust parameter types stay `integer`/`bool`.
+
+### Type rules
+
+- A `float` parameter stays a C `double` on both sides of a shim rather than being routed through `int64_t`, which would truncate it.
+- A `bool` argument narrows to whatever integer width the shim declares (`int32_t`, `uint8_t`, etc.).
+- A pointer-typed shim argument or return (any spelling that ends in `*`) round-trips through `(intptr_t)` so it survives a 32-bit target such as wasm without truncation.
+- An enum backed by `integer`, `bool`, or `float` crosses exactly as its backing type does.
+
+### Strings across a shim
+
+A `string` is the one Gust type a shim does not carry as a handle. It marshals to C string bytes instead, so a C function declared `const char *` binds directly with no wrapper:
+
+```gust
+@c_shim("gtk_label_new", "void *", "const char*")
+def private foreign raw_label_new(text: string) -> integer
+end
+
+@c_shim("gtk_label_set_text", "void", "void *", "const char*")
+def private foreign raw_label_set_text(label: integer, text: string) -> none
+end
+
+@c_shim("gtk_label_get_text", "const char*", "void *")
+def private foreign raw_label_get_text(label: integer) -> string
+end
+```
+
+A `string` end must be paired with a `char *` spelling (`char *`, `const char*`, `const gchar *`); anything else is an error, since the bytes would have nowhere to go. A string-backed enum marshals the same way.
+
+**The spelling states who owns the bytes**, following the ordinary C convention, and the shim honors it:
+
+| Spelling | Direction | Meaning |
+|---|---|---|
+| `const char *` parameter | either | The callee borrows; nothing is freed. |
+| `const char *` return | import | The callee keeps ownership, so the bytes are **copied** — safe to hold after the next call overwrites the library's buffer. |
+| `char *` return | import | Ownership transfers, so the string is **taken over and freed** once copied in. |
+| `char *` return | export | The C caller receives a fresh copy it owns and must free. A `const` spelling is rejected here, since the shim keeps nothing alive to point at. |
+
+Getting that distinction wrong is the difference between a leak and a double free, which is why it is read off the declared type rather than guessed. This maps one-to-one onto GObject Introspection's `transfer-ownership` annotation (`none` → `const char *`, `full` → `char *`), so bindings generated from a GIR file get it right mechanically.
+
+### C variadic functions
+
+A foreign declaration whose final parameter is `varargs[T]` binds a C function declared with a trailing `...`. Its `@c_shim` names the C type of every trailing argument in its final spelling, so `int64_t sum(int count, ...)` reading `int64_t` values binds as:
+
+```gust
+@c_shim("sum", "int64_t", "int", "int64_t")
+def private foreign raw_sum(count: integer, values: varargs[integer]) -> integer
+end
+
+@c_shim("join", "char*", "const char*", "int", "const char*")
+def private foreign raw_join(sep: string, count: integer, parts: varargs[string]) -> string
+end
+```
+
+The emitted prototype ends in `...`, matching the C header. A call that writes its trailing arguments out — `raw_sum(3, 10, 20, 30)` — becomes an ordinary C call, so the C compiler applies the variadic calling convention and the default argument promotions: a `float` element is passed as `double`, and a `bool` or narrow integer element as `int`. Each element is converted to the element spelling first, so `int8_t` with the value 255 arrives as -1.
+
+Spreading a list forwards its current elements, whatever their number:
+
+```gust
+def total(values: varargs[integer]) -> integer
+    return raw_sum(values.length, ...values)
+end
+```
+
+A list's length is known only at run time, so a spread call is made through the `ffi` package's libffi call core, and a program that spreads into a C variadic function links libffi. That is available on native Linux, macOS, and the BSDs. Calls with written-out trailing arguments need neither.
+
+Nothing implicit is added to the call: a C function that expects a count or a terminating sentinel receives one only when the caller passes it. The rules:
+
+- At least one fixed parameter must precede the `varargs` parameter, as C requires.
+- Elements may be `integer`, `bool`, `float`, `string`, or an enum backed by one of them. A `string` element needs a `char *` spelling and passes its borrowed bytes.
+- `@c_name` alone cannot bind a variadic function, since it carries no C types. Foreign methods, `inout` parameters, and exporting a Gust variadic body to C are not supported.
+
+## `def foreign` — a bodyless declaration backed by C
+
+Dropping `@c_name`/`@c_shim` entirely still works: a bodyless `def foreign` (a free function or `def foreign Struct.method(...)`) is implemented by a same-named C function, found one of two ways:
+
+- **Inside a stdlib package** (`stdlib/<pkg>/<pkg>.g` + `stdlib/<pkg>/<pkg>.c`): every bodyless `def` at a stdlib path is understood as "implemented in C," picked up automatically — no decorator needed.
+- **Next to your own entry point**: a `<stem>.c` file sitting beside the `<stem>.g` file you `gust build` / `gust run` is auto-linked. This is the seam for binding a C library without authoring a whole stdlib package.
+
+```gust
+# main.g
+def foreign double_it(x: integer) -> integer
+end
+
+def main() -> none
+    print(double_it(21))   # 42
+end
+```
+
+```c
+/* main.c */
+#include "g_runtime.h"
+
+int64_t double_it(int64_t x) {
+    return x * 2;
+}
+```
+
+The C symbol a plain `def foreign` expects is:
+
+- the function's own name for unpackaged code (`double_it`, verbatim — no mangling),
+- `<Struct>_<method>` for a foreign struct method (`Path_exists`), or
+- `<package>_<name>` inside a stdlib package (`os_getenv`).
+
+`@c_name` overrides this to a fixed symbol at any of those three call sites; without it, match the emitted name exactly.
+
+### Foreign struct methods
+
+`fs.Path`'s file checks are a real example of the struct-method form:
+
+```gust
+# fs.g
+def foreign Path.exists() -> bool
+    """True if anything exists at this path."""
+end
+```
+
+```c
+/* fs_hosted.c */
+bool Path_exists(Path *self) {
+    struct stat st;
+    return stat(g_str_cstr(self->path), &st) == 0;
+}
+```
+
+`self` is a pointer to the struct's C layout; a `string` field reads as `self->path`, a `GStr *`, converted to a C string with `g_str_cstr`. See [struct representation](/lang/ffi-intro#struct-and-class-representation) for the layout rules.
+
+### `string` crosses the boundary for free
+
+If any parameter or the return type of a plain `def foreign` (no `@c_shim`) is `string` (or a string-backed enum), the compiler inserts a bridging adapter automatically: the C symbol you write takes and returns plain `const char *` / `char *`, and Gust callers see `string` on their side. You never touch `GStr *` yourself:
+
+```gust
+def foreign shout(s: string) -> string
+end
+```
+
+```c
+#include "g_runtime.h"
+#include <string.h>
+#include <stdio.h>
+
+char *shout(const char *s) {
+    char *out = g_checked_malloc(strlen(s) + 2);
+    sprintf(out, "%s!", s);
+    return out;
+}
+```
+
+A returned `char *` must be `malloc`-family memory (or `g_checked_malloc` / `g_checked_strdup`) — Gust takes ownership of it via `g_str_takeover_cstr`, which wraps it as a `GStr *` and frees the original buffer. Returning a string literal or stack buffer from a bridged `def foreign` is undefined behavior.
+
+`list`, `dict`, and `bytes` do **not** get this treatment — they already share one representation on both sides (`GSlice *`, `GDict *`, `GBytes *`), so a hand-written C function just takes/returns the pointer type directly and calls the runtime accessors described in [In C](/lang/ffi-c).
+
+## Foreign constants
+
+A value only C knows — a macro from a system header whose value differs per platform, or anything else only C can compute — is a foreign constant: a `constant` declared with `foreign` and no value, whose C global the package's C source defines.
+
+```gust
+# stdlib/posix/posix.g
+foreign EINTR: constant[integer]
+foreign O_WRONLY: constant[integer]
+foreign PTR_SIZE: constant[integer]
+```
+
+```c
+/* stdlib/posix/posix.c */
+#include <errno.h>
+#include <fcntl.h>
+
+const int64_t posix_EINTR = EINTR;
+const int64_t posix_O_WRONLY = O_WRONLY;
+const int64_t posix_PTR_SIZE = (int64_t)sizeof(void *);
+```
+
+The C global is named `<package>_<NAME>` (`gu_<NAME>` in a program with no package), so a Gust constant may share its name with the macro it reads. Gust declares it `extern const`, and the C side defines it however it likes. It has type `integer`, `float`, or `bool`, stored in C as `int64_t`, `double`, or `bool`. See [constants](/lang/constants#constants-defined-in-c) for how foreign constants behave in Gust code.
+
+A trailing `#gust:cfg` pragma gates a foreign constant for targets where the underlying macro does not exist:
+
+```gust
+foreign SIGPIPE: constant[integer]    #gust:cfg os != "none"
+```
+
+## `@manual` and `@raw` — Gust-side unsafe
+
+Two decorators switch off the compiler's own memory management for a single Gust declaration, for the rare case where you need to hold reference-counting invariants across a boundary by hand from *within* Gust rather than from C.
+
+Both are restricted to **trusted files** — standard-library sources, or a file that opts in with its own `use unsafe`. Anywhere else is error `G0608`.
+
+### `@manual`
+
+`@manual` suppresses the compiler's automatic refcount injection inside a function or method body. Every retain and drop is now your responsibility — use the runtime entry points directly (via `@c_shim`-bound Gust helpers if you prefer) or call out to C.
+
+```gust
+use unsafe
+
+@manual
+def copy_handle(h: integer) -> integer
+    _inc_ref(h)
+    return h
+end
+```
+
+### `@raw`
+
+`@raw` exempts a struct from managed-field ownership, so the struct no longer deep-retains or deep-drops its refcounted fields. Use this when a struct is a view onto memory owned elsewhere.
+
+```gust
+use unsafe
+
+@raw
+def Handle
+    ptr: integer
+    len: integer
+end
+```
+
+See [decorators](/lang/decorators#manual-and-raw-unsafe) for the full description, and the [`unsafe`](/stdlib/unsafe) package reference for the primitives these decorators pair with.
+
+## The `unsafe` package
+
+For raw memory work that doesn't need a `.c` file at all — hand-rolled data structures, binding a C ABI purely through addresses, or reading fixed-layout fields — `unsafe` gives Gust code direct access to memory outside the managed heap:
+
+```gust
+use unsafe
+
+def main() -> none
+    addr := unsafe.alloc(8)
+    unsafe.store64(addr, 0, 42)
+    print(unsafe.load64(addr, 0))   # 42
+    unsafe.free(addr)
+end
+```
+
+An `address` here is just an `integer` — no element type, no length, no lifetime, never reference-counted or bounds-checked. The entry points are:
+
+| Group | Entry points | Purpose |
+|---|---|---|
+| Allocation | `alloc`, `alloc_zeroed`, `resize`, `free` | Return / release memory the managed heap never sees. |
+| Loads | `load8`, `load16`, `load32`, `load64`, `load_address`, `load_float` (64-bit), `load_float32` | Read a fixed-width value at `addr + offset`. |
+| Stores | `store8`, `store16`, `store32`, `store64`, `store_address`, `store_float`, `store_float32` | Write the matching value at `addr + offset`. |
+| Block ops | `copy`, `move`, `fill`, `compare` | `memcpy`, `memmove`, `memset`, `memcmp`-equivalent. |
+| Calls | `call1`, `sort` | Invoke a raw function pointer with a fixed C shape (`void(*)(void*)` and `int(*)(const void*,const void*)`). |
+
+`alloc`/`alloc_zeroed`/`resize` return memory you own and must `free` exactly once. `load_float32` exists for C `float` arrays and GPU buffers; everywhere else, Gust `float` is 64-bit.
+
+### `c_symbol_address`
+
+`c_symbol_address("name")` (a compiler builtin, not part of `unsafe`) resolves a linked C symbol to its address as an `integer` handle — the usual way to obtain the function pointer `unsafe.call1`/`unsafe.sort` expect, or to pass a callback into a C API that wants one:
+
+```gust
+use unsafe
+
+def main() -> none
+    cell := unsafe.alloc(16)
+    unsafe.call1(c_symbol_address("my_destructor"), cell)
+end
+```
+
+`unsafe` is available everywhere (it is itself one of the ways a file becomes "trusted" for `@manual`/`@raw`) — this package needs no `G0608` opt-in of its own, only the two decorators above do.
+
+## Loading a library at runtime
+
+The seams above and `c_symbol_address` all need the C symbol present at link time. The `dl` package instead loads a shared library by name while the program runs and calls a function through an address resolved at that moment — for a plugin discovered at startup, an optional dependency, or any library whose name is only known at runtime.
+
+`open` loads the library and `symbol` resolves a name inside it. A call's argument types and return type are given per call, so the same address can be called with different signatures; the call is dispatched through libffi, which builds the matching C call interface at runtime.
+
+```gust
+use dl
+
+def main() -> none
+    libm := dl.open("libm.so.6", dl.RTLD_NOW)
+    pow := libm.symbol("pow")
+    args := [dl.f64(2.0), dl.f64(10.0)]
+    print(pow.call(args, dl.F64).as_float())   # 1024.0
+    libm.close()
+end
+```
+
+Each argument carries its own C type, built with a constructor named for that type — `i8` / `i16` / `i32` / `i64` and their `u` forms, `f32`, `f64`, and `ptr` for any pointer. The return type is one of the type-code constants (`I32`, `F64`, `PTR`, `VOID`, and the rest), and the result is read from the returned `Value` with the matching accessor — `as_integer`, `as_float`, or `as_address`.
+
+### Passing strings and reading them back
+
+Pointers are passed as addresses. `cstring` copies a Gust string into a NUL-terminated buffer to pass as a `ptr` argument, and `read_cstring` reads a `char *` result back; raw buffers come from the `unsafe` package.
+
+```gust
+use dl
+use unsafe
+
+def main() -> none
+    libc := dl.open("libc.so.6", dl.RTLD_NOW)
+    name := dl.cstring("HOME")
+    args := [dl.ptr(name)]
+    home := libc.symbol("getenv").call(args, dl.PTR).as_address()
+    print(dl.read_cstring(home))
+    unsafe.free(name)
+    libc.close()
+end
+```
+
+### Variadic functions
+
+A variadic function is called through `call_variadic`, which takes the count of fixed (non-variadic) parameters — the variadic C ABI differs from the ordinary one, so this distinction is required even when there are no trailing arguments. Trailing `f32` and narrow integer arguments are promoted to `double` and `int`, as C requires:
+
+```gust
+# int snprintf(char *buf, size_t n, const char *fmt, ...)
+args := [dl.ptr(buf), dl.u64(64), dl.ptr(fmt), dl.i32(3), dl.i32(4)]
+written := snprintf.call_variadic(args, 3, dl.I32).as_integer()
+```
+
+Nothing is checked at the ABI boundary: a signature that does not match the real function, or an address that is not a function, is undefined behavior, exactly as in `unsafe`. `dl` is available on Linux, macOS, and the BSDs; it links libffi, and libdl on Linux.
+
+## Next
+
+- **[In C](/lang/ffi-c)** — the C-side API in depth: `g_runtime.h` accessors for every runtime type, reference counting rules with examples, calling Gust closures from C, and a full worked example.
