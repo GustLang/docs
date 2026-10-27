@@ -43,7 +43,7 @@ end
 Only available on native builds.
 </Note>
 
-**On this page:** [`DecryptionError`](#DecryptionError) · [`gcm_encrypt`](#cryptography.aes.gcm_encrypt) · [`gcm_decrypt`](#cryptography.aes.gcm_decrypt) · [`random_key`](#cryptography.aes.random_key) · [`random_nonce`](#cryptography.aes.random_nonce)
+**On this page:** [`DecryptionError`](#DecryptionError) · [`DecryptionError`](#DecryptionError) · [`gcm_encrypt`](#cryptography.aes.gcm_encrypt) · [`gcm_decrypt`](#cryptography.aes.gcm_decrypt) · [`random_key`](#cryptography.aes.random_key) · [`random_nonce`](#cryptography.aes.random_nonce)
 
 ## Constants
 
@@ -59,10 +59,32 @@ the key, nonce, or associated data differs from encryption, or the
 ciphertext/tag was altered. A security-relevant failure, never a transient
 one: the recovered plaintext (if any) must not be trusted or used.
 
-**Implements:** [`Error`](#Error)
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
 
 ```gust
-def DecryptionError implements Error
+def DecryptionError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — Human-readable description of the failure.
+
+## `DecryptionError`
+
+<a id="DecryptionError" />
+Raised by `gcm_decrypt` when the authentication tag does not verify —
+the key, nonce, or associated data differs from encryption, or the
+ciphertext/tag was altered. A security-relevant failure, never a transient
+one: the recovered plaintext (if any) must not be trusted or used.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def DecryptionError implements prelude.Error, Error
 
     message: string
 

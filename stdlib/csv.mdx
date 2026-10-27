@@ -31,7 +31,51 @@ def main() -> none
 end
 ```
 
-**On this page:** [`CsvError`](#CsvError) · [`parse`](#csv.parse) · [`parse_with`](#csv.parse_with) · [`parse_dicts`](#csv.parse_dicts) · [`format`](#csv.format) · [`format_with`](#csv.format_with) · [`format_dicts`](#csv.format_dicts)
+**On this page:** [`CsvError`](#CsvError) · [`CsvError`](#CsvError) · [`parse`](#csv.parse) · [`parse_with`](#csv.parse_with) · [`parse_dicts`](#csv.parse_dicts) · [`format`](#csv.format) · [`format_with`](#csv.format_with) · [`format_dicts`](#csv.format_dicts)
+
+## `CsvError`
+
+<a id="CsvError" />
+Raised by the parser on malformed CSV. `message` describes the problem;
+`line` is the 1-based source line it was detected on.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def CsvError implements prelude.Error, Error
+
+    message: string
+    line: integer
+
+end
+```
+
+**Fields**
+
+- `message: string` — human-readable description of the parse failure.
+- `line: integer` — the 1-based source line the error was detected on.
+
+## `CsvError`
+
+<a id="CsvError" />
+Raised by the parser on malformed CSV. `message` describes the problem;
+`line` is the 1-based source line it was detected on.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def CsvError implements prelude.Error, Error
+
+    message: string
+    line: integer
+
+end
+```
+
+**Fields**
+
+- `message: string` — human-readable description of the parse failure.
+- `line: integer` — the 1-based source line the error was detected on.
 
 ## Functions
 
@@ -134,20 +178,3 @@ is written as the empty string.
 
 - `records: list[dict[string, string]]` — The records to render.
 - `headers: list[string]` — The column names, defining both the header row and the order in which each record's values are emitted.
-
-## Errors
-
-<a id="CsvError" />
-```gust
-error CsvError(message: string, line: integer)
-```
-
-Raised by the parser on malformed CSV. `message` describes the problem;
-`line` is the 1-based source line it was detected on.
-
-Fields:
-
-```gust
-message: human-readable description of the parse failure.
-line: the 1-based source line the error was detected on.
-```

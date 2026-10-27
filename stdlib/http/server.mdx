@@ -70,22 +70,22 @@ matching, static files, and 404/405.
 
 <a id="Group" />
 A route group that prefixes every path it registers. Create with
-`server.group("/api")`; then `grp.get("/users", handler)` registers
-the route at `/api/users` on the parent server.
+`http.server.group("/api")`; then `grp.get("/users", handler)`;
+then `Server.add_group(grp)`
 
 ```gust
 def Group
 
-    routes: list[Route]
     prefix: string
+    routes: list[Route]
 
 end
 ```
 
 **Fields**
 
-- `routes: list[Route]` — The parent server's route list, appended to in place.
 - `prefix: string` — Path prefix prepended to every route registered here.
+- `routes: list[Route]` — The parent server's route list, appended to in place.
 
 **Methods**
 
@@ -314,7 +314,7 @@ Look up a captured `{name}` route segment, or "" if absent.
 
 <a id="Request.query_param" />
 ```gust
-def Request.query_param(name: string) -> string
+def Request.query_param(name: string, default: string) -> string
 ```
 
 Look up a query-string parameter, or "" if absent.
@@ -551,10 +551,13 @@ after-middleware, and sends the `Response`. A handler that raises becomes
 def Server
 
     port: integer
+    host: string
+    version: http.Version
     routes: list[Route]
     middlewares: list[Middleware]
     statics: list[StaticMount]
     websocket_routes: list[WsRoute]
+    on_ready: Function(Server)[none] | none
     _handle: integer
     _worker_handles: list[integer]
     _closed: ref[bool]
@@ -565,10 +568,13 @@ end
 **Fields**
 
 - `port: integer` — TCP port to listen on.
+- `host: string` — Interface address to bind. The default `"0.0.0.0"` (equivalently `""`) accepts on every interface; `"127.0.0.1"` or `"localhost"` restricts the server to loopback, so only this machine can reach it.
+- `version: http.Version` — Wire protocol selector. `auto` (the default) serves both HTTP/1.1 and plaintext HTTP/2 (h2c) on the same port, choosing by whether the client opens the connection with the HTTP/2 preface. `http1_1` pins HTTP/1.1 and treats a preface as a bad request; `http2` pins h2c and drops a connection that does not begin with the preface.
 - `routes: list[Route]` — Registered routes, matched in order.
 - `middlewares: list[Middleware]` — Middleware layers, applied outermost-first around routing; each `handle`s the Request with a `Next` chain link. Class-based middleware register via `use`, functions via `middleware`.
 - `statics: list[StaticMount]` — Static-file mounts, checked after dynamic routes miss.
 - `websocket_routes: list[WsRoute]` — WebSocket routes, matched on a request that carries a WebSocket `Upgrade` header before normal HTTP dispatch.
+- `on_ready: Function(Server)[none] | none`
 - `_handle: integer`
 - `_worker_handles: list[integer]`
 - `_closed: ref[bool]`
@@ -792,9 +798,9 @@ end
 
 ---
 
-<a id="Server.group" />
+<a id="Server.add_group" />
 ```gust
-def Server.group(prefix: string) -> Group
+def Server.add_group(group: Group | list[Group]) -> none
 ```
 
 Create a route group whose paths are all prefixed with `prefix`.
@@ -894,6 +900,9 @@ HTTP/1.0 request that does not ask to keep it open) or goes away. A client
 issuing many requests therefore pays for one connection and one fiber
 rather than one of each per request.
 
+The interface it binds is the `host` field, set at construction (default
+`"0.0.0.0"`, every interface).
+
 **Raises**
 
 - `IOError` — the listening socket cannot be bound on first use (for example, the port is already in use).
@@ -907,6 +916,22 @@ def Server.close() -> none
 
 Stop accepting new connections. Causes a concurrent `run()`
 call to return. A no-op on a server that never bound.
+
+---
+
+<a id="Server.group" />
+```gust
+def Server.group(prefix: string) -> Group
+```
+
+Create a route group whose paths are all prefixed with `prefix`.
+`server.group("/api").get("/users", h)` registers `/api/users`. The group
+shares this server's route list, so a route registered on it lands straight
+in this server's own route table.
+
+**Parameters**
+
+- `prefix` — Path prefix prepended to every route registered on the group.
 
 **Examples**
 

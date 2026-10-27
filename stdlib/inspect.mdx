@@ -38,6 +38,7 @@ sig.return_annotation       # "string"
 inspect.params(greet)       # ["name", "loud"]
 inspect.kind(greet)         # SymbolKind.Function
 inspect.fields(SomeStruct)  # ["x", "y"]
+inspect.tags(SomeStruct)    # {"x": {"json": "x"}, "y": {}}
 inspect.methods(SomeStruct) # ["render", "area"]
 inspect.variants(Color)     # ["red", "green", "blue"]
 inspect.line(greet)         # 12
@@ -49,7 +50,7 @@ use SymbolKind from inspect
 if inspect.kind(item) == SymbolKind.Function ...
 ```
 
-**On this page:** [`SymbolKind`](#SymbolKind) · [`Parameter`](#Parameter) · [`Signature`](#Signature) · [`DocEntry`](#DocEntry) · [`doc`](#inspect.doc) · [`name`](#inspect.name) · [`kind`](#inspect.kind) · [`line`](#inspect.line) · [`cfg`](#inspect.cfg) · [`file`](#inspect.file) · [`signature`](#inspect.signature) · [`params`](#inspect.params) · [`param_types`](#inspect.param_types) · [`return_type`](#inspect.return_type) · [`fields`](#inspect.fields) · [`field_types`](#inspect.field_types) · [`methods`](#inspect.methods) · [`variants`](#inspect.variants) · [`members`](#inspect.members) · [`describe`](#inspect.describe) · [`entries`](#inspect.entries) · [`is_function`](#inspect.is_function) · [`is_struct`](#inspect.is_struct) · [`is_enum`](#inspect.is_enum) · [`is_interface`](#inspect.is_interface) · [`is_error`](#inspect.is_error) · [`is_type`](#inspect.is_type) · [`is_method`](#inspect.is_method) · [`decorators`](#inspect.decorators)
+**On this page:** [`SymbolKind`](#SymbolKind) · [`Parameter`](#Parameter) · [`Signature`](#Signature) · [`DocEntry`](#DocEntry) · [`doc`](#inspect.doc) · [`name`](#inspect.name) · [`kind`](#inspect.kind) · [`line`](#inspect.line) · [`cfg`](#inspect.cfg) · [`file`](#inspect.file) · [`signature`](#inspect.signature) · [`params`](#inspect.params) · [`param_types`](#inspect.param_types) · [`return_type`](#inspect.return_type) · [`fields`](#inspect.fields) · [`field_types`](#inspect.field_types) · [`tags`](#inspect.tags) · [`methods`](#inspect.methods) · [`variants`](#inspect.variants) · [`members`](#inspect.members) · [`describe`](#inspect.describe) · [`entries`](#inspect.entries) · [`is_function`](#inspect.is_function) · [`is_struct`](#inspect.is_struct) · [`is_enum`](#inspect.is_enum) · [`is_interface`](#inspect.is_interface) · [`is_error`](#inspect.is_error) · [`is_type`](#inspect.is_type) · [`is_method`](#inspect.is_method) · [`decorators`](#inspect.decorators)
 
 ## `SymbolKind`
 
@@ -361,6 +362,21 @@ def foreign field_types(item: Any) -> list[string]
 
 The field types of a struct or error type, in declaration order
 (source-level spelling, e.g. "list[string]").
+
+**Parameters**
+
+- `item: Any` — A struct or error type reference.
+
+---
+
+<a id="inspect.tags" />
+```gust
+def foreign tags(item: Any) -> dict[string, dict[string, string]]
+```
+
+The `#gust:tag` pairs of a struct or error type's fields, keyed by field
+name and then by tag key, in declaration order. Every field has an entry;
+an untagged field maps to an empty dict. The same value as `item.__TAGS__`.
 
 **Parameters**
 

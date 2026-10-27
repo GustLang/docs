@@ -241,10 +241,14 @@ Full treatment → [Interfaces](/lang/interfaces).
 
 ## Error types
 
-Named error records. Declared at the top level:
+An error is an ordinary struct that `implements Error` — the prelude
+interface that pins `message: string` as every error's first field:
 
 ```gust
-error NetError(message: string, host: string)
+def NetError implements Error
+    message: string
+    host: string
+end
 ```
 
 Full treatment → [Error handling](/lang/errors).

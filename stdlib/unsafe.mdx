@@ -43,7 +43,7 @@ def main() -> none
 end
 ```
 
-**On this page:** [`alloc`](#unsafe.alloc) · [`alloc_zeroed`](#unsafe.alloc_zeroed) · [`resize`](#unsafe.resize) · [`free`](#unsafe.free) · [`load8`](#unsafe.load8) · [`load16`](#unsafe.load16) · [`load32`](#unsafe.load32) · [`load64`](#unsafe.load64) · [`load_address`](#unsafe.load_address) · [`load_float`](#unsafe.load_float) · [`load_float32`](#unsafe.load_float32) · [`store8`](#unsafe.store8) · [`store16`](#unsafe.store16) · [`store32`](#unsafe.store32) · [`store64`](#unsafe.store64) · [`store_address`](#unsafe.store_address) · [`store_float`](#unsafe.store_float) · [`store_float32`](#unsafe.store_float32) · [`copy`](#unsafe.copy) · [`move`](#unsafe.move) · [`fill`](#unsafe.fill) · [`read_bytes`](#unsafe.read_bytes) · [`write_bytes`](#unsafe.write_bytes) · [`compare`](#unsafe.compare) · [`call1`](#unsafe.call1) · [`sort`](#unsafe.sort) · [`atomic_load`](#unsafe.atomic_load) · [`atomic_store`](#unsafe.atomic_store) · [`atomic_add`](#unsafe.atomic_add) · [`atomic_sub`](#unsafe.atomic_sub) · [`atomic_cas`](#unsafe.atomic_cas) · [`is_null`](#unsafe.is_null)
+**On this page:** [`heap_realloc`](#unsafe.heap_realloc) · [`heap_alloc`](#unsafe.heap_alloc) · [`object_init`](#unsafe.object_init) · [`object_header_size`](#unsafe.object_header_size) · [`heap_free`](#unsafe.heap_free) · [`raise_error`](#unsafe.raise_error) · [`strlen`](#unsafe.strlen) · [`grow_capacity`](#unsafe.grow_capacity) · [`alloc`](#unsafe.alloc) · [`alloc_zeroed`](#unsafe.alloc_zeroed) · [`resize`](#unsafe.resize) · [`free`](#unsafe.free) · [`load8`](#unsafe.load8) · [`load16`](#unsafe.load16) · [`load32`](#unsafe.load32) · [`load64`](#unsafe.load64) · [`load_address`](#unsafe.load_address) · [`load_float`](#unsafe.load_float) · [`load_float32`](#unsafe.load_float32) · [`store8`](#unsafe.store8) · [`store16`](#unsafe.store16) · [`store32`](#unsafe.store32) · [`store64`](#unsafe.store64) · [`store_address`](#unsafe.store_address) · [`store_float`](#unsafe.store_float) · [`store_float32`](#unsafe.store_float32) · [`copy`](#unsafe.copy) · [`move`](#unsafe.move) · [`fill`](#unsafe.fill) · [`read_bytes`](#unsafe.read_bytes) · [`write_bytes`](#unsafe.write_bytes) · [`compare`](#unsafe.compare) · [`call1`](#unsafe.call1) · [`sort`](#unsafe.sort) · [`atomic_load`](#unsafe.atomic_load) · [`atomic_store`](#unsafe.atomic_store) · [`atomic_add`](#unsafe.atomic_add) · [`atomic_sub`](#unsafe.atomic_sub) · [`atomic_cas`](#unsafe.atomic_cas) · [`is_null`](#unsafe.is_null)
 
 ## Constants
 
@@ -53,6 +53,112 @@ end
 | `WORD_SIZE` | `integer` | defined in C |
 
 ## Functions
+
+<a id="unsafe.heap_realloc" />
+```gust
+def foreign heap_realloc(p: integer, size: integer) -> integer
+```
+
+Checked reallocation from the refcount floor.
+
+**Parameters**
+
+- `p: integer` — Address of the existing allocation.
+- `size: integer` — New size in bytes.
+
+---
+
+<a id="unsafe.heap_alloc" />
+```gust
+def foreign heap_alloc(size: integer) -> integer
+```
+
+Checked allocation from the refcount floor; aborts on exhaustion.
+
+**Parameters**
+
+- `size: integer` — Number of bytes to allocate.
+
+---
+
+<a id="unsafe.object_init" />
+```gust
+def foreign object_init(obj: integer, destructor: integer) -> none
+```
+
+Install the refcount header on a freshly allocated object.
+
+**Parameters**
+
+- `obj: integer` — Address of the object.
+- `destructor: integer` — Address of its destructor function.
+
+---
+
+<a id="unsafe.object_header_size" />
+```gust
+def foreign object_header_size() -> integer
+```
+
+Byte size of the refcount header this module's layout starts after.
+
+---
+
+<a id="unsafe.heap_free" />
+```gust
+def foreign heap_free(p: integer) -> none
+```
+
+Release an allocation from the checked heap.
+
+**Parameters**
+
+- `p: integer` — Address to release.
+
+---
+
+<a id="unsafe.raise_error" />
+```gust
+def foreign raise_error(name: string, fmt: string, message: string) -> none
+```
+
+Raise the error type registered under `name`; never returns.
+
+**Parameters**
+
+- `name: string` — Error type name, e.g. "IndexError".
+- `fmt: string` — printf-style format string. Pass "%s" to forward `message` verbatim; the Gust side pre-formats via f-strings.
+- `message: string` — The already-formatted human-readable description.
+
+---
+
+<a id="unsafe.strlen" />
+```gust
+def foreign strlen(s: integer) -> integer
+```
+
+Byte length of the NUL-terminated C string at `s`.
+
+**Parameters**
+
+- `s: integer` — Address of the string.
+
+---
+
+<a id="unsafe.grow_capacity" />
+```gust
+def foreign grow_capacity(cap: integer, needed: integer) -> integer
+```
+
+The shared growth policy: the smallest power-of-two multiple of
+`cap` that reaches `needed`.
+
+**Parameters**
+
+- `cap: integer` — Starting capacity.
+- `needed: integer` — Required minimum capacity.
+
+---
 
 <a id="unsafe.alloc" />
 ```gust

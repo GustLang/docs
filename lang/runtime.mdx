@@ -354,6 +354,16 @@ check here (rather than inlining it in every codegen site) means a
 recursive function with a `try` can no longer write a jmp_buf past the
 array into adjacent thread-local storage.
 
+### g_report_unhandled_error
+
+```c
+void g_report_unhandled_error(const char* fallback_name, const char* fallback_message);
+```
+
+Report an uncaught error in ordinary execution context. Fallback text is
+used when no error record is available (for example, an unknown named
+raise). Reporting leaves error state and termination policy to the caller.
+
 ### _g_raise_unwind
 
 ```c
@@ -378,11 +388,12 @@ void g_raise(const char* error_name, const char* fmt, ...);
 Raise `error_name` with a printf-formatted message. The single public
 named-raise entry point.
 
-Looks up `error_name` in `_g_error_names[]` to find the id and class
-record, allocates a zero-initialized scratch struct sized for any error
-type in this binary (`_g_error_max_size`), and sets the first field
-(`message`, a GStr* per analyzer requirement) to a GStr of the formatted
-text. Other fields read as NULL / zero at the catch site.
+Looks up `error_name` in `_g_error_names[]` to find the matching class
+record in the parallel `_g_error_classes[]`, allocates a zero-initialized
+scratch struct sized for any error type in this binary (`_g_error_max_size`),
+and sets the first field (`message`, a GStr* per the Error interface) to a
+GStr of the formatted text. Other fields read as NULL / zero at the catch
+site.
 
 Unknown names fall through to the uncaught path with error state cleared,
 so a catch arm matches no arm and the uncaught-handler prints cleanly.
@@ -594,102 +605,6 @@ int g_heap_supplied_by_platform(void);
 An image on a platform that places its own heap. Named so the translation
 unit is not empty, which is undefined in C.
 
-## g_net.c
-
-g_net.c — shared TCP / socket helpers
-
-Plain POSIX-socket plumbing factored out of the `http` and
-`websockets` stdlib packages. These helpers do NOT raise: they return
--1 (and leave `errno` / the supplied stage flag set) so each caller can
-raise its own package-specific error message and stay byte-for-byte
-identical to its pre-dedup behavior.
-
-### g_tcp_listen_host
-
-```c
-int g_tcp_listen_host(const char* host, int port, int* stage, int* gai_rc);
-```
-
-getaddrinfo(host, port, AI_PASSIVE) → socket + SO_REUSEADDR + bind + listen
-(backlog 128) on the first resolved IPv4 address that works.
-
-`host` NULL or empty binds the wildcard address (0.0.0.0, every interface),
-matching the port-only g_tcp_listen; a specific address or name ("127.0.0.1",
-"localhost", an interface IP) restricts the socket to it.
-
-Returns the listening fd on success. On failure returns -1 and (when `stage`
-is non-NULL) stores which step failed:
-  - G_NET_LISTEN_RESOLVE: getaddrinfo failed; its non-zero code is stored in
-    `*gai_rc` (when non-NULL) for gai_strerror formatting.
-  - G_NET_LISTEN_SOCKET / _BIND / _LISTEN: the syscall that failed, with
-    `errno` left as it set it.
-
-### g_tcp_listen
-
-```c
-int g_tcp_listen(int port, int* stage);
-```
-
-socket + SO_REUSEADDR + bind(INADDR_ANY:port) + listen(backlog 128).
-
-The wildcard-address case of g_tcp_listen_host; see it for the `stage`
-contract.
-
-### g_tcp_connect
-
-```c
-int g_tcp_connect(const char* host, const char* port, int* gai_rc);
-```
-
-getaddrinfo(host, port) → first socket()+connect() that succeeds.
-
-Returns the connected fd on success. On failure returns -1:
-  - if getaddrinfo itself failed, stores the non-zero return code in
-    `*gai_rc` (when non-NULL) so the caller can format gai_strerror();
-  - if every address failed to connect, leaves `*gai_rc == 0`.
-`errno` is left as set by the last failing socket()/connect().
-
-### g_send_all
-
-```c
-ssize_t g_send_all(int fd, const char* buf, size_t len);
-```
-
-MSG_NOSIGNAL keeps a write to a peer that already went away from raising
-SIGPIPE, whose default disposition would kill the whole process — one
-disconnecting client must not take a server down. Platforms without it fall
-back to plain send(); the EPIPE return path is identical either way.
-
-Write all `len` bytes of `buf` to `fd`, looping on short writes.
-Returns the number of bytes written (== len) on success, or -1 on a real
-error / peer close. A send() interrupted by a signal (EINTR) is retried
-rather than reported as failure — important now that g_signal installs
-handlers without SA_RESTART, so blocking sends are interruptible.
-
-### g_recv_all
-
-```c
-ssize_t g_recv_all(int fd, char* buf, size_t len);
-```
-
-Read exactly `len` bytes from `fd` into `buf`, looping on short reads.
-Returns `len` on success, or -1 on EOF / real error before `len` bytes.
-A recv() interrupted by a signal (EINTR) is retried (see g_send_all).
-
-### g_recv_some
-
-```c
-ssize_t g_recv_some(int fd, char* buf, size_t max);
-```
-
-Read whatever is available right now, up to `max` bytes, in a single recv().
-Unlike g_recv_all this does NOT loop until `max` — it returns as soon as the
-first chunk arrives, which is what byte-stream protocol parsers (HTTP, WS)
-need when they don't know the length up front.
-Returns the byte count (1..max) on success, 0 on a clean peer close (EOF),
-or -1 on a real error. A recv() interrupted by a signal (EINTR) is retried
-rather than reported as EOF (see g_send_all).
-
 ## g_panic.c
 
 g_panic.c — Where a Gust image stops when it cannot go on.
@@ -765,11 +680,25 @@ caller's timeout, so a read never wedges the whole program.
 GProcess* g_process_start(char* const argv[]);
 ```
 
+Fork and exec `argv[0]` with stdin/stdout/stderr redirected to three
+non-blocking parent-side pipes. Returns a heap-allocated GProcess on
+success (caller frees with g_process_free), or NULL on pipe/fork failure
+with errno set. argv is a NULL-terminated conventional execvp argument
+vector; the child reports exec failure as exit code 127 with a message
+on its (now-piped) stderr.
+
 ### g_process_write
 
 ```c
 int64_t g_process_write(GProcess* p, const char* data, int64_t len);
 ```
+
+Write up to `len` bytes from `data` to the child's stdin. Returns the
+number of bytes accepted (may be less than `len` on a full pipe), 0 if the
+pipe is temporarily full or the write was interrupted (retry later), or
+-1 if stdin has been closed on either side; -1 also closes the parent's
+end so a subsequent call short-circuits. SIGPIPE is masked around the
+write so a closed child surfaces as EPIPE instead of killing the parent.
 
 ### g_process_close_stdin
 
@@ -777,11 +706,25 @@ int64_t g_process_write(GProcess* p, const char* data, int64_t len);
 void g_process_close_stdin(GProcess* p);
 ```
 
+Close the parent's end of the child's stdin, signaling EOF to the child.
+Idempotent — a second call is a no-op.
+
 ### g_process_read
 
 ```c
 int g_process_read(GProcess* p, int want_stderr, int64_t max_bytes, int timeout_ms, char** out, int64_t* out_len);
 ```
+
+Read up to `max_bytes` from the child's stdout (want_stderr==0) or stderr
+(nonzero) into a freshly allocated buffer, waiting at most `timeout_ms`
+for the pipe to become readable. Returns a G_PROC_READ_* status:
+  DATA    — *out owns the bytes (caller frees), *out_len is the length
+  TIMEOUT — nothing was readable within the deadline, or the read woke
+            spuriously; retry
+  EOF     — the stream has ended or hit a hard error; the fd has been
+            closed and stored back as -1 so a further call short-circuits
+timeout_ms &lt; 0 blocks indefinitely; max_bytes &lt;= 0 returns DATA with no
+bytes.
 
 ### g_process_read_line
 
@@ -789,11 +732,23 @@ int g_process_read(GProcess* p, int want_stderr, int64_t max_bytes, int timeout_
 int g_process_read_line(GProcess* p, int timeout_ms, char** out, int64_t* out_len);
 ```
 
+Read a single newline-terminated line from the child's stdout, returning
+the line without its trailing '\n' (NUL-terminated) in *out/*out_len.
+Returns G_PROC_READ_DATA with the line, G_PROC_READ_TIMEOUT if nothing
+complete arrived within timeout_ms, or G_PROC_READ_EOF when the stream
+ends with no residual bytes. A final chunk without a trailing newline is
+returned as DATA on the EOF-flushing call. Residual bytes between calls
+live in p->linebuf. timeout_ms &lt; 0 blocks indefinitely.
+
 ### g_process_poll
 
 ```c
 int g_process_poll(GProcess* p);
 ```
+
+Non-blocking check of the child's exit status. Returns the exit code if
+the child has exited (or was already reaped), or -1 if it is still
+running. On exit, reaps the child so a later wait/poll stays consistent.
 
 ### g_process_wait
 
@@ -801,11 +756,21 @@ int g_process_poll(GProcess* p);
 int g_process_wait(GProcess* p, int timeout_ms);
 ```
 
+Wait for the child to exit, with timeout_ms &lt; 0 blocking indefinitely and
+timeout_ms >= 0 giving up after that many milliseconds. Returns the exit
+code once reaped, or -1 if the timeout elapsed while the child is still
+running. On the bounded path the kernel offers no portable wait-with-
+timeout, so this spin-polls at 5ms granularity until the deadline.
+
 ### g_process_signal
 
 ```c
 void g_process_signal(GProcess* p, int sig);
 ```
+
+Send signal `sig` to the child if it has not already been reaped.
+Common choices are SIGTERM for a polite stop and SIGKILL for a forced
+one; a reaped child is a silent no-op.
 
 ### g_process_pid
 
@@ -813,32 +778,37 @@ void g_process_signal(GProcess* p, int sig);
 int64_t g_process_pid(GProcess* p);
 ```
 
+The child's OS process id, widened to int64_t for the Gust-side handle.
+
 ### g_process_free
 
 ```c
 void g_process_free(GProcess* p);
 ```
 
+Release every resource owned by `p`: close any still-open parent-side
+pipes, SIGKILL + reap the child if it is still running (so it does not
+become a zombie), free the line buffer, and free the struct itself.
+NULL is a no-op.
+
 ## g_prof_auto.c
 
 g_prof_auto.c — automatic whole-program profiler
 
-Backs `gust build --profile`, which compiles the generated program with
-`-finstrument-functions`. GCC then calls the two hooks below around every
-Gust function, and this file turns that stream into the call table
-`profile.print_stats()` prints by hand: ncalls, tottime (excluding
-callees), cumtime (including them), and the caller → callee edges behind
-each one.
+Backs `gust build --profile`. The compiler instruments the generated
+translation unit with `-finstrument-functions`, which routes every Gust
+call through the two hooks defined here. The hooks accumulate per-function
+call counts, own-time (excluding callees), cumulative time (including
+them), and caller → callee edges; `g_prof_dump` prints the table.
 
-Only the generated translation unit carries the instrumentation, so the
-table holds Gust functions — user and stdlib — and never the hand-written
-runtime C, which is compiled separately and so cannot recurse back into
-these hooks.
+Only the generated TU is instrumented, so the table never contains the
+hand-written runtime C and the hooks cannot recurse back into themselves
+through runtime calls.
 
-The hot path stays lock-free: a slot is claimed under a mutex the first
-time a function is seen, and every later call only probes the table and
-bumps counters atomically. Per-thread state lives in thread-local storage,
-so threads bill their own subtrees without contending.
+The hot path is lock-free: a slot is claimed under a mutex the first time
+a function is seen; every later call probes the table and bumps counters
+atomically. Per-thread state lives in thread-local storage so threads bill
+their own subtrees without contending.
 
 ### g_prof_dump
 
@@ -849,17 +819,35 @@ void g_prof_dump(void);
 No signals, no dladdr, no host stdio worth the space — the profiler is a
 hosted-build tool, so these targets get the entry point and nothing else.
 
+Public no-op so freestanding and wasm images link against the same symbol
+the hosted runtime exposes.
+
+Writes the profile report to GUST_PROFILE_OUT (or stdout) and returns.
+Idempotent: concurrent calls from atexit, the SIGINT handler, and the
+fatal-signal path are serialized by a compare-exchange so the table is
+only printed once. GUST_PROFILE_TOP controls how many rows the two
+tables keep.
+
 ### __cyg_profile_func_enter
 
 ```c
-void __cyg_profile_func_enter(void* this_fn, void* call_site);
+__attribute__((no_instrument_function)) void __cyg_profile_func_enter(void* this_fn, void* call_site);
 ```
+
+GCC/Clang `-finstrument-functions` entry hook. Claims a slot for
+`this_fn`, pushes a frame on the per-thread stack, and records the start
+time. The hooks themselves must not be instrumented, hence
+`no_instrument_function`.
 
 ### __cyg_profile_func_exit
 
 ```c
-void __cyg_profile_func_exit(void* this_fn, void* call_site);
+__attribute__((no_instrument_function)) void __cyg_profile_func_exit(void* this_fn, void* call_site);
 ```
+
+`-finstrument-functions` exit hook. Pops the top frame, accrues elapsed
+time to its function and (unless the call is recursive) to its parent's
+child_ns, and bumps the matching caller → callee edge.
 
 ## g_refcount.c
 
@@ -883,9 +871,8 @@ and store, since there is no second thread to order against. See
 `g_threads_live` in g_runtime.h for why that stays correct once threads
 do appear.
 
-Cycles are not yet handled. The `cycle_color` and `flags` fields
-in the header are reserved for a future trial-deletion (Bacon-Rajan)
-cycle collector.
+Cycles are not yet handled. The `cycle_color` field is reserved for a
+future cycle collector; `flags` also carries the immortal-object marker.
 
 ### g_object_init
 
@@ -893,11 +880,15 @@ cycle collector.
 void g_object_init(void* obj, GDestructor destructor);
 ```
 
+Initialize a new object with one owned reference and an optional destructor.
+
 ### g_live_object_count
 
 ```c
 int64_t g_live_object_count(void);
 ```
+
+Return the number of live heap objects, excluding arena allocations.
 
 ### g_threads_begin
 
@@ -905,11 +896,7 @@ int64_t g_live_object_count(void);
 void g_threads_begin(void);
 ```
 
-### g_inc_ref
-
-```c
-void g_inc_ref(void* obj);
-```
+Enable atomic reference updates before creating the first worker thread.
 
 ### g_dec_ref_release
 
@@ -917,23 +904,15 @@ void g_inc_ref(void* obj);
 void g_dec_ref_release(void* obj);
 ```
 
+Destroy and reclaim an object whose reference count has reached zero.
+
 ### g_dec_ref_underflow
 
 ```c
 void g_dec_ref_underflow(void* obj, int64_t prev);
 ```
 
-### g_dec_ref
-
-```c
-void g_dec_ref(void* obj);
-```
-
-### g_ref_count
-
-```c
-int64_t g_ref_count(void* obj);
-```
+Report an invalid release when runtime assertions are enabled.
 
 ### g_dec_ref_indirect
 
@@ -941,11 +920,7 @@ int64_t g_ref_count(void* obj);
 void g_dec_ref_indirect(void* elem_slot);
 ```
 
-### g_inc_ref_indirect
-
-```c
-void g_inc_ref_indirect(void* elem_slot);
-```
+Release the object pointer stored in a container element slot; NULL is ignored.
 
 ### g_str_free_indirect
 
@@ -953,11 +928,15 @@ void g_inc_ref_indirect(void* elem_slot);
 void g_str_free_indirect(void* elem_slot);
 ```
 
+Free the owned C string stored in an element slot; NULL is ignored.
+
 ### g_refcell_new
 
 ```c
 void* g_refcell_new(size_t payload_size, GDestructor payload_dtor);
 ```
+
+Allocate an aligned payload with one owned reference and an optional destructor.
 
 ### g_refcell_inc
 
@@ -965,23 +944,23 @@ void* g_refcell_new(size_t payload_size, GDestructor payload_dtor);
 void g_refcell_inc(void* payload);
 ```
 
+Retain a cell through its payload pointer; NULL is ignored.
+
 ### g_refcell_dec
 
 ```c
 void g_refcell_dec(void* payload);
 ```
 
-### g_refcell_inc_indirect
-
-```c
-void g_refcell_inc_indirect(void* elem_slot);
-```
+Release a cell through its payload pointer; NULL is ignored.
 
 ### g_refcell_dec_indirect
 
 ```c
 void g_refcell_dec_indirect(void* elem_slot);
 ```
+
+Release the cell payload pointer stored in an element slot; NULL is ignored.
 
 ### g_heap_alloc
 
@@ -994,11 +973,15 @@ Gust-authored runtime modules can't see static-inline header helpers or
 `sizeof(GObjectHeader)`, so the refcount floor exports linkable seams:
 checked allocation and the header size their layouts start after.
 
+Expose arena-aware checked allocation to Gust runtime modules.
+
 ### g_heap_realloc
 
 ```c
 void* g_heap_realloc(void* p, size_t n);
 ```
+
+Resize storage through the arena-aware checked allocator.
 
 ### g_heap_free
 
@@ -1006,11 +989,15 @@ void* g_heap_realloc(void* p, size_t n);
 void g_heap_free(void* p);
 ```
 
+Release checked storage unless its arena owns reclamation.
+
 ### g_object_header_size
 
 ```c
 size_t g_object_header_size(void);
 ```
+
+Return the header size used to lay out Gust-authored runtime objects.
 
 ## g_signal.c
 
@@ -1089,6 +1076,11 @@ exported `g_slice_*` ABI; neither reaches into the layout.
 GSlice* g_slice_from_strs(int64_t count, ...);
 ```
 
+Build a typed `GSlice` of `GStr*` owning `count` elements copied
+from the trailing `char *` C-string arguments. Each element is
+released through `g_str_dec_ref_indirect` when the slice drops. A
+null trailing argument becomes an empty `GStr`.
+
 ### g_slice_str_repr
 
 ```c
@@ -1138,17 +1130,13 @@ as `true` or `false`.
 g_spawn.c — shared subprocess capture
 
 One fork/exec/pipe/drain/waitpid implementation backing the three
-`system.capture*` entry points. It unifies:
-  - plain capture            (stdin from /dev/null, blocking drain)
-  - capture with stdin data  (stdin from a fed pipe, blocking drain)
-  - capture with a timeout   (non-blocking poll-drain, SIGKILL on deadline)
+`subprocess.capture*` entry points: plain capture (stdin from /dev/null),
+capture with stdin data (stdin from a fed pipe), and capture with a
+timeout (SIGKILL on deadline).
 
-The behavior is byte-for-byte identical to the previous hand-rolled
-blocks: same child fd setup/order, same EINTR/partial-read handling,
-same 4096-byte initial buffer doubling, same wait-status decoding, same
-"free/close before any raise" discipline. This helper itself never
-raises — on a setup failure it returns a negative G_SPAWN_ERR_* code
-with errno left set so each caller can raise its own message.
+This helper never raises — on a setup failure it returns a negative
+G_SPAWN_ERR_* code with errno left set so each caller can raise its
+own message.
 
 ### g_spawn_capture
 
@@ -1156,46 +1144,38 @@ with errno left set so each caller can raise its own message.
 int g_spawn_capture(char* const argv[], const char* stdin_data, size_t stdin_len, int timeout_ms, char** out_buf, size_t* out_len);
 ```
 
+Fork/exec `argv[0]` and capture its merged stdout+stderr into a heap
+buffer. When `stdin_data` is non-NULL the child's stdin receives
+`stdin_len` bytes interleaved with the drain to avoid deadlock on
+children that stream their input back out; otherwise stdin is
+redirected from /dev/null. When `timeout_ms > 0` the child is sent
+SIGKILL on deadline. `*out_buf` receives a NUL-terminated caller-owned
+buffer and `*out_len` its byte length (excluding the NUL). Returns the
+child's exit code (128+signal if killed; -1 on timeout), or a negative
+G_SPAWN_ERR_* code on setup failure with errno set and `*out_buf` NULL.
+
 ## g_str.c
 
-g_str.c — refcounted, length-prefixed string objects (GStr)
+g_str.c — refcounted, length-prefixed string objects (GStr).
 
-Background: Gust strings have historically lowered to `char *`
-everywhere. That makes ownership invisible to the codegen — the
-scope-exit drop pass cannot drop a pointer it cannot tell apart
-from a borrow. It also forces every `s.length` access to call
-`strlen()`, which is O(N) per call and dominates Lexer hot paths.
+The object core: constructors, the immortal empty singleton, the 256-entry
+single-byte intern table, the sentinel-refcount paths, the memoized hash,
+and the variadic `g_str_concat_n` / `g_str_fmt` entry points. The pure
+string logic (eq/cmp, concat, split/join, indexing, chr, the FFI takeover
+bridges) is authored in Gust in `runtime/g_str.g` over the ABI this file
+exports.
 
-GStr fixes both problems:
-  - it embeds a refcount header (`G_OBJECT_HEADER`), so the
-    ownership tracker can treat it the same as `[]T` / `dict[K,V]`
-    / `bytes` — a refcounted heap pointer with `g_inc_ref` /
-    `g_dec_ref` semantics.
-  - it stores `len` alongside `data`, so `.length` is O(1) and
-    downstream operations can use `memcpy`/`memcmp` instead of the
-    SSE strlen variants the perf reports keep flagging as a hot
-    spot.
+GStr embeds `G_OBJECT_HEADER` so the ownership tracker handles it like any
+other refcounted heap pointer, and it stores `len` alongside `data` so
+`.length` is O(1) and payload operations use `memcpy`/`memcmp` rather than
+`strlen` sweeps.
 
 Static literals: a sentinel refcount marks a GStr that survives
-`g_dec_ref`. Source string literals never reach this file at all —
-codegen lowers each one to a statically initialized `static GStr`
-through the `G_STR_LIT` macro in g_runtime.h, so a literal costs no
-allocation and no first-use check. `g_str_static` builds the same
-shape at runtime for strings only the runtime knows.
-
-This file lives next to the existing `g_string.c`. The two are
-intentionally separate — `g_string.c` provides the legacy
-`char *`-flavored string helpers used by stdlib `.c` glue and
-`Buffer`/format internals, and stays around through the Phase A
-codegen migration. New runtime entry points should prefer GStr.
-
-What remains here is the GStr object core the Gust-authored module
-runtime/g_str.g builds on: constructors and the C-static intern
-caches (empty singleton, single-byte table), the
-sentinel-refcount paths, the memoized hash, and the variadic
-g_str_concat_n / g_str_fmt. The pure string logic (eq/cmp, concat,
-split/join, indexing, chr, the FFI takeover bridges) lives in
-g_str.g over this exported ABI.
+`g_dec_ref`. Source string literals never reach this file at all — codegen
+lowers each one to a statically initialized `static GStr` through the
+`G_STR_LIT` macro in `g_runtime.h`, so a literal costs no allocation and
+no first-use check. `g_str_static` builds the same shape at runtime for
+strings only the runtime knows.
 
 ### g_str_new
 
@@ -1203,17 +1183,35 @@ g_str.g over this exported ABI.
 GStr* g_str_new(const char* src, size_t len);
 ```
 
+Build a fresh GStr from `len` bytes of `src` (which may be NULL for an
+uninitialized payload the caller fills in place). Returns a refcount=1
+owned GStr; `len == 0` returns the shared immortal empty singleton.
+
 ### g_str_static
 
 ```c
 GStr* g_str_static(const char* src, size_t len);
 ```
 
+Build an immortal GStr the runtime (not the compiler) knows at build time.
+The sentinel refcount makes subsequent inc/dec pairs no-ops, so it survives
+arena pops and never enters the collector. The destructor is left set so a
+code path that bypasses `g_dec_ref` still works.
+
+The allocation is bracketed out of any live arena because these back
+process-lifetime caches (the single-byte intern table), which must outlive
+every per-compile arena.
+
 ### g_str_inc_ref
 
 ```c
 void g_str_inc_ref(GStr* s);
 ```
+
+Exported, out-of-line counterparts to the header's `g_str_inc_ref_fast` /
+`g_str_dec_ref_fast`. Runtime `.g` modules bind to these fixed symbols via
+`@c_name`, and callbacks (destructor table entries, indirect dispatchers)
+need an addressable function. Bodies are the fast paths one-for-one.
 
 ### g_str_dec_ref
 
@@ -1227,11 +1225,19 @@ void g_str_dec_ref(GStr* s);
 const char* g_str_cstr(const GStr* s);
 ```
 
+Return the NUL-terminated byte payload. NULL-safe: a caller passing a
+possibly-NULL GStr (e.g. a `union(string|none)` that is currently none)
+gets `""` back and can hand it to any C API expecting `const char*`
+without segfaulting.
+
 ### g_str_len
 
 ```c
 size_t g_str_len(const GStr* s);
 ```
+
+Length of the payload in bytes, excluding the trailing NUL. NULL-safe:
+returns 0 for a NULL GStr.
 
 ### g_str_hash
 
@@ -1239,13 +1245,16 @@ size_t g_str_len(const GStr* s);
 uint64_t g_str_hash(const GStr* s);
 ```
 
-FNV-1a hash of the payload, computed once and memoized on the GStr. The
-same algorithm the dict used to run on every access; caching it here means
-a key looked up K times is hashed once. 0 is the "unset" sentinel, so a
-computed hash of 0 is folded to 1. NULL hashes as the empty string. The
-memoizing write is benign under gust's threading: racing threads compute
-and store the identical value, and an aligned 64-bit store is atomic on the
-supported targets.
+Memoized FNV-1a hash of the payload — hashed once and cached on the GStr,
+read O(1) thereafter. 0 is the "unset" sentinel, so a computed hash of 0
+is folded to 1. NULL hashes as the empty string. The memoizing write is
+benign under racing threads: both compute the identical value, and an
+aligned 64-bit store is atomic on the supported targets.
+
+Immortal GStrs arrive with `hash` already filled (literals from the
+compiler, runtime-built ones from `g_str_make_immortal`), so only ordinary
+heap strings reach the memoizing store. A literal lives in read-only
+memory, where that write would fault.
 
 ### g_str_one_byte
 
@@ -1253,18 +1262,12 @@ supported targets.
 GStr* g_str_one_byte(int64_t b);
 ```
 
-Interned single-byte strings. `s[i]` returns the i-th byte as a one-char
-string, and there are only 256 possible byte values — so we intern them
-as sentinel-refcount GStrs (allocated once, never freed). String indexing
-in hot paths (the lexer reads `source[pos]` millions of times) then
-allocates nothing, and dropping the result is a no-op. Replaces the old
-`g_str_takeover_cstr(g_str_char_at(...))` lowering which malloc'd a fresh
-GStr per index.
+Return the interned single-byte GStr for the low 8 bits of `b` — one of
+256 immortal sentinel-refcount objects built once on first use.
 
-Return the interned single-byte GStr for byte `b` (one of 256 immortal
-sentinel-refcount objects, built once). Shared by string indexing and by
-any producer of one-byte strings (e.g. `split("")`) so none of them
-allocate.
+Shared by string indexing (`s[i]`) and by any producer of one-byte strings
+(e.g. `split("")`), so none of them allocate and dropping the result is a
+no-op.
 
 ### g_str_concat_n
 
@@ -1272,13 +1275,12 @@ allocate.
 GStr* g_str_concat_n(int64_t count, ...);
 ```
 
-g_str_concat_n — concatenate `count` GStr* arguments in a single
-allocation. Walks the va_list twice: once to sum the lengths, once to
-copy each fragment into place. This avoids the O(n²) byte copying of a
-chain of `g_str_concat_o` calls (each of which reallocates and recopies
-the accumulated prefix). NULL args contribute nothing. Same
-direct-malloc / refcount conventions as `g_str_concat_o`: returns a
-fresh refcount=1 GStr the caller owns.
+Concatenate `count` GStr* arguments in a single allocation. Walks the
+va_list twice: once to sum the lengths, once to copy each fragment into
+place. This avoids the O(n²) byte copying of a chain of `g_str_concat_o`
+calls (each of which reallocates and recopies the accumulated prefix).
+NULL args contribute nothing. Returns a fresh refcount=1 GStr the caller
+owns.
 
 ### g_str_fmt
 
@@ -1286,20 +1288,18 @@ fresh refcount=1 GStr the caller owns.
 GStr* g_str_fmt(const char* fmt, ...);
 ```
 
-g_str_fmt — formatted GStr. printf-style `fmt` is consumed as a
-plain C string (codegen passes `g_str_cstr(literal)` for a static
-format). Returns an owned GStr.
+printf-style formatted GStr. `fmt` is a plain C string (codegen passes
+`g_str_cstr(literal)` for a static format). Returns a fresh refcount=1
+owned GStr.
 
 ## g_string.c
 
-g_string.c — printf-shaped formatting, type conversions, and input.
-
-The `char *`-domain string logic (case mapping, trim/pad, search,
-replace, substring/slice, join, base64/hex codecs) lives in the
-Gust-authored runtime module runtime/g_string.g. What remains here is
-the floor that module cannot express: the variadic g_fmt, the
-printf-`%g`-dependent float formatters, libm rounding, and the
-raw-terminal g_input line editor.
+g_string.c — the printf-shaped, libm-dependent, and raw-terminal floor
+that runtime/g_string.g cannot express: the variadic g_fmt, the two
+float formatters that need `%g`/`%.1f`, libm rounding, and the
+g_input line editor. Every `char *`-domain helper (case mapping,
+trim/pad, search, replace, substring/slice, join, base64/hex codecs)
+lives in the Gust-authored module.
 
 ### g_fmt
 
@@ -1307,11 +1307,19 @@ raw-terminal g_input line editor.
 char* g_fmt(const char* fmt, ...);
 ```
 
+Format `fmt` with the trailing args into a freshly g_checked_malloc'd
+C string; the caller owns the result. Sized with a probe vsnprintf so
+the output buffer is exactly `n + 1` bytes.
+
 ### g_float_display
 
 ```c
 char* g_float_display(double v);
 ```
+
+Format `v` for display inside a collection or f-string. Integer-valued
+floats render as "3.0" (not "%g"'s "3") so the printed type stays
+visibly float; everything else goes through "%g".
 
 ### g_int_to_str
 
@@ -1321,11 +1329,18 @@ char* g_int_to_str(int64_t v);
 
 ── Type conversions ────────────────────────────────────────────
 
+Format an int64_t as its decimal spelling into a freshly allocated
+C string.
+
 ### g_float_to_str
 
 ```c
 char* g_float_to_str(double v);
 ```
+
+Format `v` as a bare "%g" string, canonicalized for the three
+non-finite spellings. Used where a plain float→string cast is
+requested; `g_float_display` is the collection/f-string variant.
 
 ### g_round
 
@@ -1333,11 +1348,22 @@ char* g_float_to_str(double v);
 double g_round(double x, int64_t decimals);
 ```
 
+Return `x` rounded to `decimals` decimal places using libm's
+banker's-rounding-free round-half-away-from-zero.
+
 ### g_input
 
 ```c
 char* g_input(const char* prompt);
 ```
+
+Read a single line from stdin after printing `prompt`. On a hosted
+POSIX TTY the raw-mode editor handles left/right arrows, Home/End,
+backspace, Delete, Ctrl-A/E, Ctrl-D (delete-forward), and Ctrl-C
+(restores the terminal and exits 130). Everywhere else — pipes,
+redirected input, Windows, and freestanding — falls back to the
+plain line reader. Returns a freshly allocated C string the caller
+owns.
 
 ## g_trace.c
 
@@ -1403,15 +1429,27 @@ Pop one frame on any normal scope exit. Reached only through the
 a dummy local. longjmp does NOT run cleanups, so the try machinery restores
 g_frame_depth separately.
 
-### g_print_raise_traceback
+### g_print_frames_upto
 
 ```c
-void g_print_raise_traceback(void);
+void g_print_frames_upto(int64_t depth);
 ```
 
-Traceback for an uncaught raise, called from generated code at the top-level
-catch. g_frame_depth has already unwound to the handler, so this walks to
-the raise-time depth captured by g_raise.
+Walk the shadow stack frames [0, depth) and write them to stderr,
+most-recent-first. Async-signal-safe (write(2) only), so the fatal-signal
+handler can share it; the writers are equally correct in normal context.
+
+### dispatch_traceback_hook
+
+```c
+void dispatch_traceback_hook(void);
+```
+
+### frames_to_slice
+
+```c
+GSlice* frames_to_slice(int64_t depth);
+```
 
 ## g_trace_hook.c
 
@@ -1447,8 +1485,9 @@ report nothing.
 bool g_trace_reports(void);
 ```
 
-Whether a raise should report itself — the guard `g_raise` reads before
-doing the work of looking up the frame it is unwinding out of.
+True when an event should be delivered: the program was built with --trace,
+a hook is installed, and no dispatch is already running on this thread.
+`g_raise` reads this before looking up the frame it is unwinding out of.
 
 ### g_trace_call
 
@@ -1456,11 +1495,16 @@ doing the work of looking up the frame it is unwinding out of.
 void g_trace_call(const char* function, const char* package, const char* file, int64_t line, int64_t argc, const char* const* arg_names, const char* const* arg_types, const GValue* arg_values);
 ```
 
+Report a function entry: name, position, and the argument tuple of names,
+type labels, and boxed values. Inert when `g_trace_reports` is false.
+
 ### g_trace_return
 
 ```c
 void g_trace_return(const char* function, const char* package, const char* file, int64_t line, GValue ret);
 ```
+
+Report a function return at `line` with the boxed return value.
 
 ### g_trace_exception
 
@@ -1468,11 +1512,20 @@ void g_trace_return(const char* function, const char* package, const char* file,
 void g_trace_exception(const char* function, const char* package, const char* file, int64_t line);
 ```
 
+Report a raise unwinding past `function` at `line`. Called from `g_raise`
+for every frame it tears down.
+
 ### g_trace_hook_install
 
 ```c
 void g_trace_hook_install(GClosure* hook, int64_t dispatch, bool instrumented);
 ```
+
+Install a hook. Claims a reference on `hook` so a closure built only to
+install the hook outlives the call that installed it, and releases the one
+it replaces. `dispatch` is the address of the trace package's dispatcher
+(the Gust function that builds a TraceInfo and calls the hook);
+`instrumented` reports whether the program was built with `--trace`.
 
 ### g_trace_hook_uninstall
 
@@ -1480,11 +1533,16 @@ void g_trace_hook_install(GClosure* hook, int64_t dispatch, bool instrumented);
 void g_trace_hook_uninstall(void);
 ```
 
+Clear the installed hook. The dispatcher pointer and the instrumented flag
+stay — the next install replaces both.
+
 ### g_trace_enabled
 
 ```c
 bool g_trace_enabled(void);
 ```
+
+Whether any hook is currently installed.
 
 ### g_trace_current_hook
 
@@ -1507,11 +1565,15 @@ under this module after the first event.
 int64_t g_trace_event_kind(void);
 ```
 
+The kind of event currently being dispatched (see G_TRACE_EVENT_*).
+
 ### g_trace_frame_function
 
 ```c
 char* g_trace_frame_function(void);
 ```
+
+Name of the function whose event is being dispatched. Caller owns the copy.
 
 ### g_trace_frame_package
 
@@ -1519,11 +1581,15 @@ char* g_trace_frame_function(void);
 char* g_trace_frame_package(void);
 ```
 
+Package the current function belongs to. Caller owns the copy.
+
 ### g_trace_frame_file
 
 ```c
 char* g_trace_frame_file(void);
 ```
+
+Source file the current event was raised from. Caller owns the copy.
 
 ### g_trace_frame_line
 
@@ -1531,11 +1597,15 @@ char* g_trace_frame_file(void);
 int64_t g_trace_frame_line(void);
 ```
 
+1-based source line the current event was raised from.
+
 ### g_trace_frame_arg_count
 
 ```c
 int64_t g_trace_frame_arg_count(void);
 ```
+
+Argument count for the current call event; 0 for return and exception.
 
 ### g_trace_frame_arg_name
 
@@ -1543,11 +1613,15 @@ int64_t g_trace_frame_arg_count(void);
 char* g_trace_frame_arg_name(int64_t i);
 ```
 
+Name of the `i`th parameter of the current call. Caller owns the copy.
+
 ### g_trace_frame_arg_type
 
 ```c
 char* g_trace_frame_arg_type(int64_t i);
 ```
+
+Type label of the `i`th parameter of the current call. Caller owns the copy.
 
 ### g_trace_frame_arg_value
 
@@ -1555,10 +1629,10 @@ char* g_trace_frame_arg_type(int64_t i);
 GValue g_trace_frame_arg_value(int64_t i);
 ```
 
-The two boxed-value accessors hand back a reference the caller owns, for the
-same reason g_trace_current_hook does: generated code drops what a call
-returns. The boxes themselves point at storage the traced function still
-owns, so the count has to go up before one leaves this module.
+Boxed value of the `i`th argument of the current call. The caller owns the
+returned reference: generated code drops what a call returns, and the box
+points at storage the traced function still owns, so the count has to go
+up before the value leaves this module.
 
 ### g_trace_return_value
 
@@ -1566,15 +1640,17 @@ owns, so the count has to go up before one leaves this module.
 GValue g_trace_return_value(void);
 ```
 
+Boxed return value of the current return event. Caller owns the reference,
+for the same reason g_trace_frame_arg_value does.
+
 ## g_value.c
 
-g_value.c — tagged union (GValue) for Any / union types
+g_value.c — tagged union (GValue) for Any / union types.
 
-Permanent floor: GValue travels BY VALUE through every box/unbox site —
-codegen emits its compound literals and field reads directly, so the
-layout is part of the emitted ABI and can never go opaque behind a
-Gust-authored module. What lives here is thin by-value dispatch over
-that layout (plus the %g formatters and 2-argument repr thunks).
+GValue travels by value through every box/unbox site: codegen emits its
+compound literals and field reads directly, so the layout is part of the
+emitted ABI. What lives here is by-value dispatch over that layout plus the
+repr/json formatters that need libc or the string runtime.
 
 ### g_value_int
 
@@ -1582,11 +1658,15 @@ that layout (plus the %g formatters and 2-argument repr thunks).
 GValue g_value_int(int64_t v);
 ```
 
+Box a 64-bit integer into a GValue.
+
 ### g_value_float
 
 ```c
 GValue g_value_float(double v);
 ```
+
+Box a double into a GValue.
 
 ### g_value_str
 
@@ -1594,11 +1674,16 @@ GValue g_value_float(double v);
 GValue g_value_str(GStr* v);
 ```
 
+Box a GStr pointer into a GValue. The caller retains ownership; owning
+Any-slot sites bump the refcount through g_value_inc_ref.
+
 ### g_value_bool
 
 ```c
 GValue g_value_bool(bool v);
 ```
+
+Box a bool into a GValue.
 
 ### g_value_none
 
@@ -1606,17 +1691,16 @@ GValue g_value_bool(bool v);
 GValue g_value_none(void);
 ```
 
+The empty box: tag is G_VAL_NONE and the payload is unused.
+
 ### g_value_ptr
 
 ```c
 GValue g_value_ptr(void* v);
 ```
 
-### g_value_ptr_r
-
-```c
-GValue g_value_ptr_r(void* v, char* (*repr)(const void*, int));
-```
+Box a bare pointer with no repr or type tag. NULL collapses to g_value_none,
+so an unboxed `none` and an unboxed null pointer round-trip identically.
 
 ### g_value_ptr_t
 
@@ -1624,11 +1708,19 @@ GValue g_value_ptr_r(void* v, char* (*repr)(const void*, int));
 GValue g_value_ptr_t(void* v, const char* type_tag);
 ```
 
+Box a pointer with a canonical static type tag (e.g. "[]string"). The tag
+backs runtime type tests and lets owning Any-slot collections identify
+refcounted payloads. NULL collapses to g_value_none.
+
 ### g_value_ptr_rt
 
 ```c
 GValue g_value_ptr_rt(void* v, char* (*repr)(const void*, int), const char* type_tag);
 ```
+
+Box a pointer with a type tag and a repr thunk. The thunk lets an Any-typed
+collection or struct print or serialize its contents instead of a bare
+address. NULL collapses to g_value_none.
 
 ### g_value_ptr_cell_t
 
@@ -1636,11 +1728,18 @@ GValue g_value_ptr_rt(void* v, char* (*repr)(const void*, int), const char* type
 GValue g_value_ptr_cell_t(void* v, const char* type_tag);
 ```
 
+Box a refcell-backed value struct/tuple/ADT with its type tag. ptr_cell is
+set so owning Any-slot sites count through g_refcell_inc/dec and the heap
+copy is freed with the last reference. NULL collapses to g_value_none.
+
 ### g_value_ptr_cell_rt
 
 ```c
 GValue g_value_ptr_cell_rt(void* v, char* (*repr)(const void*, int), const char* type_tag);
 ```
+
+Box a refcell-backed payload with both a repr thunk and a type tag. NULL
+collapses to g_value_none.
 
 ### g_value_truthy
 
@@ -1648,11 +1747,21 @@ GValue g_value_ptr_cell_rt(void* v, char* (*repr)(const void*, int), const char*
 bool g_value_truthy(GValue v);
 ```
 
+Truthiness for a boxed (Any / union) value: none, 0, 0.0 and the empty
+string are falsy. A pointer payload is untyped here, so it cannot be
+length-tested and is truthy whenever non-NULL; concrete-typed list/dict
+operands are length-tested at the call site.
+
 ### g_value_eq
 
 ```c
 bool g_value_eq(GValue a, GValue b);
 ```
+
+Value equality between two boxed operands. Mismatched tags are never equal;
+scalars compare by value, strings by byte content, pointer payloads by
+identity (value equality of two boxed containers would need their element
+types, unknown at this seam).
 
 ### g_value_to_str
 
@@ -1660,16 +1769,21 @@ bool g_value_eq(GValue a, GValue b);
 char* g_value_to_str(GValue v);
 ```
 
+Render a boxed value for `print` and `str`: a scalar formats like its
+unboxed form, a string renders unquoted, and a pointer payload runs its
+box-time repr thunk, or falls back to a bare address when none was
+recorded. Returns an owned char*.
+
 ### g_value_to_repr
 
 ```c
 char* g_value_to_repr(GValue v);
 ```
 
-Like g_value_to_str, but renders a boxed string quoted — used when a GValue
-is an element of a collection being repr'd, so an `Any`-typed string element
-prints `"s"` just as a statically-typed string element does. A bare
-`print(any_value)` keeps using g_value_to_str (no quotes).
+Render a boxed value for inclusion in another repr: like g_value_to_str,
+but a boxed string prints quoted so an `Any`-typed element matches the
+statically-typed element's output. A bare `print(any_value)` keeps using
+g_value_to_str.
 
 ### g_value_to_json
 
@@ -1677,16 +1791,21 @@ prints `"s"` just as a statically-typed string element does. A bare
 char* g_value_to_json(GValue v);
 ```
 
+Serialize a boxed value to compact JSON. A pointer payload defers to its
+box-time thunk in G_RENDER_JSON mode; a bare untyped pointer has no schema
+and encodes as null. Returns an owned char*.
+
 ### g_value_inc_ref
 
 ```c
 void g_value_inc_ref(GValue v);
 ```
 
-Retain the payload of an Any (GValue) copied into an owning collection slot:
-a boxed string bumps its GStr refcount, a refcounted container bumps its
-object refcount, and scalars / struct boxes are no-ops. Pairs with
-g_value_dec_ref_indirect on the drop side.
+Retain the payload of an Any copied into an owning slot: a boxed string
+bumps its GStr refcount, a refcell-boxed payload bumps the cell's count,
+and a refcounted container bumps its object refcount. Scalars and bare
+struct boxes are no-ops. Pairs with g_value_dec_ref / g_value_dec_ref_indirect
+on the drop side.
 
 ### g_value_dec_ref
 
@@ -1695,9 +1814,8 @@ void g_value_dec_ref(GValue v);
 ```
 
 Release the payload a by-value Any owns: the counterpart of g_value_inc_ref
-for an Any-typed local or return temp (as opposed to one living in a
-collection slot). A boxed string / refcounted container / refcell drops its
-+1; scalars and struct boxes are no-ops.
+for an Any-typed local or return temp. A boxed string / refcounted container
+/ refcell drops its +1; scalars and bare struct boxes are no-ops.
 
 ### g_value_dec_ref_indirect
 
@@ -1705,5 +1823,6 @@ collection slot). A boxed string / refcounted container / refcell drops its
 void g_value_dec_ref_indirect(void* elem_slot);
 ```
 
-Drop the payload of an Any stored at `*elem_slot` when its owning collection
-is destroyed — the g_value_inc_ref counterpart.
+Release the payload of an Any stored at `*elem_slot` when its owning
+collection is destroyed. Installed as the element destructor for Any-slot
+containers, where the slot address is what the destroyer has in hand.

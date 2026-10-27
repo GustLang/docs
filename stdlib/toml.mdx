@@ -28,7 +28,29 @@ def main() -> none
 end
 ```
 
-**On this page:** [`TomlParser`](#TomlParser) · [`TomlError`](#TomlError) · [`encode`](#toml.encode) · [`parse`](#toml.parse)
+**On this page:** [`TomlError`](#TomlError) · [`TomlParser`](#TomlParser) · [`TomlError`](#TomlError) · [`encode`](#toml.encode) · [`parse`](#toml.parse)
+
+## `TomlError`
+
+<a id="TomlError" />
+Raised by `parse` on malformed TOML. `message` describes the
+problem; `line` is the 1-based source line it was detected on.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def TomlError implements prelude.Error, Error
+
+    message: string
+    line: integer
+
+end
+```
+
+**Fields**
+
+- `message: string` — human-readable description of the parse failure.
+- `line: integer` — the 1-based source line the error was detected on.
 
 ## `TomlParser`
 
@@ -345,10 +367,10 @@ switching tables on `[header]` / `[[array]]` lines.
 Raised by `parse` on malformed TOML. `message` describes the
 problem; `line` is the 1-based source line it was detected on.
 
-**Implements:** [`Error`](#Error)
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
 
 ```gust
-def TomlError implements Error
+def TomlError implements prelude.Error, Error
 
     message: string
     line: integer

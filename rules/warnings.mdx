@@ -9,7 +9,7 @@ description: "The warnings gust check reports, grouped by category."
 
 ### W0101 — fn-not-snake-case
 
-**Severity:** warning · **Autofix:** no
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
 
 Function name not in snake_case.
 
@@ -24,7 +24,7 @@ end
 
 ### W0102 — method-not-snake-case
 
-**Severity:** warning · **Autofix:** no
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
 
 Method name not in snake_case.
 
@@ -40,7 +40,7 @@ end
 
 ### W0103 — param-not-snake-case
 
-**Severity:** warning · **Autofix:** no
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
 
 Parameter name not in snake_case.
 
@@ -101,7 +101,7 @@ end
 
 ### W0107 — enum-member-not-snake
 
-**Severity:** warning · **Autofix:** no
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
 
 Enum member not in snake_case.
 
@@ -117,7 +117,7 @@ end
 
 ### W0108 — constant-not-screaming
 
-**Severity:** warning · **Autofix:** no
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
 
 Constant name not in SCREAMING_SNAKE_CASE.
 
@@ -131,7 +131,7 @@ maxSize: constant[integer] = 10  # should be MAX_SIZE
 
 ### W0109 — error-no-error-suffix
 
-**Severity:** warning · **Autofix:** no
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
 
 Error type name does not end with 'Error'.
 
@@ -140,7 +140,9 @@ Gust convention: error types end with the `Error` suffix (e.g. `ParseError`). Re
 **Example:**
 
 ```gust
-error BadInput(message: string)  # name should end with 'Error'
+def BadInput implements Error
+    message: string
+end  # name should end with 'Error'
 ```
 
 ### W0110 — ambiguous-name
@@ -439,7 +441,7 @@ end
 
 ### W0404 — superfluous-else-return
 
-**Severity:** warning · **Autofix:** no
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
 
 Superfluous else after return.
 
@@ -459,7 +461,7 @@ end
 
 ### W0405 — superfluous-else-raise
 
-**Severity:** warning · **Autofix:** no
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
 
 Superfluous else after raise.
 
@@ -477,7 +479,7 @@ end
 
 ### W0406 — superfluous-else-continue
 
-**Severity:** warning · **Autofix:** no
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
 
 Superfluous else after continue.
 
@@ -497,7 +499,7 @@ end
 
 ### W0407 — superfluous-else-break
 
-**Severity:** warning · **Autofix:** no
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
 
 Superfluous else after break.
 
@@ -1085,7 +1087,7 @@ end
 
 ## Error handling
 
-### W0802 — useless-try-except
+### W0802 — useless-try-catch
 
 **Severity:** warning · **Autofix:** no
 
@@ -1100,6 +1102,24 @@ try
     run()
 catch
     raise  # a catch that only re-raises is useless
+end
+```
+
+### W0803 — suppressible-exception
+
+**Severity:** warning · **Autofix:** yes (`gust check --fix`)
+
+Suppressible Exception.
+
+Use `with Suppress([ErrorType, ...])` instead of try-catch-pass, as it directly communicates the intent of the code. `Suppress()` with no types swallows every error.
+
+**Example:**
+
+```gust
+try
+    fs.remove(path)
+catch IOError
+    pass  # a catch that does nothing
 end
 ```
 

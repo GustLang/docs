@@ -44,7 +44,7 @@ print(bc.to_ascii())
 bc.save("svg", "book.svg")
 ```
 
-**On this page:** [`Barcode`](#Barcode) · [`QrCode`](#QrCode) · [`QrField`](#QrField) · [`BarcodeError`](#BarcodeError) · [`encode`](#barcode.encode) · [`code39`](#barcode.code39) · [`code39_checked`](#barcode.code39_checked) · [`code128`](#barcode.code128) · [`ean13`](#barcode.ean13) · [`upca`](#barcode.upca) · [`ean8`](#barcode.ean8) · [`qr`](#barcode.qr) · [`wifi_join`](#barcode.wifi_join) · [`qr_format_bits`](#barcode.qr_format_bits)
+**On this page:** [`BarcodeError`](#BarcodeError) · [`Barcode`](#Barcode) · [`QrCode`](#QrCode) · [`QrField`](#QrField) · [`BarcodeError`](#BarcodeError) · [`encode`](#barcode.encode) · [`code39`](#barcode.code39) · [`code39_checked`](#barcode.code39_checked) · [`code128`](#barcode.code128) · [`ean13`](#barcode.ean13) · [`upca`](#barcode.upca) · [`ean8`](#barcode.ean8) · [`qr`](#barcode.qr) · [`wifi_join`](#barcode.wifi_join) · [`qr_format_bits`](#barcode.qr_format_bits)
 
 ## Constants
 
@@ -73,6 +73,27 @@ bc.save("svg", "book.svg")
 | `QR_FIELD_MODULUS` | `integer` | `285` |
 | `QR_MASK_COUNT` | `integer` | `8` |
 | `QR_FINDER_LIKE` | `string` | `"10111010000"` |
+
+## `BarcodeError`
+
+<a id="BarcodeError" />
+Raised when a payload cannot be encoded.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def BarcodeError implements prelude.Error, Error
+
+    message: string
+    symbology: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — human-readable description of the problem.
+- `symbology: string` — the symbology that rejected the input, e.g. "ean13".
 
 ## `Barcode`
 
@@ -493,6 +514,27 @@ divided by `generator`, with the remainder handed back.
 - `data` — the block's data codewords.
 - `generator` — the generator polynomial for this many correction codewords.
 
+## `BarcodeError`
+
+<a id="BarcodeError" />
+Raised when a payload cannot be encoded.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def BarcodeError implements prelude.Error, Error
+
+    message: string
+    symbology: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — human-readable description of the problem.
+- `symbology: string` — the symbology that rejected the input, e.g. "ean13".
+
 ## Functions
 
 <a id="barcode.encode" />
@@ -684,19 +726,3 @@ the specification's own table without a reader.
 **Parameters**
 
 - `mask: integer` — which of the eight masks the symbol is drawn with.
-
-## Errors
-
-<a id="BarcodeError" />
-```gust
-error BarcodeError(message: string, symbology: string)
-```
-
-Raised when a payload cannot be encoded.
-
-Fields:
-
-```gust
-message: human-readable description of the problem.
-symbology: the symbology that rejected the input, e.g. "ean13".
-```

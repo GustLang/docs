@@ -94,7 +94,7 @@ These tables list every code at a glance; follow a section in the sidebar for th
 | `G0702` | unknown-package-member | error | — |
 | `G0703` | invalid-inspect-target | error | — |
 | `G0704` | duplicate-import | error | — |
-| `G0801` | break-outside-loop | error | — |
+| `G0801` | break-outside-loop | error | `gust check --fix` |
 | `G0802` | invalid-error-usage | error | — |
 | `G0803` | invalid-match-structure | error | — |
 | `G0804` | invalid-match-pattern | error | — |
@@ -106,15 +106,15 @@ These tables list every code at a glance; follow a section in the sidebar for th
 
 | Code | Name | Severity | Fix |
 |------|------|----------|-----|
-| `W0101` | fn-not-snake-case | warning | — |
-| `W0102` | method-not-snake-case | warning | — |
-| `W0103` | param-not-snake-case | warning | — |
+| `W0101` | fn-not-snake-case | warning | `gust check --fix` |
+| `W0102` | method-not-snake-case | warning | `gust check --fix` |
+| `W0103` | param-not-snake-case | warning | `gust check --fix` |
 | `W0104` | var-not-snake-case | warning | — |
 | `W0105` | type-not-pascal-case | warning | — |
 | `W0106` | enum-not-pascal-case | warning | — |
-| `W0107` | enum-member-not-snake | warning | — |
-| `W0108` | constant-not-screaming | warning | — |
-| `W0109` | error-no-error-suffix | warning | — |
+| `W0107` | enum-member-not-snake | warning | `gust check --fix` |
+| `W0108` | constant-not-screaming | warning | `gust check --fix` |
+| `W0109` | error-no-error-suffix | warning | `gust check --fix` |
 | `W0110` | ambiguous-name | warning | — |
 | `W0201` | builtin-variable-shadowing | warning | — |
 | `W0202` | builtin-argument-shadowing | warning | — |
@@ -133,10 +133,10 @@ These tables list every code at a glance; follow a section in the sidebar for th
 | `W0401` | unreachable-after-return | warning | — |
 | `W0402` | unnecessary-return-none | warning | `gust check --fix` |
 | `W0403` | unnecessary-assign | warning | `gust check --fix` |
-| `W0404` | superfluous-else-return | warning | — |
-| `W0405` | superfluous-else-raise | warning | — |
-| `W0406` | superfluous-else-continue | warning | — |
-| `W0407` | superfluous-else-break | warning | — |
+| `W0404` | superfluous-else-return | warning | `gust check --fix` |
+| `W0405` | superfluous-else-raise | warning | `gust check --fix` |
+| `W0406` | superfluous-else-continue | warning | `gust check --fix` |
+| `W0407` | superfluous-else-break | warning | `gust check --fix` |
 | `W0408` | needless-else | warning | — |
 | `W0413` | collapsible-else-if | warning | — |
 | `W0501` | yoda-conditions | warning | `gust check --fix` |
@@ -172,6 +172,7 @@ These tables list every code at a glance; follow a section in the sidebar for th
 | `W0605` | tab-indentation | warning | `gust check --fix` |
 | `W0606` | raw-struct-managed-field | warning | — |
 | `W0701` | any-type-weakening | warning | — |
-| `W0802` | useless-try-except | warning | — |
+| `W0802` | useless-try-catch | warning | — |
+| `W0803` | suppressible-exception | warning | `gust check --fix` |
 
 

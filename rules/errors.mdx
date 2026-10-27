@@ -524,14 +524,16 @@ n := Money(cents: 100) as integer  # Money has no __integer
 
 Invalid `with` context.
 
-The expression after `with` must be a value whose type defines two zero-argument methods: `__enter`, run when the block is entered, and `__exit`, run when the block is left by any path. Define both on the type, or use a type that already has them. When the block binds a name (`with ctx as x`), `__enter` must return a value rather than `none`.
+The expression after `with` must be a value whose type defines `__enter`, run when the block is entered, and `__exit(err: CaughtError | none) -> bool`, run when the block is left by any path (`err` carries the caught error on a raise exit and `none` otherwise; returning `true` swallows the error). Define both on the type, or use a type that already has them. When the block binds a name (`with ctx as x`), `__enter` must return a value rather than `none`.
 
 **Example:**
 
 ```gust
 def Guard
     def __enter() -> none
-    def __exit() -> none
+    def __exit(err: CaughtError | none) -> bool
+        return false
+    end
 end
 
 with Guard()
@@ -637,12 +639,14 @@ end
 
 Invalid error type layout.
 
-Error types must declare a `message: string` field as their first field so runtime error reporting has a stable message payload.
+A struct that `implements Error` must declare a `message: string` field as its first field so runtime error reporting has a stable message payload.
 
 **Example:**
 
 ```gust
-error BadThing(code: integer)  # first field must be message: string
+def BadThing implements Error
+    code: integer  # first field must be message: string
+end
 ```
 
 ### G0603 — field-method-conflict
@@ -944,7 +948,7 @@ use os  # 'os' is already imported
 
 ### G0801 — break-outside-loop
 
-**Severity:** error · **Autofix:** no
+**Severity:** error · **Autofix:** yes (`gust check --fix`)
 
 Control-flow statement outside a loop.
 

@@ -15,7 +15,9 @@ end
 
 <a id="ValueError" />
 ```gust
-error ValueError(message: string)
+def ValueError implements Error
+    message: string
+end
 ```
 
 General-purpose error for invalid values or arguments.
@@ -24,7 +26,10 @@ General-purpose error for invalid values or arguments.
 
 <a id="IOError" />
 ```gust
-error IOError(message: string, path: string)
+def IOError implements Error
+    message: string
+    path: string
+end
 ```
 
 File or I/O operation failed.
@@ -33,7 +38,10 @@ File or I/O operation failed.
 
 <a id="IndexError" />
 ```gust
-error IndexError(message: string, index: integer)
+def IndexError implements Error
+    message: string
+    index: integer
+end
 ```
 
 Index out of bounds.
@@ -42,7 +50,10 @@ Index out of bounds.
 
 <a id="KeyError" />
 ```gust
-error KeyError(message: string, key: string)
+def KeyError implements Error
+    message: string
+    key: string
+end
 ```
 
 Missing dictionary key.
@@ -51,34 +62,32 @@ Missing dictionary key.
 
 <a id="RuntimeError" />
 ```gust
-error RuntimeError(message: string)
+def RuntimeError implements Error
+    message: string
+end
 ```
 
-Operation not supported or not implemented.
+A general runtime failure — an operation that cannot be completed, is
+unsupported, or is not implemented.
 
 ---
 
 <a id="SegmentationViolationError" />
 ```gust
-error SegmentationViolationError(message: string)
+def SegmentationViolationError implements Error
+    message: string
+end
 ```
 
-Named counterparts to the OS signals that abnormally end a program. The
-fatal-signal handler in runtime/g_trace.c prints these names (e.g.
-`error: unhandled SegmentationViolationError`) instead of letting the shell
-show a bare "Terminated" / "Segmentation fault". They are defined here so the
-names are real, referable error types — a program installing its own handler
-through the `signal` package can `raise` them, and they read consistently with
-the rest of the prelude. (The handler itself prints rather than `raise`s: an
-async signal can arrive with corrupt state, so unwinding into `try`/`catch` is
-not safe — keep the two name lists in sync.)
 Invalid memory access (SIGSEGV).
 
 ---
 
 <a id="BusError" />
 ```gust
-error BusError(message: string)
+def BusError implements Error
+    message: string
+end
 ```
 
 Misaligned or invalid memory access (SIGBUS).
@@ -87,7 +96,9 @@ Misaligned or invalid memory access (SIGBUS).
 
 <a id="ArithmeticError" />
 ```gust
-error ArithmeticError(message: string)
+def ArithmeticError implements Error
+    message: string
+end
 ```
 
 Arithmetic fault, e.g. integer division by zero (SIGFPE).
@@ -96,7 +107,9 @@ Arithmetic fault, e.g. integer division by zero (SIGFPE).
 
 <a id="IllegalInstructionError" />
 ```gust
-error IllegalInstructionError(message: string)
+def IllegalInstructionError implements Error
+    message: string
+end
 ```
 
 Illegal CPU instruction (SIGILL).
@@ -105,7 +118,9 @@ Illegal CPU instruction (SIGILL).
 
 <a id="AbortError" />
 ```gust
-error AbortError(message: string)
+def AbortError implements Error
+    message: string
+end
 ```
 
 Process aborted (SIGABRT).
@@ -114,16 +129,20 @@ Process aborted (SIGABRT).
 
 <a id="TerminatedError" />
 ```gust
-error TerminatedError(message: string)
+def TerminatedError implements Error
+    message: string
+end
 ```
 
-Terminated by an external signal, often an out-of-memory killer (SIGTERM).
+Terminated by an external signal (SIGTERM).
 
 ---
 
 <a id="InterruptError" />
 ```gust
-error InterruptError(message: string)
+def InterruptError implements Error
+    message: string
+end
 ```
 
 Interrupted, e.g. Ctrl-C (SIGINT).
@@ -132,7 +151,9 @@ Interrupted, e.g. Ctrl-C (SIGINT).
 
 <a id="HangupError" />
 ```gust
-error HangupError(message: string)
+def HangupError implements Error
+    message: string
+end
 ```
 
 Controlling terminal closed (SIGHUP).
@@ -141,7 +162,9 @@ Controlling terminal closed (SIGHUP).
 
 <a id="QuitError" />
 ```gust
-error QuitError(message: string)
+def QuitError implements Error
+    message: string
+end
 ```
 
 Quit requested (SIGQUIT).
@@ -150,7 +173,9 @@ Quit requested (SIGQUIT).
 
 <a id="SignalError" />
 ```gust
-error SignalError(message: string)
+def SignalError implements Error
+    message: string
+end
 ```
 
 Fallback for any other terminating signal.

@@ -1,20 +1,88 @@
 ---
 title: http.server.middleware
-description: "Request-logging middleware: writes a timestamped access line for each handled request, with the response status colored by outcome"
+description: "Cross-Origin Resource Sharing middleware: answers browser preflight `OPTIONS` requests and stamps the matching `Access-Control-*` headers onto cross-origin responses, driven by the allow-lists configured on the instance"
 ---
 
 ```gust
 use http.server.middleware
 ```
 
-Request-logging middleware: writes a timestamped access line for each
-handled request, with the response status colored by outcome.
+Cross-Origin Resource Sharing middleware: answers browser preflight
+`OPTIONS` requests and stamps the matching `Access-Control-*` headers onto
+cross-origin responses, driven by the allow-lists configured on the instance.
+Register it with `server.use(CorsMiddleware(...))`. Part of the `http.server`
+package.
 
 <Note>
 Only available where `target == "native" or has("sockets")`.
 </Note>
 
-**On this page:** [`color_for_response`](#http.server.middleware.color_for_response) · [`log_middleware`](#http.server.middleware.log_middleware)
+**On this page:** [`CorsMiddleware`](#CorsMiddleware) · [`color_for_response`](#http.server.middleware.color_for_response) · [`log_middleware`](#http.server.middleware.log_middleware)
+
+## `CorsMiddleware`
+
+<a id="CorsMiddleware" />
+Applies a CORS policy to every request. For a preflight request (an
+`OPTIONS` carrying `Access-Control-Request-Method`) it short-circuits the
+chain with a `204` describing what the browser may send; for every other
+request it runs the downstream handler and stamps the response with the
+CORS headers the browser needs to expose it to the page.
+
+A request without an `Origin` header is not cross-origin and passes through
+untouched. An `Origin` that no field below permits is served normally but
+without any CORS header, so the browser denies the page access.
+
+```gust
+def CorsMiddleware
+
+    allow_origins: list[string]
+    allow_methods: list[string]
+    allow_headers: list[string]
+    expose_headers: list[string]
+    allow_credentials: bool
+    max_age: integer
+
+end
+```
+
+**Fields**
+
+- `allow_origins: list[string]` — Origins allowed to read responses, each matched exactly against the request's `Origin`. Defaults to `["*"]`, any origin — echoed back when `allow_credentials` is true, otherwise sent as `*`.
+- `allow_methods: list[string]` — Methods advertised in a preflight's `Access-Control-Allow-Methods`. Defaults to the standard verbs.
+- `allow_headers: list[string]` — Request headers advertised in a preflight's `Access-Control-Allow-Headers`. Empty echoes whatever the preflight asked for in `Access-Control-Request-Headers`.
+- `expose_headers: list[string]` — Response headers the browser may reveal to the page via `Access-Control-Expose-Headers`. Empty sends none.
+- `allow_credentials: bool` — When true, sends `Access-Control-Allow-Credentials: true` and echoes the specific origin instead of `*`, so the browser may send cookies and `Authorization`.
+- `max_age: integer` — Seconds a browser may cache a preflight result. Sent as `Access-Control-Max-Age` only when greater than zero.
+
+**Methods**
+
+<a id="CorsMiddleware.handle" />
+```gust
+def CorsMiddleware.handle(
+    request: http.server.Request,
+    next: http.server.Next,
+) -> http.server.Response
+```
+
+Apply the CORS policy: pass non-CORS requests straight through, answer
+an allowed preflight with a `204`, and stamp the CORS headers onto an
+allowed request's response.
+
+**Parameters**
+
+- `request` — The request flowing down the chain.
+- `next` — The next link in the chain.
+
+**Examples**
+
+```gust
+use CorsMiddleware from http.server.middleware
+
+app.use(CorsMiddleware(
+    allow_origins: ["https://app.example.com"],
+    allow_credentials: true,
+))
+```
 
 ## Functions
 

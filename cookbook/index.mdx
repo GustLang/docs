@@ -151,7 +151,11 @@ end
 ## Throw-and-catch a custom error
 
 ```gust
-error ParseError(message: string, line: integer)
+def ParseError implements Error
+    message: string
+    line: integer
+end
+
 
 def parse(text: string) -> integer
     if text.is_empty()

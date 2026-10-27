@@ -46,7 +46,7 @@ end
 Only available on native builds, and not on Windows.
 </Note>
 
-**On this page:** [`Arg`](#Arg) · [`Value`](#Value) · [`Library`](#Library) · [`Symbol`](#Symbol) · [`DlError`](#DlError) · [`i8`](#dl.i8) · [`u8`](#dl.u8) · [`i16`](#dl.i16) · [`u16`](#dl.u16) · [`i32`](#dl.i32) · [`u32`](#dl.u32) · [`i64`](#dl.i64) · [`u64`](#dl.u64) · [`f32`](#dl.f32) · [`f64`](#dl.f64) · [`ptr`](#dl.ptr) · [`cstring`](#dl.cstring) · [`read_cstring`](#dl.read_cstring) · [`open`](#dl.open)
+**On this page:** [`Arg`](#Arg) · [`Value`](#Value) · [`DlError`](#DlError) · [`Library`](#Library) · [`Symbol`](#Symbol) · [`DlError`](#DlError) · [`i8`](#dl.i8) · [`u8`](#dl.u8) · [`i16`](#dl.i16) · [`u16`](#dl.u16) · [`i32`](#dl.i32) · [`u32`](#dl.u32) · [`i64`](#dl.i64) · [`u64`](#dl.u64) · [`f32`](#dl.f32) · [`f64`](#dl.f64) · [`ptr`](#dl.ptr) · [`cstring`](#dl.cstring) · [`read_cstring`](#dl.read_cstring) · [`open`](#dl.open)
 
 ## Constants
 
@@ -154,6 +154,26 @@ def Value.as_address() -> integer
 
 The result of a pointer return, as an address for use with `unsafe` or
 as the next call's `ptr` argument.
+
+## `DlError`
+
+<a id="DlError" />
+A dynamic-loading operation failed: the library could not be opened, or
+a symbol could not be resolved.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def DlError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — human-readable description, including the loader's own error text when one is available.
 
 ## `Library`
 
@@ -271,10 +291,10 @@ through `call`.
 A dynamic-loading operation failed: the library could not be opened, or
 a symbol could not be resolved.
 
-**Implements:** [`Error`](#Error)
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
 
 ```gust
-def DlError implements Error
+def DlError implements prelude.Error, Error
 
     message: string
 

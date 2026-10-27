@@ -58,13 +58,60 @@ end
 Only available where `target == "native" or has("tls")`.
 </Note>
 
-**On this page:** [`SSLContext`](#SSLContext) · [`SSLSocket`](#SSLSocket) · [`TLSError`](#TLSError) · [`CertificateError`](#CertificateError) · [`client_context`](#cryptography.ssl.client_context) · [`server_context`](#cryptography.ssl.server_context) · [`connect`](#cryptography.ssl.connect) · [`connect_with`](#cryptography.ssl.connect_with) · [`wrap_socket`](#cryptography.ssl.wrap_socket) · [`wrap_accepted`](#cryptography.ssl.wrap_accepted)
+**On this page:** [`TLSError`](#TLSError) · [`CertificateError`](#CertificateError) · [`SSLContext`](#SSLContext) · [`SSLSocket`](#SSLSocket) · [`TLSError`](#TLSError) · [`CertificateError`](#CertificateError) · [`client_context`](#cryptography.ssl.client_context) · [`server_context`](#cryptography.ssl.server_context) · [`connect`](#cryptography.ssl.connect) · [`connect_with`](#cryptography.ssl.connect_with) · [`wrap_socket`](#cryptography.ssl.wrap_socket) · [`wrap_accepted`](#cryptography.ssl.wrap_accepted)
 
 ## Constants
 
 | Name | Type | Value |
 |------|------|-------|
 | `SSL_MAX_CHUNK` | `integer` | `16777216` |
+
+## `TLSError`
+
+<a id="TLSError" />
+Raised when the TLS layer itself fails to establish a session — a
+failed handshake, an SSL protocol error, or per-connection setup (`SSL_new`,
+SNI, binding the socket). Distinct from a certificate-trust failure
+(`CertificateError`) and from byte-stream I/O failures after the handshake
+(`IOError`), so callers can tell "couldn't negotiate TLS" apart from
+"the connection dropped mid-transfer".
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def TLSError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — Human-readable description, including the OpenSSL error text.
+
+## `CertificateError`
+
+<a id="CertificateError" />
+Raised when the peer's certificate fails verification during a client
+handshake (untrusted CA, hostname mismatch, expired/not-yet-valid, …). A
+trust decision, not a transient failure — retrying won't help; the caller
+must pin the cert, fix the trust store, or refuse the connection. Separate
+from `TLSError` so this security-relevant case is catchable on its own.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def CertificateError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — Description, including the X.509 verification reason.
 
 ## `SSLContext`
 
@@ -327,10 +374,10 @@ SNI, binding the socket). Distinct from a certificate-trust failure
 (`IOError`), so callers can tell "couldn't negotiate TLS" apart from
 "the connection dropped mid-transfer".
 
-**Implements:** [`Error`](#Error)
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
 
 ```gust
-def TLSError implements Error
+def TLSError implements prelude.Error, Error
 
     message: string
 
@@ -350,10 +397,10 @@ trust decision, not a transient failure — retrying won't help; the caller
 must pin the cert, fix the trust store, or refuse the connection. Separate
 from `TLSError` so this security-relevant case is catchable on its own.
 
-**Implements:** [`Error`](#Error)
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
 
 ```gust
-def CertificateError implements Error
+def CertificateError implements prelude.Error, Error
 
     message: string
 

@@ -58,7 +58,7 @@ end
 Only available on native builds.
 </Note>
 
-**On this page:** [`ValueKind`](#ValueKind) · [`Value`](#Value) · [`Row`](#Row) · [`ExecResult`](#ExecResult) · [`Cursor`](#Cursor) · [`Connection`](#Connection) · [`DatabaseError`](#DatabaseError) · [`ConnectionError`](#ConnectionError) · [`QueryError`](#QueryError) · [`int_`](#database.int_) · [`real`](#database.real) · [`text`](#database.text) · [`blob`](#database.blob) · [`boolean`](#database.boolean) · [`null`](#database.null) · [`make_row`](#database.make_row) · [`query_all`](#database.query_all) · [`query_one`](#database.query_one)
+**On this page:** [`ValueKind`](#ValueKind) · [`DatabaseError`](#DatabaseError) · [`ConnectionError`](#ConnectionError) · [`QueryError`](#QueryError) · [`Value`](#Value) · [`Row`](#Row) · [`ExecResult`](#ExecResult) · [`Cursor`](#Cursor) · [`Connection`](#Connection) · [`DatabaseError`](#DatabaseError) · [`ConnectionError`](#ConnectionError) · [`QueryError`](#QueryError) · [`int_`](#database.int_) · [`real`](#database.real) · [`text`](#database.text) · [`blob`](#database.blob) · [`boolean`](#database.boolean) · [`null`](#database.null) · [`make_row`](#database.make_row) · [`query_all`](#database.query_all) · [`query_one`](#database.query_one)
 
 ## `ValueKind`
 
@@ -77,6 +77,69 @@ Discriminator for the scalar carried by a `Value`.
 - `text_kind = 4` — A UTF-8 string.
 - `blob_kind = 5` — A raw byte string.
 - `bool_kind = 6` — A boolean (drivers that lack a native bool map to/from it).
+
+## `DatabaseError`
+
+<a id="DatabaseError" />
+Base class of database failures — and what a driver raises when nothing
+more specific fits. Catch this to handle any database error at once.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def DatabaseError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — Human-readable description of what went wrong.
+
+## `ConnectionError`
+
+<a id="ConnectionError" />
+Raised when a connection cannot be opened, or fails after being opened
+(the server went away, authentication was rejected, the socket dropped).
+Distinct from `QueryError` so "couldn't reach the database" is catchable
+apart from "the statement was bad".
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def ConnectionError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — Description, including the driver's connection error text.
+
+## `QueryError`
+
+<a id="QueryError" />
+Raised when a statement is rejected or fails to run — a syntax error, a
+constraint violation, a missing table, a type mismatch in a bound parameter.
+The `message` carries the driver's diagnostic verbatim.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def QueryError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — Description, including the driver's statement error text.
 
 ## `Value`
 
@@ -434,6 +497,69 @@ def Connection.close() -> none
 def Connection.is_open() -> bool
 ```
 
+## `DatabaseError`
+
+<a id="DatabaseError" />
+Base class of database failures — and what a driver raises when nothing
+more specific fits. Catch this to handle any database error at once.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def DatabaseError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — Human-readable description of what went wrong.
+
+## `ConnectionError`
+
+<a id="ConnectionError" />
+Raised when a connection cannot be opened, or fails after being opened
+(the server went away, authentication was rejected, the socket dropped).
+Distinct from `QueryError` so "couldn't reach the database" is catchable
+apart from "the statement was bad".
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def ConnectionError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — Description, including the driver's connection error text.
+
+## `QueryError`
+
+<a id="QueryError" />
+Raised when a statement is rejected or fails to run — a syntax error, a
+constraint violation, a missing table, a type mismatch in a bound parameter.
+The `message` carries the driver's diagnostic verbatim.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def QueryError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — Description, including the driver's statement error text.
+
 ## Functions
 
 <a id="database.int_" />
@@ -559,45 +685,3 @@ Run `sql` and return its first row, closing the cursor.
 **Raises**
 
 - `DatabaseError` — If the query yields no rows — use `query_all` and check the length when "no match" is an expected outcome.
-
-## Errors
-
-<a id="DatabaseError" />
-```gust
-error DatabaseError(message: string)
-```
-
-Base class of database failures — and what a driver raises when nothing
-more specific fits. Catch this to handle any database error at once.
-
-Fields:
-message: Human-readable description of what went wrong.
-
----
-
-<a id="ConnectionError" />
-```gust
-error ConnectionError(message: string)
-```
-
-Raised when a connection cannot be opened, or fails after being opened
-(the server went away, authentication was rejected, the socket dropped).
-Distinct from `QueryError` so "couldn't reach the database" is catchable
-apart from "the statement was bad".
-
-Fields:
-message: Description, including the driver's connection error text.
-
----
-
-<a id="QueryError" />
-```gust
-error QueryError(message: string)
-```
-
-Raised when a statement is rejected or fails to run — a syntax error, a
-constraint violation, a missing table, a type mismatch in a bound parameter.
-The `message` carries the driver's diagnostic verbatim.
-
-Fields:
-message: Description, including the driver's statement error text.

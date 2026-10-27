@@ -39,7 +39,7 @@ def main() -> none
 end
 ```
 
-**On this page:** [`YamlParser`](#YamlParser) · [`FlowScanner`](#FlowScanner) · [`YamlError`](#YamlError) · [`parse`](#yaml.parse) · [`encode`](#yaml.encode)
+**On this page:** [`YamlParser`](#YamlParser) · [`FlowScanner`](#FlowScanner) · [`YamlError`](#YamlError) · [`YamlError`](#YamlError) · [`parse`](#yaml.parse) · [`encode`](#yaml.encode)
 
 ## `YamlParser`
 
@@ -260,10 +260,32 @@ Parse a `{...}` flow mapping into a `dict[string, Any]`.
 Raised by `parse` on malformed YAML (for example an unterminated flow
 collection or a non-mapping document root).
 
-**Implements:** [`Error`](#Error)
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
 
 ```gust
-def YamlError implements Error
+def YamlError implements prelude.Error, Error
+
+    message: string
+    line: integer
+
+end
+```
+
+**Fields**
+
+- `message: string` — human-readable description of the parse failure.
+- `line: integer` — the 1-based source line the error was detected on.
+
+## `YamlError`
+
+<a id="YamlError" />
+Raised by `parse` on malformed YAML (for example an unterminated flow
+collection or a non-mapping document root).
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def YamlError implements prelude.Error, Error
 
     message: string
     line: integer

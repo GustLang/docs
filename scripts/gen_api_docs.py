@@ -56,8 +56,9 @@ DIVIDER = re.compile(r"^#\s*[─-]+\s*(.+?)\s*[─-]+\s*$")
 DEF = re.compile(r"^def\s+(foreign\s+)?(!?)(.+?)\s*$")
 METHOD = re.compile(r"^([A-Za-z_]\w*)\.(__?\w+|\w+)\s*\((.*)\)\s*(?:->\s*(.+))?$")
 FUNC = re.compile(r"^(!?)([a-z_]\w*)\s*\((.*)\)\s*(?:->\s*(.+))?$")
-STRUCT = re.compile(r"^([A-Za-z_]\w*)\s*$")  # `def Value` or builtin `def string`
-ERROR = re.compile(r"^error\s+([A-Z]\w*)\s*\((.*)\)\s*$")
+STRUCT = re.compile(
+    r"^([A-Za-z_]\w*)(?:\s+implements\s+([A-Za-z_][\w,\s]*?))?\s*$"
+)  # `def Value`, builtin `def string`, or `def Err implements Error`
 ENUM = re.compile(r"^(auto_enum|enum)\s+([A-Z]\w*)\s*(?::\s*(\w+))?\s*$")
 CONST = re.compile(r"^([A-Z][A-Z0-9_]*)\s*:\s*constant\[(.+?)\]\s*=\s*(.+?)\s*$")
 FIELD = re.compile(r"^\s*([a-z_]\w*)\s*:\s*(.+?)\s*$")
@@ -213,19 +214,6 @@ def parse_file(path):
             i += 1
             continue
 
-        # ── error ──
-        m = ERROR.match(stripped)
-        if m:
-            d = Decl(
-                "error", m.group(1), sig=f"{m.group(1)}({m.group(2)})", section=section
-            )
-            doc, i2 = read_docstring(lines, i + 1)
-            d.doc = doc or "\n".join(pending).strip()
-            decls.append(d)
-            pending = []
-            i = i2 if doc else i + 1
-            continue
-
         # ── enum ──
         m = ENUM.match(stripped)
         if m:
@@ -254,7 +242,11 @@ def parse_file(path):
             ms = STRUCT.match(rest)
             mf = FUNC.match(rest)
             if ms:  # struct definition
-                d = Decl("struct", ms.group(1), sig=ms.group(1), section=section)
+                name = ms.group(1)
+                ifaces = [s.strip() for s in (ms.group(2) or "").split(",") if s.strip()]
+                kind = "error" if "Error" in ifaces else "struct"
+                d = Decl(kind, name, sig=name, section=section)
+                d.ifaces = ifaces
                 doc, i2 = read_docstring(lines, i + 1)
                 d.doc = doc or "\n".join(pending).strip()
                 i = i2 if doc else i + 1
@@ -364,10 +356,15 @@ def parse_doc_section(doc, headers):
 
 def code_sig(d):
     """The Gust source spelling of a declaration for a fenced code block:
-    `def name(...) -> ret` for callables, `error Name(...)` for error types
-    (the parsed `→` arrow is downgraded to the `->` the source uses)."""
+    `def name(...) -> ret` for callables, `def Name implements Error` for
+    error structs (the parsed `→` arrow is downgraded to the `->` the source
+    uses)."""
     if d.kind == "error":
-        return f"error {d.sig}"
+        header = f"def {d.sig} implements Error"
+        if not d.fields:
+            return header
+        body = "\n".join(f"    {f}" for f in d.fields)
+        return f"{header}\n{body}\nend"
     return "def " + d.sig.replace(" → ", " -> ")
 
 

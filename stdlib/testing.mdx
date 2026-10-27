@@ -35,13 +35,53 @@ def prefix(t: testing.T) -> none
 end
 ```
 
-**On this page:** [`T`](#T) · [`TestCase`](#TestCase) · [`SkipError`](#SkipError) · [`FailNowError`](#FailNowError) · [`AssertionError`](#AssertionError) · [`expect_eq`](#testing.expect_eq) · [`expect_neq`](#testing.expect_neq) · [`expect_int`](#testing.expect_int) · [`expect_str`](#testing.expect_str) · [`expect_bool`](#testing.expect_bool) · [`expect_true`](#testing.expect_true) · [`expect_false`](#testing.expect_false) · [`expect_contains`](#testing.expect_contains) · [`expect_float`](#testing.expect_float) · [`run_registered`](#testing.run_registered) · [`assert_eq`](#testing.assert_eq) · [`assert_neq`](#testing.assert_neq) · [`assert_int`](#testing.assert_int) · [`assert_str`](#testing.assert_str) · [`assert_bool`](#testing.assert_bool) · [`assert_true`](#testing.assert_true) · [`assert_false`](#testing.assert_false) · [`assert_float`](#testing.assert_float) · [`assert_contains`](#testing.assert_contains) · [`assert_gt`](#testing.assert_gt) · [`assert_lt`](#testing.assert_lt)
+**On this page:** [`SkipError`](#SkipError) · [`FailNowError`](#FailNowError) · [`T`](#T) · [`TestCase`](#TestCase) · [`AssertionError`](#AssertionError) · [`SkipError`](#SkipError) · [`FailNowError`](#FailNowError) · [`AssertionError`](#AssertionError) · [`expect_eq`](#testing.expect_eq) · [`expect_neq`](#testing.expect_neq) · [`expect_int`](#testing.expect_int) · [`expect_str`](#testing.expect_str) · [`expect_bool`](#testing.expect_bool) · [`expect_true`](#testing.expect_true) · [`expect_false`](#testing.expect_false) · [`expect_contains`](#testing.expect_contains) · [`expect_float`](#testing.expect_float) · [`run_registered`](#testing.run_registered) · [`assert_eq`](#testing.assert_eq) · [`assert_neq`](#testing.assert_neq) · [`assert_int`](#testing.assert_int) · [`assert_str`](#testing.assert_str) · [`assert_bool`](#testing.assert_bool) · [`assert_true`](#testing.assert_true) · [`assert_false`](#testing.assert_false) · [`assert_float`](#testing.assert_float) · [`assert_contains`](#testing.assert_contains) · [`assert_gt`](#testing.assert_gt) · [`assert_lt`](#testing.assert_lt)
 
 ## Constants
 
 | Name | Type | Value |
 |------|------|-------|
 | `GTEST_MARKER` | `string` | `"##gtest##"` |
+
+## `SkipError`
+
+<a id="SkipError" />
+Raised by `T.skip` to unwind the current test as skipped. Caught by the
+harness; never propagates to the process.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def SkipError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — the skip reason, surfaced in the report.
+
+## `FailNowError`
+
+<a id="FailNowError" />
+Raised by `T.fatal` to stop the current test after a failure has already
+been recorded. Caught by the harness; never propagates to the process.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def FailNowError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — the failure message, already appended to the test's failures.
 
 ## `T`
 
@@ -160,16 +200,36 @@ end
 - `name: string` — the test function's name, shown in the report.
 - `fn: Function(T)[none]` — the test body, invoked with the test context.
 
+## `AssertionError`
+
+<a id="AssertionError" />
+Raised by a failing `assert_*`. The harness records its message and marks
+the current test failed.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def AssertionError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — the failure description.
+
 ## `SkipError`
 
 <a id="SkipError" />
 Raised by `T.skip` to unwind the current test as skipped. Caught by the
 harness; never propagates to the process.
 
-**Implements:** [`Error`](#Error)
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
 
 ```gust
-def SkipError implements Error
+def SkipError implements prelude.Error, Error
 
     message: string
 
@@ -186,10 +246,10 @@ end
 Raised by `T.fatal` to stop the current test after a failure has already
 been recorded. Caught by the harness; never propagates to the process.
 
-**Implements:** [`Error`](#Error)
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
 
 ```gust
-def FailNowError implements Error
+def FailNowError implements prelude.Error, Error
 
     message: string
 
@@ -206,10 +266,10 @@ end
 Raised by a failing `assert_*`. The harness records its message and marks
 the current test failed.
 
-**Implements:** [`Error`](#Error)
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
 
 ```gust
-def AssertionError implements Error
+def AssertionError implements prelude.Error, Error
 
     message: string
 

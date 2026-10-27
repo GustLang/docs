@@ -113,7 +113,9 @@ A Gust program is a set of top-level declarations, with a `main` function as the
 ```gust
 use math                          # package imports
 
-error NetError(message: string)   # error types
+def NetError implements Error     # error types
+    message: string
+end
 
 interface Pingable                # interfaces
     def ping() -> bool

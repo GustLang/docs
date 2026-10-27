@@ -66,6 +66,7 @@ def Field
     name: string
     type_tag: string
     nullable: bool
+    tags: dict[string, string]
 
 end
 ```
@@ -75,6 +76,7 @@ end
 - `name: string` — The field's name.
 - `type_tag: string` — The field's declared type as a tag string (`integer`, `string`, `integer|none`, `list[string]`, …).
 - `nullable: bool` — True when the declared type is `T | none`.
+- `tags: dict[string, string]` — The field's `#gust:tag` pairs, keyed by tag key (`json:"id"` → `tags["json"] == "id"`); empty when the field carries none.
 
 ## `Struct`
 

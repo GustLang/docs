@@ -29,7 +29,7 @@ end
 Because a variant pattern may bind a prefix of a variant's fields, an arm
 that ignores the trailing `span` still matches.
 
-**On this page:** [`SrcSpan`](#SrcSpan) · [`NamedArg`](#NamedArg) · [`ElseIf`](#ElseIf) · [`CatchClause`](#CatchClause) · [`MatchArm`](#MatchArm) · [`FieldDef`](#FieldDef) · [`Import`](#Import) · [`ErrorDef`](#ErrorDef) · [`Param`](#Param) · [`FuncSignature`](#FuncSignature) · [`InterfaceDef`](#InterfaceDef) · [`EnumMemberDef`](#EnumMemberDef) · [`EnumDef`](#EnumDef) · [`StructDef`](#StructDef) · [`FuncDecl`](#FuncDecl) · [`Decorator`](#Decorator) · [`FuncDef`](#FuncDef) · [`MethodDef`](#MethodDef) · [`VariantDef`](#VariantDef) · [`TypeDef`](#TypeDef) · [`AliasDef`](#AliasDef) · [`ConstDef`](#ConstDef) · [`GenericInst`](#GenericInst) · [`GenericStructInst`](#GenericStructInst) · [`Program`](#Program) · [`Lexer`](#Lexer) · [`Parser`](#Parser) · [`Token`](#Token) · [`type_to_string`](#ast.type_to_string) · [`generic_mangle`](#ast.generic_mangle) · [`no_span`](#ast.no_span) · [`span_is_real`](#ast.span_is_real) · [`span_tok`](#ast.span_tok) · [`span_join`](#ast.span_join) · [`span_contains`](#ast.span_contains) · [`span_size`](#ast.span_size) · [`expr_span`](#ast.expr_span) · [`clone_type`](#ast.clone_type) · [`clone_named_arg`](#ast.clone_named_arg) · [`clone_fstring_part`](#ast.clone_fstring_part) · [`clone_comp_clause`](#ast.clone_comp_clause) · [`clone_expr`](#ast.clone_expr) · [`stmt_span`](#ast.stmt_span) · [`body_diverges`](#ast.body_diverges) · [`body_assigns_name`](#ast.body_assigns_name) · [`body_reaches_a_call`](#ast.body_reaches_a_call) · [`expr_reaches_a_call`](#ast.expr_reaches_a_call) · [`ch_is_lower`](#ast.ch_is_lower) · [`ch_is_upper`](#ast.ch_is_upper) · [`ch_is_digit`](#ast.ch_is_digit) · [`ch_is_alpha`](#ast.ch_is_alpha) · [`ch_is_ident_start`](#ast.ch_is_ident_start) · [`ch_is_ident`](#ast.ch_is_ident) · [`is_alnum_ch`](#ast.is_alnum_ch) · [`is_hex_ch`](#ast.is_hex_ch) · [`is_bin_ch`](#ast.is_bin_ch) · [`is_oct_ch`](#ast.is_oct_ch) · [`digit_val`](#ast.digit_val) · [`parse_int_base`](#ast.parse_int_base) · [`decimal_overflows_i64`](#ast.decimal_overflows_i64) · [`decode_string_escape`](#ast.decode_string_escape) · [`hex_nibble`](#ast.hex_nibble) · [`is_quote_block_opener`](#ast.is_quote_block_opener) · [`is_radix_digit`](#ast.is_radix_digit) · [`parse`](#ast.parse) · [`tok_span`](#ast.tok_span) · [`generic_type_form_hint`](#ast.generic_type_form_hint) · [`compound_op_kind`](#ast.compound_op_kind) · [`binop_prec`](#ast.binop_prec) · [`first_is_upper`](#ast.first_is_upper) · [`is_primary_literal`](#ast.is_primary_literal) · [`find_close_brace`](#ast.find_close_brace) · [`is_none_type`](#ast.is_none_type) · [`is_void_return_type`](#ast.is_void_return_type) · [`is_literal`](#ast.is_literal) · [`is_keyword`](#ast.is_keyword) · [`is_operator`](#ast.is_operator) · [`keyword_kind`](#ast.keyword_kind) · [`op_spelling`](#ast.op_spelling)
+**On this page:** [`NodeKind`](#NodeKind) · [`SrcSpan`](#SrcSpan) · [`NamedArg`](#NamedArg) · [`ElseIf`](#ElseIf) · [`CatchClause`](#CatchClause) · [`MatchArm`](#MatchArm) · [`FieldDef`](#FieldDef) · [`Import`](#Import) · [`Param`](#Param) · [`FuncSignature`](#FuncSignature) · [`InterfaceDef`](#InterfaceDef) · [`EnumMemberDef`](#EnumMemberDef) · [`EnumDef`](#EnumDef) · [`StructDef`](#StructDef) · [`FuncDecl`](#FuncDecl) · [`Decorator`](#Decorator) · [`FuncDef`](#FuncDef) · [`MethodDef`](#MethodDef) · [`VariantDef`](#VariantDef) · [`TypeDef`](#TypeDef) · [`AliasDef`](#AliasDef) · [`ConstDef`](#ConstDef) · [`GenericInst`](#GenericInst) · [`GenericStructInst`](#GenericStructInst) · [`Program`](#Program) · [`FieldTagError`](#FieldTagError) · [`FieldTag`](#FieldTag) · [`Lexer`](#Lexer) · [`Parser`](#Parser) · [`Token`](#Token) · [`FieldTagError`](#FieldTagError) · [`is_varargs_type`](#ast.is_varargs_type) · [`param_source_type`](#ast.param_source_type) · [`has_varargs`](#ast.has_varargs) · [`fixed_param_count`](#ast.fixed_param_count) · [`is_spread_arg`](#ast.is_spread_arg) · [`argument_param_index`](#ast.argument_param_index) · [`call_binding_errors`](#ast.call_binding_errors) · [`variadic_tail_args`](#ast.variadic_tail_args) · [`type_to_string`](#ast.type_to_string) · [`generic_mangle`](#ast.generic_mangle) · [`no_span`](#ast.no_span) · [`span_is_real`](#ast.span_is_real) · [`span_tok`](#ast.span_tok) · [`span_join`](#ast.span_join) · [`span_contains`](#ast.span_contains) · [`span_size`](#ast.span_size) · [`expr_span`](#ast.expr_span) · [`clone_type`](#ast.clone_type) · [`clone_named_arg`](#ast.clone_named_arg) · [`clone_fstring_part`](#ast.clone_fstring_part) · [`clone_comp_clause`](#ast.clone_comp_clause) · [`clone_expr`](#ast.clone_expr) · [`stmt_span`](#ast.stmt_span) · [`body_diverges`](#ast.body_diverges) · [`body_assigns_name`](#ast.body_assigns_name) · [`body_reaches_a_call`](#ast.body_reaches_a_call) · [`expr_reaches_a_call`](#ast.expr_reaches_a_call) · [`prog_error_struct_indices`](#ast.prog_error_struct_indices) · [`ch_is_lower`](#ast.ch_is_lower) · [`ch_is_upper`](#ast.ch_is_upper) · [`ch_is_digit`](#ast.ch_is_digit) · [`ch_is_alpha`](#ast.ch_is_alpha) · [`ch_is_ident_start`](#ast.ch_is_ident_start) · [`ch_is_ident`](#ast.ch_is_ident) · [`parse_field_tag`](#ast.parse_field_tag) · [`is_alnum_ch`](#ast.is_alnum_ch) · [`is_hex_ch`](#ast.is_hex_ch) · [`is_bin_ch`](#ast.is_bin_ch) · [`is_oct_ch`](#ast.is_oct_ch) · [`digit_val`](#ast.digit_val) · [`parse_int_base`](#ast.parse_int_base) · [`decimal_overflows_i64`](#ast.decimal_overflows_i64) · [`decode_string_escape`](#ast.decode_string_escape) · [`hex_nibble`](#ast.hex_nibble) · [`is_quote_block_opener`](#ast.is_quote_block_opener) · [`is_radix_digit`](#ast.is_radix_digit) · [`parse`](#ast.parse) · [`tok_span`](#ast.tok_span) · [`generic_type_form_hint`](#ast.generic_type_form_hint) · [`compound_op_kind`](#ast.compound_op_kind) · [`binop_prec`](#ast.binop_prec) · [`first_is_upper`](#ast.first_is_upper) · [`is_primary_literal`](#ast.is_primary_literal) · [`find_close_brace`](#ast.find_close_brace) · [`is_none_type`](#ast.is_none_type) · [`is_void_return_type`](#ast.is_void_return_type) · [`is_literal`](#ast.is_literal) · [`is_keyword`](#ast.is_keyword) · [`is_operator`](#ast.is_operator) · [`keyword_kind`](#ast.keyword_kind) · [`op_spelling`](#ast.op_spelling)
 
 ## Constants
 
@@ -130,7 +130,59 @@ that ignores the trailing `span` still matches.
 | `TT_EOF` | `integer` | `101` |
 | `TT_QUOTE` | `integer` | `102` |
 | `CFG_PRAGMA` | `string` | `"#gust:cfg"` |
+| `TAG_PRAGMA` | `string` | `"#gust:tag"` |
 | `KEYWORD_KINDS` | `dict[string, integer]` | `{"def": TT_DEF, "end": TT_END, "if": TT_IF, "else": TT_ELSE,…}` |
+
+## `NodeKind`
+
+<a id="NodeKind" />
+```gust
+auto_enum NodeKind: string
+```
+
+The dispatch tag for a rule-visited AST node. Each variant's string
+value — assigned by `auto_enum: string` from the variant name — is the
+key used in the registry's dispatch table, so a rule declares which
+nodes it wants with a `list[NodeKind]` and the registry resolves it to
+the matching bucket by backing coercion.
+
+**Variants**
+
+- `function_decl = "function_decl"` — Top-level `def` function declaration.
+- `method_decl = "method_decl"` — Method declared on a struct.
+- `struct_decl = "struct_decl"` — Struct type definition.
+- `interface_decl = "interface_decl"` — Interface type definition.
+- `enum_decl = "enum_decl"` — Enum or `auto_enum` declaration.
+- `constant_decl = "constant_decl"` — Module-level `constant` declaration.
+- `type_decl = "type_decl"` — `type` type definition.
+- `alias_decl = "alias_decl"` — Type `alias` definition.
+- `use_stmt = "use_stmt"` — Import statement.
+- `source_file = "source_file"` — Whole-file pseudo-node for lexical / whitespace rules.
+- `var_decl = "var_decl"` — `name := value` or typed single-variable declaration.
+- `multi_var_decl = "multi_var_decl"` — Tuple-destructuring `a, b := value` declaration.
+- `assign_stmt = "assign_stmt"` — `target = value` assignment statement.
+- `return_stmt = "return_stmt"` — `return` statement.
+- `for_stmt = "for_stmt"` — `for` loop statement.
+- `if_stmt = "if_stmt"` — Plain `if` statement with no header binding.
+- `if_stmt_bound = "if_stmt_bound"` — `if name := cond`; separated from `if_stmt` because style rewrites keyed on `if_stmt` would drop the binding.
+- `try_stmt = "try_stmt"` — `try` / `except` statement.
+- `match_stmt = "match_stmt"` — `match` statement.
+- `break_stmt = "break_stmt"` — `break` statement.
+- `continue_stmt = "continue_stmt"` — `continue` statement.
+- `stmt = "stmt"` — Fallback tag for statement shapes no rule registers for.
+- `call_expr = "call_expr"` — Free-function call expression.
+- `method_call_expr = "method_call_expr"` — Method call expression.
+- `struct_init = "struct_init"` — Struct literal `Name(field: value, ...)`.
+- `name_expr = "name_expr"` — Bare identifier reference.
+- `field_access = "field_access"` — `obj.field` access expression.
+- `cast_expr = "cast_expr"` — `value as Type` cast expression.
+- `binary_expr = "binary_expr"` — Binary operator expression.
+- `unary_expr = "unary_expr"` — Unary operator expression.
+- `ternary_expr = "ternary_expr"` — `a if cond else b` expression.
+- `index_expr = "index_expr"` — `obj[index]` indexing expression.
+- `range_expr = "range_expr"` — `range(...)` expression.
+- `expr = "expr"` — Fallback tag for expression shapes no rule registers for.
+- `unknown = "unknown"` — Fallback for a node variant with no assigned tag.
 
 ## `SrcSpan`
 
@@ -268,6 +320,7 @@ def FieldDef
     is_private: bool
     is_readonly: bool
     line: integer
+    tags: list[FieldTag]
 
 end
 ```
@@ -281,6 +334,7 @@ end
 - `is_private: bool`
 - `is_readonly: bool` — Set by the `readonly` modifier. The field is written at construction and by the declaring struct's own methods; an assignment from anywhere else is rejected.
 - `line: integer` — 1-based source line of the field name, or 0 for a field synthesized by the compiler rather than parsed. Read by the `__LINE__` reflection dunder.
+- `tags: list[FieldTag]` — The `key:"value"` pairs of a trailing `#gust:tag` pragma, in source order; empty when the field carries none. Read by the `__TAGS__` reflection dunder and handed to derives.
 
 ## `Import`
 
@@ -318,34 +372,6 @@ end
 - `source_file: string`
 - `is_path: bool`
 
-## `ErrorDef`
-
-<a id="ErrorDef" />
-An `error Name(fields...)` declaration. The first field must be
-`message: string`. `is_private` reflects a leading-underscore name.
-
-```gust
-def ErrorDef
-
-    name: string
-    fields: list[FieldDef]
-    line: integer
-    is_private: bool
-    docstring: string
-    package: string
-
-end
-```
-
-**Fields**
-
-- `name: string`
-- `fields: list[FieldDef]`
-- `line: integer`
-- `is_private: bool`
-- `docstring: string`
-- `package: string`
-
 ## `Param`
 
 <a id="Param" />
@@ -362,6 +388,7 @@ def Param
     is_inout: bool
     line: integer
     col: integer
+    is_varargs: bool
 
 end
 ```
@@ -375,6 +402,7 @@ end
 - `is_inout: bool`
 - `line: integer` — 1-based source line of the parameter name, or 0 for a parameter synthesized by the compiler rather than parsed.
 - `col: integer` — 1-based source column of the parameter name, or 0 when unknown.
+- `is_varargs: bool` — Collect trailing arguments into the list described by ptype.
 
 ## `FuncSignature`
 
@@ -874,7 +902,6 @@ source path, and the module docstring — that codegen reads directly.
 def Program
 
     imports: list[Import]
-    errors: list[ErrorDef]
     interfaces: list[InterfaceDef]
     enums: list[EnumDef]
     structs: list[StructDef]
@@ -910,7 +937,6 @@ end
 **Fields**
 
 - `imports: list[Import]`
-- `errors: list[ErrorDef]`
 - `interfaces: list[InterfaceDef]`
 - `enums: list[EnumDef]`
 - `structs: list[StructDef]`
@@ -940,6 +966,44 @@ end
 - `package_dirs: dict[string, string]` — The on-disk directory each loaded package was read from, keyed by package name. Recorded by the loader as it resolves an import, so the link step can find a package's `*.c` backing files without re-resolving the name — which it cannot do for a path import (`use "../lib/lib.g"`), whose package name no longer says where the package lives.
 - `from_import_sources: dict[string, string]` — The package each `use <name> from <pkg>` names, keyed `"<importing package>|<name>"` (the empty package is the entry program). Copied from the analyzer so codegen binds a bare call to the same definition the type checker checked it against when several packages export the name.
 
+## `FieldTagError`
+
+<a id="FieldTagError" />
+Raised when a `#gust:tag` pragma's text is not a well-formed tag.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def FieldTagError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — What is wrong with the tag.
+
+## `FieldTag`
+
+<a id="FieldTag" />
+One `key:"value"` pair of a struct field's `#gust:tag` pragma.
+
+```gust
+def FieldTag
+
+    key: string
+    value: string
+
+end
+```
+
+**Fields**
+
+- `key: string` — The tag key (`json` in `json:"name"`).
+- `value: string` — The unquoted, unescaped value (`name`).
+
 ## `Lexer`
 
 <a id="Lexer" />
@@ -950,8 +1014,9 @@ accumulates emitted tokens; `frames` is the newline-significance stack
 (see `FR_BRACKET`/`FR_BLOCK`) that supersedes a plain bracket counter so
 newlines stay significant inside a bracketed lambda body; the
 `failed`/`error_*` fields record the first lexing error and where it
-occurred; and `pending_pragma` holds a trailing `#gust:cfg` comment until
-the newline ending its line is emitted carrying it (see `CFG_PRAGMA`).
+occurred; and `pending_pragma` holds a trailing `#gust:cfg` or `#gust:tag`
+comment until the newline ending its line is emitted carrying it (see
+`CFG_PRAGMA` / `TAG_PRAGMA`).
 
 ```gust
 def Lexer
@@ -1316,7 +1381,8 @@ def Lexer.newline_value() -> string
 ```
 
 The value of the TT_NEWLINE token about to end the current line: the
-line's trailing `#gust:cfg` pragma when it carries one, else `\n`.
+line's trailing `#gust:cfg` / `#gust:tag` pragma when it carries one, else
+`\n`.
 
 ---
 
@@ -1341,8 +1407,9 @@ def Lexer.try_two_char(
 ```
 
 If the two-character lookahead `two` is a known two-char operator
-(`:=`, `==`, `!=`, `<=`, `>=`, `->`, `<<`, `>>`, `//`, or a compound
-assignment like `+=`), consume both characters, emit the matching token at
+(`:=`, `==`, `!=`, `<=`, `>=`, `->`, `<<`, `>>`, `//`, a compound
+assignment like `+=`, or the increment/decrement forms `++` / `--`),
+consume both characters, emit the matching token at
 `start_line`/`start_col`, and return true. Otherwise consume nothing and
 return false.
 
@@ -1515,7 +1582,8 @@ def Parser.expect_newline() -> none
 ```
 
 Consume a newline token, or record a failure if the current token is
-not a newline.
+not a newline or carries a `#gust:tag` pragma — a tag is read only where a
+struct field ends its line.
 
 ---
 
@@ -1618,6 +1686,15 @@ Parse a full type annotation, returning a `TypeNode`. Handles union
 types `A | B | ...` by collecting `|`-separated single types into a
 `UnionType`; otherwise returns the single type. Bounded by the recursion
 depth guard.
+
+---
+
+<a id="Parser.parse_callable_param_type" />
+```gust
+def Parser.parse_callable_param_type() -> TypeNode
+```
+
+Parse a parameter type, preserving a final varargs element annotation.
 
 ---
 
@@ -1846,8 +1923,8 @@ def Parser.parse_arg_list(args: list[Expr], named: list[NamedArg]) -> none
 
 Parse a comma-separated call-argument list up to (but not consuming)
 the closing `)`, appending positional arguments to `args` and `name:
-value` keyword arguments to `named`. Tolerates a trailing comma and
-interior newlines.
+value` keyword arguments to `named`. Requires a comma between arguments,
+tolerates a single trailing comma, and allows interior newlines.
 
 ---
 
@@ -1858,8 +1935,9 @@ def Parser.parse_named_args() -> list[NamedArg]
 
 Parse an all-keyword argument list (`name: value, ...`) up to the
 closing `)`, returning the `NamedArg`s. Used for struct literals and
-`raise`, where every argument must be named. Tolerates a trailing comma
-and interior newlines.
+`raise`, where every argument must be named. Requires a comma between
+arguments, tolerates a single trailing comma, and allows interior
+newlines.
 
 ---
 
@@ -2253,6 +2331,27 @@ off the TT_NEWLINE token that ends it, or "" when the line carries none.
 
 ---
 
+<a id="Parser.line_field_tags" />
+```gust
+def Parser.line_field_tags(field_name: string) -> list[FieldTag]
+```
+
+The pairs of the `#gust:tag` pragma trailing the current line, read off
+the TT_NEWLINE token that ends it, or an empty list when the line carries
+none. A malformed tag records a parse failure naming `field_name`.
+
+---
+
+<a id="Parser.advance_past_newline" />
+```gust
+def Parser.advance_past_newline() -> none
+```
+
+Consume the newline ending a line whose trailing pragma, if any, has
+already been read — the one place a `#gust:tag` is accepted.
+
+---
+
 <a id="Parser.parse_dotted_path" />
 ```gust
 def Parser.parse_dotted_path() -> list[string]
@@ -2430,7 +2529,106 @@ end
 - `line: integer`
 - `col: integer`
 
+## `FieldTagError`
+
+<a id="FieldTagError" />
+Raised when a `#gust:tag` pragma's text is not a well-formed tag.
+
+**Implements:** [`prelude.Error`](#prelude.Error), [`Error`](#Error)
+
+```gust
+def FieldTagError implements prelude.Error, Error
+
+    message: string
+
+end
+```
+
+**Fields**
+
+- `message: string` — What is wrong with the tag.
+
 ## Functions
+
+<a id="ast.is_varargs_type" />
+```gust
+def is_varargs_type(t: TypeNode) -> bool
+```
+
+Whether a callable type slot denotes a variadic element type.
+
+---
+
+<a id="ast.param_source_type" />
+```gust
+def param_source_type(p: Param) -> TypeNode
+```
+
+Return the source annotation, retaining a parameter's calling mode.
+
+---
+
+<a id="ast.has_varargs" />
+```gust
+def has_varargs(params: list[Param]) -> bool
+```
+
+Whether the final parameter collects a variadic tail.
+
+---
+
+<a id="ast.fixed_param_count" />
+```gust
+def fixed_param_count(params: list[Param]) -> integer
+```
+
+Number of parameter slots before the variadic tail.
+
+---
+
+<a id="ast.is_spread_arg" />
+```gust
+def is_spread_arg(e: Expr) -> bool
+```
+
+Whether a positional call argument explicitly spreads a list.
+
+---
+
+<a id="ast.argument_param_index" />
+```gust
+def argument_param_index(
+    params: list[Param],
+    position: integer,
+    spread: bool,
+) -> integer
+```
+
+Parameter receiving a positional argument, or -1 for an excess argument.
+
+---
+
+<a id="ast.call_binding_errors" />
+```gust
+def call_binding_errors(
+    params: list[Param],
+    args: list[Expr],
+    named: list[NamedArg],
+) -> list[string]
+```
+
+Validate fixed-slot binding and explicit spreading before type checking.
+
+---
+
+<a id="ast.variadic_tail_args" />
+```gust
+def variadic_tail_args(params: list[Param], args: list[Expr]) -> list[Expr]
+```
+
+Select tail expressions, keeping a spread separate from fixed slots.
+
+---
 
 <a id="ast.type_to_string" />
 ```gust
@@ -2664,6 +2862,19 @@ searched.
 
 ---
 
+<a id="ast.prog_error_struct_indices" />
+```gust
+def prog_error_struct_indices(prog: Program) -> list[integer]
+```
+
+Indices into `prog.structs` of every struct that declares conformance
+to the `Error` interface, in declaration order. Single source of truth
+for codegen's error-type walks — it emits the per-binary error tables
+(`_g_error_names` / `_g_error_classes`) in the order the parser saw each
+error.
+
+---
+
 <a id="ast.ch_is_lower" />
 ```gust
 def ch_is_lower(ch: string) -> bool
@@ -2715,6 +2926,24 @@ def ch_is_ident(ch: string) -> bool
 ```
 
 [a-zA-Z0-9_] — a character that may continue an identifier.
+
+---
+
+<a id="ast.parse_field_tag" />
+```gust
+def parse_field_tag(text: string) -> list[FieldTag]
+```
+
+Parse the text following a `#gust:tag` marker into its pairs, in source
+order.
+
+**Parameters**
+
+- `text: string` — The tag text, e.g. `json:"name" db:"user_name"`.
+
+**Raises**
+
+- `FieldTagError` — when the text is empty, a pair is malformed, a value is unterminated or uses an unsupported escape, or a key repeats.
 
 ---
 
@@ -2871,8 +3100,9 @@ the G0109 message actionable rather than a bare "expected '['".
 def compound_op_kind(spelling: string) -> integer
 ```
 
-Map a compound-assignment token spelling (`+=`, `-=`, `*=`, `/=`, `%=`)
-to the binary operator kind its desugaring applies.
+Map a compound-assignment token spelling (`+=`, `-=`, `*=`, `/=`, `%=`,
+or the increment / decrement forms `++` / `--`) to the binary operator
+kind its desugaring applies.
 
 ---
 

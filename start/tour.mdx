@@ -371,7 +371,11 @@ See [unions](/lang/unions).
 ## Errors
 
 ```gust
-error LatencyError(message: string, server: string)
+def LatencyError implements Error
+    message: string
+    server: string
+end
+
 
 def ping(s: string, ms: integer) -> string
     if ms > 500

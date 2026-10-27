@@ -36,7 +36,7 @@ itself, so any tool can assemble the entry list however it likes (a
 whole-package `entries`, a hand-picked set of `describe` calls, or a
 filtered mix) and hand it here for rendering.
 
-**On this page:** [`DocSections`](#DocSections) · [`title_case`](#autodoc.title_case) · [`is_callable`](#autodoc.is_callable) · [`availability`](#autodoc.availability) · [`render_example`](#autodoc.render_example) · [`render_doc_args`](#autodoc.render_doc_args) · [`entry`](#autodoc.entry) · [`markdown`](#autodoc.markdown) · [`mdx_safe`](#autodoc.mdx_safe) · [`strip_copyright`](#autodoc.strip_copyright) · [`first_sentence`](#autodoc.first_sentence) · [`dedent_doc`](#autodoc.dedent_doc) · [`render_prose`](#autodoc.render_prose) · [`parse_sections`](#autodoc.parse_sections) · [`source_link`](#autodoc.source_link) · [`wrap_signature`](#autodoc.wrap_signature) · [`callable_sig`](#autodoc.callable_sig) · [`error_sig`](#autodoc.error_sig) · [`struct_sig`](#autodoc.struct_sig) · [`render_callable`](#autodoc.render_callable) · [`render_method_doc`](#autodoc.render_method_doc) · [`render_struct`](#autodoc.render_struct) · [`render_enum`](#autodoc.render_enum) · [`render_constants`](#autodoc.render_constants) · [`frontmatter`](#autodoc.frontmatter) · [`package_page`](#autodoc.package_page)
+**On this page:** [`DocSections`](#DocSections) · [`title_case`](#autodoc.title_case) · [`is_callable`](#autodoc.is_callable) · [`availability`](#autodoc.availability) · [`render_example`](#autodoc.render_example) · [`render_doc_args`](#autodoc.render_doc_args) · [`entry`](#autodoc.entry) · [`markdown`](#autodoc.markdown) · [`mdx_safe`](#autodoc.mdx_safe) · [`strip_copyright`](#autodoc.strip_copyright) · [`first_sentence`](#autodoc.first_sentence) · [`dedent_doc`](#autodoc.dedent_doc) · [`render_prose`](#autodoc.render_prose) · [`parse_sections`](#autodoc.parse_sections) · [`source_link`](#autodoc.source_link) · [`wrap_signature`](#autodoc.wrap_signature) · [`callable_sig`](#autodoc.callable_sig) · [`struct_sig`](#autodoc.struct_sig) · [`render_callable`](#autodoc.render_callable) · [`render_method_doc`](#autodoc.render_method_doc) · [`render_struct`](#autodoc.render_struct) · [`render_enum`](#autodoc.render_enum) · [`render_constants`](#autodoc.render_constants) · [`frontmatter`](#autodoc.frontmatter) · [`package_page`](#autodoc.package_page)
 
 ## `DocSections`
 
@@ -179,7 +179,8 @@ def entry(e: inspect.DocEntry, include_private: bool) -> string
 Render one `DocEntry` as a Markdown section: an `### name — Kind`
 heading, an availability line when the declaration is conditionally
 compiled, the docstring prose, and a kind-appropriate body — a code-fenced
-signature for callables, a fields table for structs and errors, a
+signature for callables, a fields table for structs (including those
+that `implements Error`), a
 method list for structs and interfaces, and a variant list for enums
 and ADTs. The docstring's `Arguments:`, `Returns:`, and `Example:`
 sections are lifted out and rendered as their own blocks. Private methods
@@ -368,19 +369,6 @@ code-highlighted.
 
 ---
 
-<a id="autodoc.error_sig" />
-```gust
-def error_sig(e: inspect.DocEntry) -> string
-```
-
-Render an error type's display signature as `Name(field: type, …)`.
-
-**Parameters**
-
-- `e: inspect.DocEntry` — The error `DocEntry` to render.
-
----
-
 <a id="autodoc.struct_sig" />
 ```gust
 def struct_sig(e: inspect.DocEntry) -> string
@@ -549,9 +537,10 @@ def package_page(
 
 Render a complete Mintlify reference page for a package: frontmatter
 (description drawn from the module docstring), a `use <pkg>` block, the module
-prose, an `On this page` index, then constants, enums, structs, free
-functions, and errors — each in source order within its group, matching
-`inspect.entries`. Interface sections list their in-package implementors, and
+prose, an `On this page` index, then constants, enums, structs (including
+those that `implements Error`), and free functions — each in source order
+within its group, matching `inspect.entries`. Interface sections list their
+in-package implementors, and
 every declaration carries a source link when `source_base` is set. Private
 declarations and private methods are omitted unless `include_private` is set.
 

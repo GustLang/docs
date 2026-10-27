@@ -6,34 +6,31 @@ description: "64-bit signed integer"
 64-bit signed integer. Backed by `int64_t` in the C runtime.
 
 Literals:
-
 ```gust
-42                  # decimal
--7                  # negative
-0xff                # hex
-0b1010              # binary
-0o755               # octal
-1_000_000           # underscore separators
+  42                  # decimal
+  -7                  # negative
+  0xff                # hex
+  0b1010              # binary
+  0o755               # octal
+  1_000_000           # underscore separators
 ```
 
 Operators:
-
 ```gust
-+ - *               # arithmetic
-/                   # true division (always returns float)
-//                  # floor division (truncates toward zero) — raises ValueError on `// 0`
-%                   # modulo — raises ValueError on `% 0`
-== != < > <= >=     # comparison
-& | ^ ~ << >>       # bitwise
+  + - *               # arithmetic
+  /                   # true division (always returns float)
+  //                  # floor division (truncates toward zero) — raises ValueError on `// 0`
+  %                   # modulo — raises ValueError on `% 0`
+  == != < > <= >=     # comparison
+  & | ^ ~ << >>       # bitwise
 ```
 
 Casting:
-
 ```gust
-x as string         # integer to string
-x as float          # widen to float
-"42" as integer     # parse from string (raises ValueError on bad input)
-3.14 as integer     # truncate float toward zero
+  x as string         # integer to string
+  x as float          # widen to float
+  "42" as integer     # parse from string (raises ValueError on bad input)
+  3.14 as integer     # truncate float toward zero
 ```
 
 Range: -9223372036854775808 to 9223372036854775807

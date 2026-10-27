@@ -58,7 +58,11 @@ end
 ## A taste
 
 ```gust
-error LatencyError(message: string, server: string)
+def LatencyError implements Error
+    message: string
+    server: string
+end
+
 
 def Server
     name: string
